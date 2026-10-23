@@ -6,6 +6,7 @@
   import PityRing from '../lib/components/PityRing.svelte';
   import EmptyState from '../lib/components/EmptyState.svelte';
   import Icon from '../lib/components/Icon.svelte';
+  import AnimatedNumber from '../lib/components/AnimatedNumber.svelte';
 
   let pity = $state<BannerPity[]>([]);
   let loading = $state(false);
@@ -21,7 +22,12 @@
     void app.refreshKey;
     if (!uid) { pity = []; return; }
     loading = true;
-    api.getPity(game, uid).then((p) => (pity = p)).catch((e) => toast('err', errMsg(e))).finally(() => (loading = false));
+    let stale = false; // ignore an answer that arrives after the selection changed
+    api.getPity(game, uid)
+      .then((p) => { if (!stale) pity = p; })
+      .catch((e) => { if (!stale) toast('err', errMsg(e)); })
+      .finally(() => { if (!stale) loading = false; });
+    return () => { stale = true; };
   });
 </script>
 
@@ -29,10 +35,11 @@
 <p class="muted">Pity counters and statistics for your selected account.</p>
 <GameBar />
 
-<div class="card rise">
+<div class="card rise busy-host" class:is-busy={app.busy}>
+  <div class="busybar" aria-hidden="true"></div>
   <div class="row">
     <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads your history">
-      <span class:spin={app.busy}><Icon name="refresh" /></span>{app.busy ? 'Working…' : `Refresh ${info.short}`}
+      <span class:spin={app.busy}><Icon name="refresh" /></span>{app.busy ? 'Working...' : `Refresh ${info.short}`}
     </button>
     {#if install?.found}
       <span class="chip ok">{info.name} detected</span>
@@ -59,11 +66,13 @@
   </EmptyState>
 {:else}
   <div class="stats">
-    <div class="card stat rise"><span class="muted">Total pulls</span><b>{totalPulls}</b></div>
-    <div class="card stat rise" style="animation-delay:60ms"><span class="muted">5★ obtained</span><b>{totalFives}</b></div>
+    <div class="card stat rise"><span class="muted">Total pulls</span><b><AnimatedNumber value={totalPulls} /></b></div>
+    <div class="card stat rise" style="animation-delay:60ms"><span class="muted">Five-star items</span><b><AnimatedNumber value={totalFives} /></b></div>
     <div class="card stat rise" style="animation-delay:120ms"><span class="muted">Account</span><b style="font-size:18px">UID {app.uid}</b></div>
   </div>
-  {#if loading && !pity.length}<p class="muted">Loading…</p>{/if}
+  {#if loading && !pity.length}
+    <div class="grid" aria-busy="true">{#each [0, 1, 2, 3] as n}<div class="card skeleton" style="animation-delay:{n * 80}ms"></div>{/each}</div>
+  {/if}
   <div class="grid">
     {#each pity as p, i (p.banner)}
       <div class="rise" style="animation-delay:{i * 60}ms"><PityRing {p} /></div>

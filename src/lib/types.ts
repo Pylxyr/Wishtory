@@ -12,11 +12,11 @@ export interface BannerPity {
   guaranteed: boolean | null; total: number; five_stars: number; four_stars: number;
   avg_five_pity: number | null; recent_fives: FiveStar[];
 }
-export interface FetchSummary { game: string; uid: string; fetched: number; added: number; }
+export interface FetchSummary { game: string; uid: string; fetched: number; added: number; warning: string | null; }
 export interface ImportSummary { format: string; accounts: number; added: number; skipped: number; }
 
 export const GAMES: Record<GameId, { name: string; short: string; howTo: string }> = {
-  hk4e: { name: 'Genshin Impact', short: 'Genshin', howTo: 'Open the Paimon menu → Wish → History, then flick through a banner tab.' },
+  hk4e: { name: 'Genshin Impact', short: 'Genshin', howTo: 'Open the Paimon menu, then Wish, then History, and flick through a banner tab.' },
   hkrpg: { name: 'Honkai: Star Rail', short: 'Star Rail', howTo: 'Open Warp → Records (Warp History) and let the list load.' },
   nap: { name: 'Zenless Zone Zero', short: 'ZZZ', howTo: 'Open Signal Search → History and let the list load.' }
 };

@@ -2,11 +2,12 @@
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { app } from '../state.svelte';
+  import { dur } from '../motion';
 </script>
 
 <div class="toasts" aria-live="polite">
   {#each app.toasts as t (t.id)}
-    <div class="toast {t.kind}" in:fly={{ x: 40, duration: 220 }} out:fly={{ x: 40, duration: 180 }} animate:flip={{ duration: 200 }}>
+    <div class="toast {t.kind}" in:fly={{ x: 40, duration: dur(220) }} out:fly={{ x: 40, duration: dur(180) }} animate:flip={{ duration: dur(200) }}>
       {t.text}
     </div>
   {/each}

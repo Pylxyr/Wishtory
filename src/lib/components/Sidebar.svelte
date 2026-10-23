@@ -19,7 +19,7 @@
     </button>
   {/each}
   <div class="spacer"></div>
-  <span class="chip ok" data-tip="Wishtory only reads files; it never touches the game."><Icon name="shield" size={12} /> Read-only &amp; safe</span>
+  <span class="chip ok" data-tip="Wishtory only reads files the game already wrote. It never injects, edits game files or uses a proxy."><Icon name="shield" size={12} /> Read-only</span>
   <button class="nav" onclick={() => setTheme(app.theme === 'dark' ? 'light' : 'dark')}>
     <Icon name={app.theme === 'dark' ? 'sun' : 'moon'} />{app.theme === 'dark' ? 'Light theme' : 'Dark theme'}
   </button>

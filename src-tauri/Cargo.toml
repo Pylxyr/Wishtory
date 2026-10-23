@@ -17,7 +17,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio = { version = "1", features = ["time"] }
 url = "2"
 regex = "1"
-thiserror = "1"
+thiserror = "2"
 chrono = "0.4"
 
 [profile.release]

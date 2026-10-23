@@ -3,6 +3,7 @@
   import { fly } from 'svelte/transition';
   import { app, initTheme, reloadAccounts } from './lib/state.svelte';
   import { api } from './lib/api';
+  import { dur } from './lib/motion';
   import Sidebar from './lib/components/Sidebar.svelte';
   import Toasts from './lib/components/Toasts.svelte';
   import Tutorial from './lib/components/Tutorial.svelte';
@@ -24,7 +25,7 @@
   <Sidebar />
   <main>
     {#key app.page}
-      <div class="page" in:fly={{ y: 12, duration: 220 }}>
+      <div class="page" in:fly={{ y: 12, duration: dur(220) }}>
         {#if app.page === 'dashboard'}<Dashboard />
         {:else if app.page === 'history'}<History />
         {:else if app.page === 'accounts'}<Accounts />

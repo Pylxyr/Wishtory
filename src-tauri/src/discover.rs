@@ -1,8 +1,8 @@
 //! Automatic game discovery.
-//! SAFETY: READ-ONLY. We only `fs::read` the log files the game itself writes under
+//! SAFETY: READ-ONLY. We only read the log files the game itself writes under
 //! %USERPROFILE%\AppData\LocalLow and inspect directory metadata. Nothing is written.
 
-use crate::models::{Game, GameInstall};
+use crate::{fsutil, models::{Game, GameInstall}};
 use regex::Regex;
 use std::{fs, path::PathBuf, time::SystemTime};
 
@@ -18,7 +18,7 @@ fn modified(p: &PathBuf) -> SystemTime {
 fn log_candidates(game: Game) -> Vec<PathBuf> {
     let Some(low) = locallow() else { return vec![] };
     let (dirs, files): (&[&str], &[&str]) = match game {
-        Game::Hk4e => (&["miHoYo/Genshin Impact", "miHoYo/原神"], &["Player.log", "output_log.txt", "Player-prev.log"]),
+        Game::Hk4e => (&["miHoYo/Genshin Impact", "miHoYo/原神"], &["Player.log", "output_log.txt", "Player-prev.log", "output_log.txt.last"]),
         Game::Hkrpg => (&["Cognosphere/Star Rail", "miHoYo/崩坏：星穹铁道"], &["Player.log", "Player-prev.log"]),
         Game::Nap => (&["miHoYo/ZenlessZoneZero", "miHoYo/绝区零"], &["Player.log", "Player-prev.log"]),
     };
@@ -32,7 +32,7 @@ fn log_candidates(game: Game) -> Vec<PathBuf> {
     found
 }
 
-fn data_dir_names(game: Game) -> &'static [&'static str] {
+pub fn data_dir_names(game: Game) -> &'static [&'static str] {
     match game {
         Game::Hk4e => &["GenshinImpact_Data", "YuanShen_Data"],
         Game::Hkrpg => &["StarRail_Data"],
@@ -40,21 +40,52 @@ fn data_dir_names(game: Game) -> &'static [&'static str] {
     }
 }
 
-/// Finds the game's `*_Data` directory by reading the Unity log (read-only).
-pub fn find_data_dir(game: Game) -> Option<PathBuf> {
+/// True when `name` is the name of any known game data folder (case-insensitive).
+pub fn is_game_data_dir_name(name: &str) -> bool {
+    Game::ALL.iter().flat_map(|g| data_dir_names(*g)).any(|n| n.eq_ignore_ascii_case(name))
+}
+
+/// Last install path mentioned in a Unity log text, if any.
+fn last_data_dir_in(text: &str, re: &Regex) -> Option<PathBuf> {
+    re.captures_iter(text).last().map(|cap| PathBuf::from(cap[1].replace('/', "\\")))
+}
+
+/// All existing `*_Data` directories mentioned in the game's logs (read-only), newest log
+/// first, without duplicates. Several entries mean several installs (for example global + CN).
+pub fn find_data_dirs(game: Game) -> Vec<PathBuf> {
     let alternatives = data_dir_names(game).iter().map(|n| regex::escape(n)).collect::<Vec<_>>().join("|");
-    let re = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alternatives}))")).ok()?;
+    let Ok(re) = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alternatives}))")) else { return vec![] };
+    let mut dirs: Vec<PathBuf> = Vec::new();
     for log in log_candidates(game) {
-        let Ok(bytes) = fs::read(&log) else { continue };
+        let Ok(bytes) = fsutil::read_shared(&log) else { continue };
         let text = String::from_utf8_lossy(&bytes);
-        if let Some(cap) = re.captures_iter(&text).last() {
-            let dir = PathBuf::from(cap[1].replace('/', "\\"));
-            if dir.is_dir() {
-                return Some(dir);
+        if let Some(dir) = last_data_dir_in(&text, &re) {
+            if dir.is_dir() && !dirs.contains(&dir) {
+                dirs.push(dir);
             }
         }
     }
-    None
+    dirs
+}
+
+/// The newest install, if any.
+pub fn find_data_dir(game: Game) -> Option<PathBuf> {
+    find_data_dirs(game).into_iter().next()
+}
+
+/// Every discovered `*_Data` folder plus its parent (the install root that holds the game exe).
+/// Used only to refuse exports into a game folder.
+pub fn known_game_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for game in Game::ALL {
+        for dir in find_data_dirs(game) {
+            if let Some(parent) = dir.parent().filter(|p| p.file_name().is_some()) {
+                roots.push(parent.to_path_buf());
+            }
+            roots.push(dir);
+        }
+    }
+    roots
 }
 
 pub fn discover_all() -> Vec<GameInstall> {
@@ -70,4 +101,24 @@ pub fn discover_all() -> Vec<GameInstall> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_dir_names_are_recognised_case_insensitively() {
+        assert!(is_game_data_dir_name("GenshinImpact_Data"));
+        assert!(is_game_data_dir_name("starrail_data"));
+        assert!(!is_game_data_dir_name("my_data"));
+    }
+
+    #[test]
+    fn picks_the_last_install_path_in_a_log() {
+        let alt = data_dir_names(Game::Hk4e).join("|");
+        let re = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alt}))")).unwrap();
+        let log = "Loading C:/Old/Genshin Impact Game/GenshinImpact_Data/x\nSubsystems at D:/Games/Genshin Impact Game/GenshinImpact_Data/UnitySubsystems\n";
+        assert_eq!(last_data_dir_in(log, &re).unwrap(), PathBuf::from("D:\\Games\\Genshin Impact Game\\GenshinImpact_Data"));
+    }
 }

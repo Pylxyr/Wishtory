@@ -18,7 +18,7 @@
       const r = await api.importFile(path);
       await reloadAccounts();
       app.refreshKey++;
-      toast('ok', `Imported ${r.format}: ${r.added} new pulls across ${r.accounts} account(s)${r.skipped ? `, ${r.skipped} skipped` : ''}.`);
+      toast('ok', `Imported ${r.format}: ${r.added} new pulls across ${r.accounts} account(s)${r.skipped ? `. ${r.skipped} rows were skipped because they lack a rarity or id` : ''}.`);
     } catch (e) { toast('err', errMsg(e)); }
     busy = false;
   }
@@ -44,7 +44,7 @@
   <div class="card rise">
     <h2>Import</h2>
     <p class="muted">UIGF v4.x, older UIGF (v2/v3), or SRGF v1.0. Duplicates are merged by pull ID.</p>
-    <button class="btn primary" onclick={doImport} disabled={busy}><Icon name="upload" />Choose file…</button>
+    <button class="btn primary" onclick={doImport} disabled={busy}><Icon name="upload" />Choose file...</button>
   </div>
   <div class="card rise" style="animation-delay:70ms">
     <h2>Export</h2>
@@ -61,6 +61,6 @@
         </select>
       {/if}
     </div>
-    <button class="btn primary" onclick={doExport} disabled={busy}><Icon name="download" />Export…</button>
+    <button class="btn primary" onclick={doExport} disabled={busy}><Icon name="download" />Export...</button>
   </div>
 </div>

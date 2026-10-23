@@ -1,14 +1,17 @@
 <script lang="ts">
   import { Tween } from 'svelte/motion';
   import { cubicOut } from 'svelte/easing';
+  import { dur } from '../motion';
   import type { BannerPity } from '../types';
 
   let { p }: { p: BannerPity } = $props();
   const R = 44;
   const C = 2 * Math.PI * R;
-  const progress = new Tween(0, { duration: 800, easing: cubicOut });
+  const progress = new Tween(0, { easing: cubicOut });
+  const shown = new Tween(0, { easing: cubicOut });
   $effect(() => {
-    progress.target = Math.min(p.pity / p.hard_pity, 1);
+    progress.set(Math.min(p.pity / p.hard_pity, 1), { duration: dur(800) });
+    shown.set(p.pity, { duration: dur(600) });
   });
   const inSoft = $derived(p.soft_pity !== null && p.pity >= p.soft_pity);
 </script>
@@ -17,11 +20,11 @@
   <svg class="ring" viewBox="0 0 100 100" role="img" aria-label="{p.pity} pulls since last 5 star">
     <circle class="track" cx="50" cy="50" r={R} />
     <circle class="bar" cx="50" cy="50" r={R} stroke-dasharray={C} stroke-dashoffset={C * (1 - progress.current)} transform="rotate(-90 50 50)" />
-    <text class="num" x="50" y="59" text-anchor="middle">{p.pity}</text>
+    <text class="num" x="50" y="59" text-anchor="middle">{Math.round(shown.current)}</text>
   </svg>
   <div>
     <h3>{p.label}</h3>
-    <p class="muted">{p.total} pulls · {p.five_stars}× 5★ · {p.four_stars}× 4★</p>
+    <p class="muted">{p.total} pulls · {p.five_stars} five-star, {p.four_stars} four-star</p>
     <div class="row">
       {#if p.guaranteed !== null}
         <span class="chip" class:gold={p.guaranteed} data-tip={p.guaranteed ? 'Your next 5★ is guaranteed to be the featured one' : 'Next 5★ is a 50/50'}>

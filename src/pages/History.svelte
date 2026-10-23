@@ -22,7 +22,12 @@
     limit = 200;
     if (!uid) { pulls = []; return; }
     loading = true;
-    api.getHistory(game, uid, b || null).then((p) => (pulls = p)).catch((e) => toast('err', errMsg(e))).finally(() => (loading = false));
+    let stale = false;
+    api.getHistory(game, uid, b || null)
+      .then((p) => { if (!stale) pulls = p; })
+      .catch((e) => { if (!stale) toast('err', errMsg(e)); })
+      .finally(() => { if (!stale) loading = false; });
+    return () => { stale = true; };
   });
 </script>
 
@@ -38,7 +43,7 @@
       <option value="">All banners</option>
       {#each BANNERS[app.game] as b}<option value={b.key}>{b.label}</option>{/each}
     </select>
-    <input bind:value={query} placeholder="Search by name…" aria-label="Search" />
+    <input bind:value={query} placeholder="Search by name..." aria-label="Search" />
     <span class="muted">{pulls.length} pulls</span>
   </div>
   <div class="card" style="padding:4px 8px">
@@ -54,7 +59,7 @@
             <td class="muted">{GACHA_LABELS[app.game][p.gacha_type] ?? p.gacha_type}</td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">{loading ? 'Loading…' : 'No matching pulls.'}</td></tr>
+          <tr><td colspan="5" class="muted">{loading ? 'Loading...' : 'No matching pulls.'}</td></tr>
         {/each}
       </tbody>
     </table>

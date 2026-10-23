@@ -1,8 +1,8 @@
 import { api, errMsg } from './api';
-import type { Account, GameId, GameInstall } from './types';
+import type { Account, FetchSummary, GameId, GameInstall } from './types';
 
 export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help';
-interface Toast { id: number; kind: 'ok' | 'err' | 'info'; text: string; }
+interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
 
 export const app = $state({
   page: 'dashboard' as Page,
@@ -21,7 +21,8 @@ let nextToast = 1;
 export function toast(kind: Toast['kind'], text: string) {
   const id = nextToast++;
   app.toasts.push({ id, kind, text });
-  setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), 4500);
+  const ms = kind === 'warn' || kind === 'err' ? 8000 : 4500;
+  setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), ms);
 }
 
 export function setTheme(t: 'light' | 'dark') {
@@ -44,17 +45,16 @@ export function selectGame(g: GameId) {
   app.uid = app.accounts.find((a) => a.game === g)?.uid ?? null;
 }
 
-async function run(getUrl: () => Promise<string>) {
+async function run(action: () => Promise<FetchSummary>) {
   if (app.busy) return;
   app.busy = true;
   try {
-    const url = await getUrl();
-    toast('info', 'Fetching your history…');
-    const r = await api.fetchHistory(app.game, url);
+    const r = await action();
     await reloadAccounts();
     app.uid = r.uid;
     app.refreshKey++;
     toast('ok', r.added > 0 ? `Added ${r.added} new pulls for UID ${r.uid}.` : `Already up to date for UID ${r.uid}.`);
+    if (r.warning) toast('warn', r.warning);
   } catch (e) {
     toast('err', errMsg(e));
   } finally {
@@ -63,9 +63,8 @@ async function run(getUrl: () => Promise<string>) {
 }
 
 /** Read-only: finds the link the game already cached, then fetches. */
-export const refreshFromGame = () =>
-  run(async () => {
-    toast('info', "Reading the game's cache (read-only)…");
-    return api.extractAuthkey(app.game);
-  });
-export const fetchFromUrl = (url: string) => run(async () => url);
+export const refreshFromGame = () => {
+  toast('info', "Reading the game's cache (read-only)...");
+  return run(() => api.refreshFromGame(app.game));
+};
+export const fetchFromUrl = (url: string) => run(() => api.fetchHistory(app.game, url));

@@ -6,6 +6,7 @@ export const errMsg = (e: unknown): string => (typeof e === 'string' ? e : e ins
 export const api = {
   discoverGames: () => invoke<GameInstall[]>('discover_games'),
   extractAuthkey: (game: GameId) => invoke<string>('extract_authkey', { game }),
+  refreshFromGame: (game: GameId) => invoke<FetchSummary>('refresh_from_game', { game }),
   fetchHistory: (game: GameId, url: string) => invoke<FetchSummary>('fetch_history', { game, url }),
   listAccounts: () => invoke<Account[]>('list_accounts'),
   deleteAccount: (game: GameId, uid: string) => invoke<void>('delete_account', { game, uid }),

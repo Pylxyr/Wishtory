@@ -13,6 +13,7 @@ mod db;
 mod discover;
 mod error;
 mod fetch;
+mod fsutil;
 mod models;
 mod pity;
 mod uigf;
@@ -32,6 +33,7 @@ fn main() {
             commands::discover_games,
             commands::extract_authkey,
             commands::fetch_history,
+            commands::refresh_from_game,
             commands::list_accounts,
             commands::delete_account,
             commands::get_history,

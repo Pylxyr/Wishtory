@@ -5,6 +5,11 @@ use crate::{db::Db, error::AppError, models::{Game, Pull}};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
+const LANGS: [&str; 15] = [
+    "de-de", "en-us", "es-es", "fr-fr", "id-id", "it-it", "ja-jp", "ko-kr", "pt-pt", "ru-ru", "th-th", "tr-tr",
+    "vi-vn", "zh-cn", "zh-tw",
+];
+
 const APP_NAME: &str = "Wishtory";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const UIGF_VERSION: &str = "v4.2";
@@ -18,9 +23,47 @@ fn val_str(v: &Value) -> String {
 }
 fn get(v: &Value, k: &str) -> String { v.get(k).map(val_str).unwrap_or_default() }
 
+/// Normalises exporter quirks ("2024-1-5 3:04:05", "2024-01-05T03:04:05Z", fractional seconds) to the
+/// `YYYY-MM-DD HH:MM:SS` form used everywhere else. No time zone conversion happens: UIGF times are
+/// already the account's server-local time. Unparseable text is kept as it was.
+fn normalize_time(t: &str) -> String {
+    let t = t.trim();
+    let cleaned: String = t.replace('T', " ");
+    let cleaned = cleaned.trim_end_matches('Z');
+    let cleaned = cleaned.split('.').next().unwrap_or(cleaned);
+    match chrono::NaiveDateTime::parse_from_str(cleaned, "%Y-%m-%d %H:%M:%S") {
+        Ok(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+        Err(_) => t.to_string(),
+    }
+}
+
+/// Server time zone guessed from the UID, used only when a file omits it.
+/// Genshin and Star Rail UIDs: 6xxxxxxxx America (UTC-5), 7xxxxxxxx Europe (UTC+1), everything else UTC+8.
+fn tz_from_uid(game: &str, uid: &str) -> i32 {
+    if game == "nap" || uid.len() != 9 { return 8; }
+    match uid.as_bytes().first() { Some(b'6') => -5, Some(b'7') => 1, _ => 8 }
+}
+
+fn read_tz(meta: &Value) -> Option<i32> {
+    let v = meta.get("timezone").or_else(|| meta.get("region_time_zone"))?;
+    match v {
+        Value::Number(n) => n.as_i64().map(|n| n as i32),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+/// UIGF restricts `lang` to a fixed list; map anything else onto it.
+fn normalize_lang(l: &str) -> String {
+    let l = l.trim().to_ascii_lowercase().replace('_', "-");
+    if LANGS.contains(&l.as_str()) { return l; }
+    let prefix = l.split('-').next().unwrap_or("");
+    LANGS.iter().find(|c| c.split('-').next() == Some(prefix)).map_or("en-us", |c| *c).to_string()
+}
+
 fn item_to_pull(game: &str, uid: &str, lang: &str, it: &Value) -> Option<Pull> {
     let id = get(it, "id");
-    let time = get(it, "time");
+    let time = normalize_time(&get(it, "time"));
     let rank_type = get(it, "rank_type").parse::<u8>().ok()?;
     if id.is_empty() || time.is_empty() { return None; }
     let mut gacha_type = get(it, "gacha_type");
@@ -66,8 +109,9 @@ pub fn import(db: &Db, text: &str) -> Result<ImportSummary, AppError> {
 fn import_block(db: &Db, sum: &mut ImportSummary, game: &str, meta: &Value, list: Option<&Value>) -> Result<(), AppError> {
     let uid = get(meta, "uid");
     if uid.is_empty() { return Ok(()); }
+    let uid = uid.trim().to_string();
     let lang = get(meta, "lang");
-    let tz = meta.get("timezone").or_else(|| meta.get("region_time_zone")).and_then(Value::as_i64).unwrap_or(8) as i32;
+    let tz = read_tz(meta).unwrap_or_else(|| tz_from_uid(game, &uid));
     let mut pulls = Vec::new();
     for it in list.and_then(Value::as_array).into_iter().flatten() {
         match item_to_pull(game, &uid, &lang, it) {
@@ -98,7 +142,7 @@ fn item_json(game: &str, p: &Pull) -> Value {
 }
 
 fn lang_of(pulls: &[Pull]) -> String {
-    pulls.iter().find(|p| !p.lang.is_empty()).map(|p| p.lang.clone()).unwrap_or_else(|| "en-us".into())
+    normalize_lang(pulls.iter().find(|p| !p.lang.is_empty()).map_or("en-us", |p| p.lang.as_str()))
 }
 
 /// `uigf4` exports any selection (all accounts when `game` / `uid` are None).
@@ -203,5 +247,59 @@ mod tests {
             "list":[{"gacha_id":"1","gacha_type":"11","item_id":"1","time":"2024-01-01 00:00:00","name":"Y","item_type":"Character","rank_type":"5","id":"7","count":"1"}]}"#;
         assert_eq!(import(&db, sr).unwrap().added, 1);
         assert!(import(&db, "{\"info\":{}}").is_err());
+    }
+
+    #[test]
+    fn time_strings_are_normalised() {
+        assert_eq!(normalize_time("2024-1-5 3:04:05"), "2024-01-05 03:04:05");
+        assert_eq!(normalize_time("2024-01-05T03:04:05Z"), "2024-01-05 03:04:05");
+        assert_eq!(normalize_time("2024-01-05 03:04:05.123"), "2024-01-05 03:04:05");
+        assert_eq!(normalize_time("garbage"), "garbage");
+    }
+
+    #[test]
+    fn timezone_falls_back_to_the_uid_region() {
+        assert_eq!(tz_from_uid("hk4e", "600000001"), -5);
+        assert_eq!(tz_from_uid("hkrpg", "700000001"), 1);
+        assert_eq!(tz_from_uid("hk4e", "800000001"), 8);
+        assert_eq!(tz_from_uid("nap", "1000000001"), 8);
+        assert_eq!(read_tz(&json!({"timezone": "-5"})), Some(-5));
+        assert_eq!(read_tz(&json!({"region_time_zone": 1})), Some(1));
+        assert_eq!(read_tz(&json!({})), None);
+    }
+
+    #[test]
+    fn languages_are_mapped_into_the_uigf_list() {
+        assert_eq!(normalize_lang("EN_US"), "en-us");
+        assert_eq!(normalize_lang("en"), "en-us");
+        assert_eq!(normalize_lang("ja"), "ja-jp");
+        assert_eq!(normalize_lang("klingon"), "en-us");
+    }
+
+    #[test]
+    fn v4_import_tolerates_optional_fields_and_counts_unusable_rows() {
+        let db = temp_db("v4opt");
+        let file = r#"{"info":{"export_timestamp":"1700000000","export_app":"x","export_app_version":"1","version":"v4.2"},
+          "hkrpg":[{"uid":700000005,"timezone":"1","list":[
+            {"gacha_id":"1","gacha_type":"11","item_id":"1003","time":"2024-1-5 3:04:05","id":"100","rank_type":"5"},
+            {"gacha_id":"1","gacha_type":"11","item_id":"1004","time":"2024-01-05 03:04:06","id":"101"}]}]}"#;
+        let s = import(&db, file).unwrap();
+        assert_eq!((s.accounts, s.added, s.skipped), (1, 1, 1), "a row without rank_type cannot be used for pity");
+        let rows = db.pulls_for("hkrpg", "700000005").unwrap();
+        assert_eq!(rows[0].time, "2024-01-05 03:04:05");
+        assert_eq!(db.list_accounts().unwrap()[0].timezone, 1);
+    }
+
+    #[test]
+    fn uigf4_export_only_contains_games_with_data_and_valid_types() {
+        let a = temp_db("shape");
+        a.merge("hkrpg", "100000001", 8, &[Pull { game: "hkrpg".into(), uid: "100000001".into(), gacha_type: "11".into(), lang: "en".into(), ..pull("5", "11", 4) }]).unwrap();
+        let v: Value = serde_json::from_str(&export(&a, "uigf4", None, None).unwrap()).unwrap();
+        assert!(v.get("hk4e").is_none() && v.get("nap").is_none());
+        let acc = &v["hkrpg"][0];
+        assert!(acc["uid"].is_u64() && acc["timezone"].is_i64());
+        assert_eq!(acc["lang"], "en-us");
+        assert!(v["info"]["export_timestamp"].is_i64() && v["info"]["version"].as_str().unwrap().starts_with("v4."));
+        assert!(acc["list"][0]["gacha_id"].is_string() && acc["list"][0]["id"].is_string());
     }
 }
