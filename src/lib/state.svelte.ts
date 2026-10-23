@@ -1,0 +1,71 @@
+import { api, errMsg } from './api';
+import type { Account, GameId, GameInstall } from './types';
+
+export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help';
+interface Toast { id: number; kind: 'ok' | 'err' | 'info'; text: string; }
+
+export const app = $state({
+  page: 'dashboard' as Page,
+  game: 'hk4e' as GameId,
+  uid: null as string | null,
+  accounts: [] as Account[],
+  installs: [] as GameInstall[],
+  busy: false,
+  refreshKey: 0, // bump to make pages reload their data
+  toasts: [] as Toast[],
+  tutorial: false,
+  theme: 'light' as 'light' | 'dark'
+});
+
+let nextToast = 1;
+export function toast(kind: Toast['kind'], text: string) {
+  const id = nextToast++;
+  app.toasts.push({ id, kind, text });
+  setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), 4500);
+}
+
+export function setTheme(t: 'light' | 'dark') {
+  app.theme = t;
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem('wishtory.theme', t);
+}
+export function initTheme() {
+  const saved = localStorage.getItem('wishtory.theme') as 'light' | 'dark' | null;
+  setTheme(saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+}
+
+export async function reloadAccounts() {
+  app.accounts = await api.listAccounts();
+  const mine = app.accounts.filter((a) => a.game === app.game);
+  if (!mine.some((a) => a.uid === app.uid)) app.uid = mine[0]?.uid ?? null;
+}
+export function selectGame(g: GameId) {
+  app.game = g;
+  app.uid = app.accounts.find((a) => a.game === g)?.uid ?? null;
+}
+
+async function run(getUrl: () => Promise<string>) {
+  if (app.busy) return;
+  app.busy = true;
+  try {
+    const url = await getUrl();
+    toast('info', 'Fetching your history…');
+    const r = await api.fetchHistory(app.game, url);
+    await reloadAccounts();
+    app.uid = r.uid;
+    app.refreshKey++;
+    toast('ok', r.added > 0 ? `Added ${r.added} new pulls for UID ${r.uid}.` : `Already up to date for UID ${r.uid}.`);
+  } catch (e) {
+    toast('err', errMsg(e));
+  } finally {
+    app.busy = false;
+  }
+}
+
+/** Read-only: finds the link the game already cached, then fetches. */
+export const refreshFromGame = () =>
+  run(async () => {
+    toast('info', "Reading the game's cache (read-only)…");
+    return api.extractAuthkey(app.game);
+  });
+export const fetchFromUrl = (url: string) => run(async () => url);
