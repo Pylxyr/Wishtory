@@ -66,6 +66,17 @@ To enable publishing, add a repository Actions secret named `CATALOG_SIGNING_KEY
 
 Run `npm run catalog:test` for source-shape and regression fixtures, `npm run catalog:update` to build a candidate locally, and `npm run catalog:sign` to create a signed envelope when the signing key is available.
 
+## Credits and references
+
+Wishtory relies on these independent projects and references for compatibility and verification:
+
+- [EnkaNetwork's API documentation and processed game stores](https://github.com/EnkaNetwork/API-docs/tree/master/store) provide the item IDs, names, rarities, and character traits used to build Wishtory's updateable game catalog.
+- [Paimon.moe](https://paimon.moe/) and its [open-source item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data) inform native Genshin backup import/export. Wishtory uses its exact item keys to match backup records reliably, and its documented read-only cache lookup approach informed history-link discovery.
+- The [UIGF project](https://uigf.org/) defines the interchange format Wishtory supports for moving wish histories between compatible tools.
+- HoYoverse's official announcements help us check updated game terminology and mechanics, including the [Honkai: Star Rail Path of Elation](https://www.hoyolab.com/article/43681649) and [Zenless Zone Zero's new specialties](https://zenless.hoyoverse.com/en-us/news/166000).
+
+These links credit the projects and sources that helped make Wishtory's catalog and compatibility features possible. Wishtory is an independent fan project and is not affiliated with or endorsed by these projects or HoYoverse.
+
 ## UIGF support declaration
 
 Wishtory imports and exports the [UIGF](https://uigf.org) interchange standard:
