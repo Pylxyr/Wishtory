@@ -1,6 +1,6 @@
 [package]
 name = "wishtory"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local Hoyoverse wish history manager (read-only, UIGF compatible)"
 edition = "2021"
 
