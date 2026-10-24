@@ -102,6 +102,9 @@ fn item_to_pull(game: &str, uid: &str, lang: &str, it: &Value) -> Option<Pull> {
     if gacha_type.is_empty() {
         gacha_type = get(it, "uigf_gacha_type");
     }
+    if gacha_type.is_empty() {
+        return None; // pity cannot place a pull without a banner
+    }
     Some(Pull {
         id,
         game: game.into(),
@@ -224,10 +227,12 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
             .filter(|n| !n.is_empty() && *n != "main")
         {
             let uid = get(root, &format!("{name}-wish-uid")).trim().to_string();
-            accounts.push((
-                name.to_string(),
-                if uid.is_empty() { "null".into() } else { uid },
-            ));
+            if uid.is_empty() {
+                // Without a UID the pulls cannot be filed under a real account.
+                sum.skipped += 1;
+                continue;
+            }
+            accounts.push((name.to_string(), uid));
         }
     }
     if accounts.is_empty() {
@@ -316,7 +321,7 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
             }
         }
         if found_collection {
-            sum.added += db.merge("hk4e", &uid, tz_from_uid("hk4e", &uid), &pulls)?;
+            sum.added += db.merge_guessed_tz("hk4e", &uid, tz_from_uid("hk4e", &uid), &pulls)?;
             sum.accounts += 1;
         }
     }
@@ -342,7 +347,8 @@ fn import_block(
     }
     let uid = uid.trim().to_string();
     let lang = get(meta, "lang");
-    let tz = read_tz(meta).unwrap_or_else(|| tz_from_uid(game, &uid));
+    let file_tz = read_tz(meta);
+    let tz = file_tz.unwrap_or_else(|| tz_from_uid(game, &uid));
     let mut pulls = Vec::new();
     for it in list.and_then(Value::as_array).into_iter().flatten() {
         match item_to_pull(game, &uid, &lang, it) {
@@ -350,7 +356,11 @@ fn import_block(
             None => sum.skipped += 1,
         }
     }
-    sum.added += db.merge(game, &uid, tz, &pulls)?;
+    sum.added += if file_tz.is_some() {
+        db.merge(game, &uid, tz, &pulls)?
+    } else {
+        db.merge_guessed_tz(game, &uid, tz, &pulls)?
+    };
     sum.accounts += 1;
     Ok(())
 }

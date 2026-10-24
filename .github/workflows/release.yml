@@ -2,10 +2,10 @@ name: Release
 
 # Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and publishes a GitHub release.
 #
-# One click:  Actions -> Release -> Run workflow
-# The version is read from the project files (package.json, src-tauri/tauri.conf.json and
-# src-tauri/Cargo.toml must all agree). Bump them first, push, then run this workflow.
-# Pushing a tag such as v0.2.0 does the same thing; the tag must match the version.
+# Normally started by "Cut release" (cut-release.yml), which bumps the version, tags it and calls this.
+# Other ways in: Actions -> Release -> Run workflow builds the version already in the project files
+# (package.json, src-tauri/tauri.conf.json and src-tauri/Cargo.toml must all agree); pushing a tag such
+# as v0.2.0 does the same thing, and the tag must match the version.
 # Only the NSIS setup .exe is built and uploaded (no MSI), plus a SHA256 checksum file.
 
 on:
@@ -17,6 +17,17 @@ on:
         default: false
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish, e.g. v0.2.0"
+        required: true
+        type: string
+      skip_checks:
+        description: "The caller already ran CI on this code"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -35,7 +46,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # inputs.tag is empty for a tag push or a manual run, which build the triggering ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -56,6 +70,8 @@ jobs:
       - name: Check versions
         id: ver
         shell: pwsh
+        env:
+          CALLED_TAG: ${{ inputs.tag }}
         run: |
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
@@ -64,6 +80,9 @@ jobs:
             throw "Version mismatch: package.json=$pkg, tauri.conf.json=$tauri, Cargo.toml=$cargo"
           }
           $tag = "v$pkg"
+          if ($env:CALLED_TAG -and $env:CALLED_TAG -ne $tag) {
+            throw "Tag $($env:CALLED_TAG) does not match the project version $tag"
+          }
           if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $tag) {
             throw "Tag ${{ github.ref_name }} does not match the project version $tag"
           }
@@ -73,9 +92,11 @@ jobs:
       - run: npm ci
 
       - name: Frontend checks
+        if: ${{ !inputs.skip_checks }}
         run: npm run check
 
       - name: Rust tests
+        if: ${{ !inputs.skip_checks }}
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Build the NSIS installer

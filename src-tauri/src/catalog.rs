@@ -283,6 +283,8 @@ impl CatalogStore {
         if !self.check_due() {
             return Ok("up-to-date".into());
         }
+        // Count a failed download as a check too, so an offline start is not retried on every launch.
+        let _ = std::fs::write(&self.check_file, unix_now().to_string());
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::limited(5))

@@ -129,11 +129,39 @@ impl Db {
     /// descriptive fields (name, item type, ...) are filled in from the new copy, so a sparse
     /// import is completed by a later fetch. Returns the number of NEW rows.
     pub fn merge(&self, game: &str, uid: &str, tz: i32, pulls: &[Pull]) -> Result<usize, AppError> {
+        self.merge_with(game, uid, tz, true, pulls)
+    }
+
+    /// Like `merge`, but `tz` is only a guess (derived from the UID): it is stored for a new
+    /// account and never replaces the time zone an existing account already has.
+    pub fn merge_guessed_tz(
+        &self,
+        game: &str,
+        uid: &str,
+        tz: i32,
+        pulls: &[Pull],
+    ) -> Result<usize, AppError> {
+        self.merge_with(game, uid, tz, false, pulls)
+    }
+
+    fn merge_with(
+        &self,
+        game: &str,
+        uid: &str,
+        tz: i32,
+        tz_known: bool,
+        pulls: &[Pull],
+    ) -> Result<usize, AppError> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO accounts (game, uid, timezone) VALUES (?1, ?2, ?3)
-             ON CONFLICT(game, uid) DO UPDATE SET timezone = excluded.timezone",
+            if tz_known {
+                "INSERT INTO accounts (game, uid, timezone) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(game, uid) DO UPDATE SET timezone = excluded.timezone"
+            } else {
+                "INSERT INTO accounts (game, uid, timezone) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(game, uid) DO NOTHING"
+            },
             params![game, uid, tz],
         )?;
         let mut added = 0;
@@ -370,6 +398,19 @@ mod tests {
         // Accounts are kept apart.
         assert_eq!(db.merge("hk4e", "2", 8, &[pull("10", "X")]).unwrap(), 1);
         assert_eq!(db.list_accounts().unwrap().len(), 2);
+        // A guessed time zone never replaces a stored one; a known one does.
+        let tz_of = |db: &Db| {
+            db.list_accounts()
+                .unwrap()
+                .iter()
+                .find(|a| a.uid == "2")
+                .unwrap()
+                .timezone
+        };
+        db.merge_guessed_tz("hk4e", "2", -5, &[]).unwrap();
+        assert_eq!(tz_of(&db), 8);
+        db.merge("hk4e", "2", 1, &[]).unwrap();
+        assert_eq!(tz_of(&db), 1);
         db.delete_account("hk4e", "1").unwrap();
         assert!(db.pulls_for("hk4e", "1").unwrap().is_empty());
         assert_eq!(db.pulls_for("hk4e", "2").unwrap().len(), 1);

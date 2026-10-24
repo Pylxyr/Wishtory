@@ -18,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
-use tauri::{async_runtime::spawn_blocking, Emitter, State};
+use tauri::{async_runtime::spawn_blocking, Emitter, Manager, State};
 
 /// Import files above this size are refused (a full multi-game UIGF file is a few MB at most).
 const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
@@ -262,30 +262,37 @@ fn decode_text(bytes: &[u8]) -> Result<String, AppError> {
 /// Reads a user-selected UIGF / SRGF file.
 #[tauri::command]
 pub async fn import_file(
-    db: State<'_, Db>,
+    app: tauri::AppHandle,
     catalog: State<'_, CatalogStore>,
     path: String,
 ) -> Result<ImportSummary, AppError> {
-    let size = std::fs::metadata(&path)?.len();
-    wlog!(Level::Debug, "import: reading a {size}-byte file");
-    if size > MAX_IMPORT_BYTES {
-        return Err(AppError::Format(
-            "the file is larger than 64 MB; that cannot be a wish history".into(),
-        ));
-    }
-    let text = decode_text(&std::fs::read(&path)?)?;
-    uigf::import_with_catalog(&db, &text, &catalog.current())
-        .inspect(|r| {
-            wlog!(
-                Level::Info,
-                "import ({}): {} new, {} skipped, {} account(s)",
-                r.format,
-                r.added,
-                r.skipped,
-                r.accounts
-            )
-        })
-        .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))
+    let catalog = catalog.current();
+    // File read, JSON parse and database merge can take a while: keep them off the async runtime.
+    spawn_blocking(move || -> Result<ImportSummary, AppError> {
+        let size = std::fs::metadata(&path)?.len();
+        wlog!(Level::Debug, "import: reading a {size}-byte file");
+        if size > MAX_IMPORT_BYTES {
+            return Err(AppError::Format(
+                "the file is larger than 64 MB; that cannot be a wish history".into(),
+            ));
+        }
+        let text = decode_text(&std::fs::read(&path)?)?;
+        let db = app.state::<Db>();
+        uigf::import_with_catalog(&db, &text, &catalog)
+            .inspect(|r| {
+                wlog!(
+                    Level::Info,
+                    "import ({}): {} new, {} skipped, {} account(s)",
+                    r.format,
+                    r.added,
+                    r.skipped,
+                    r.accounts
+                )
+            })
+            .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))
+    })
+    .await
+    .map_err(join_err)?
 }
 
 #[tauri::command]

@@ -1,5 +1,4 @@
-import '@fontsource-variable/fraunces/opsz.css';
-import '@fontsource-variable/instrument-sans/wght.css';
+import '@fontsource-variable/google-sans/wght.css';
 import '@fontsource-variable/jetbrains-mono/wght.css';
 import './app.css';
 import { mount } from 'svelte';

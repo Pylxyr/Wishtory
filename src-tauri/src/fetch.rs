@@ -284,6 +284,9 @@ async fn fetch_banner(
         let n = list.len();
         let last_id = list.last().map(|i| i.id.clone());
         for it in list {
+            let Ok(rank_type) = it.rank_type.parse() else {
+                continue; // an unreadable rarity must not be stored as 3-star
+            };
             if it.id.is_empty() || it.time.is_empty() {
                 continue;
             }
@@ -296,7 +299,7 @@ async fn fetch_banner(
                 item_id: it.item_id,
                 name: it.name,
                 item_type: it.item_type,
-                rank_type: it.rank_type.parse().unwrap_or(3),
+                rank_type,
                 time: it.time,
                 lang: it.lang,
                 count: it.count.parse().unwrap_or(1),
