@@ -5,9 +5,9 @@
 </script>
 
 <div class="gamebar">
-  <div class="tabs" role="tablist">
+  <div class="tabs" role="group" aria-label="Game">
     {#each Object.entries(GAMES) as [id, g]}
-      <button role="tab" aria-selected={app.game === id} class:active={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
+      <button aria-pressed={app.game === id} class:active={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
     {/each}
   </div>
   {#if mine.length}

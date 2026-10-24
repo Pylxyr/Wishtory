@@ -5,8 +5,10 @@
 </script>
 
 <div class="card empty rise">
-  <div class="art"><Icon name="sparkle" size={44} /></div>
-  <h2>{title}</h2>
-  <p class="muted">{text}</p>
+  <div class="empty-summary">
+    <div class="art"><Icon name="sparkle" size={44} /></div>
+    <h2>{title}</h2>
+    <p class="muted">{text}</p>
+  </div>
   {@render children?.()}
 </div>

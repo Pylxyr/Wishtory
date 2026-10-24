@@ -1,7 +1,7 @@
 //! UIGF v4.x import/export, plus legacy UIGF v2/v3 (hk4e) and SRGF v1.0 (hkrpg).
 //! Pure data transformation. Files are read/written by commands.rs at user-chosen paths.
 
-use crate::{db::Db, error::AppError, models::{Game, Pull}};
+use crate::{catalog::Catalog, db::Db, error::AppError, models::{Account, Game, Pull}};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
@@ -76,8 +76,16 @@ fn item_to_pull(game: &str, uid: &str, lang: &str, it: &Value) -> Option<Pull> {
 }
 
 // ---------- import ----------
+#[cfg(test)]
 pub fn import(db: &Db, text: &str) -> Result<ImportSummary, AppError> {
+    import_with_catalog(db, text, &Catalog::bundled())
+}
+
+pub fn import_with_catalog(db: &Db, text: &str, catalog: &Catalog) -> Result<ImportSummary, AppError> {
     let root: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))?;
+    if root.get("wish-uid").is_some() || root.as_object().is_some_and(|o| o.keys().any(|k| k.starts_with("wish-counter-"))) {
+        return import_paimon(db, &root, catalog);
+    }
     let info = root.get("info")
         .ok_or_else(|| AppError::Format("missing `info` block. Is this a UIGF / SRGF file?".into()))?;
     let mut sum = ImportSummary { format: String::new(), accounts: 0, added: 0, skipped: 0 };
@@ -101,6 +109,83 @@ pub fn import(db: &Db, text: &str) -> Result<ImportSummary, AppError> {
     }
     if sum.accounts == 0 {
         return Err(AppError::Format("the file contains no wish history".into()));
+    }
+    Ok(sum)
+}
+
+const PAIMON_BANNERS: [(&str, &str); 5] = [
+    ("beginners", "100"), ("standard", "200"), ("character-event", "301"),
+    ("weapon-event", "302"), ("chronicled", "500"),
+];
+
+fn paimon_stable_id(uid: &str, banner: &str, time: &str, item: &str, kind: &str, pity: &str, occurrence: u32) -> String {
+    let source = format!("{uid}\0{banner}\0{time}\0{item}\0{kind}\0{pity}\0{occurrence}");
+    let hash = source.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100000001b3));
+    (1_000_000_000_000_000_000u64 + hash % 8_000_000_000_000_000_000u64).to_string()
+}
+
+/// Reads Paimon.moe's native local-data backup without changing the source file. Its wish
+/// records contain Paimon item keys rather than HoYoverse IDs, so the bundled item table supplies
+/// the display name and rarity needed by Wishtory's normalized pull model.
+fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSummary, AppError> {
+    let mut sum = ImportSummary { format: "Paimon.moe local data".into(), accounts: 0, added: 0, skipped: 0 };
+    let mut accounts: Vec<(String, String)> = Vec::new();
+    let main_uid = get(root, "wish-uid").trim().to_string();
+    if !main_uid.is_empty() { accounts.push((String::new(), main_uid)); }
+    if let Some(names) = root.get("accounts").and_then(Value::as_str) {
+        for name in names.split(',').map(str::trim).filter(|n| !n.is_empty() && *n != "main") {
+            let uid = get(root, &format!("{name}-wish-uid")).trim().to_string();
+            accounts.push((name.to_string(), if uid.is_empty() { "null".into() } else { uid }));
+        }
+    }
+    if accounts.is_empty() {
+        return Err(AppError::Format("the Paimon.moe file has no wish account".into()));
+    }
+
+    let lang = normalize_lang(&get(root, "locale"));
+    for (account, uid) in accounts {
+        let mut pulls = Vec::new();
+        let mut occurrences = std::collections::HashMap::<String, u32>::new();
+        let mut found_collection = false;
+        for (banner, default_type) in PAIMON_BANNERS {
+            let key = if account.is_empty() { format!("wish-counter-{banner}") } else { format!("{account}-wish-counter-{banner}") };
+            let Some(collection) = root.get(&key) else { continue };
+            let Some(rows) = collection.get("pulls").and_then(Value::as_array) else { sum.skipped += 1; continue };
+            found_collection = true;
+            for row in rows {
+                let item_id = get(row, "id");
+                let time = normalize_time(&get(row, "time"));
+                let declared_kind = get(row, "type").to_ascii_lowercase();
+                let item_data = catalog.item_by_paimon_key(&item_id)
+                    .map(|item| (item.name.clone(), item.rarity, item.kind.clone()))
+                    .or_else(|| crate::paimon_items::lookup(&item_id).map(|(n, r, k)| (n.to_string(), r, k.to_string())));
+                let Some((name, rank_type, kind)) = item_data else { sum.skipped += 1; continue };
+                if item_id.is_empty() || time.is_empty() || declared_kind != kind {
+                    sum.skipped += 1;
+                    continue;
+                }
+                let gacha_type = match get(row, "code").as_str() {
+                    "100" | "200" | "301" | "302" | "400" | "500" => get(row, "code"),
+                    _ => default_type.into(),
+                };
+                let source_pity = get(row, "pity");
+                let signature = format!("{banner}\0{time}\0{item_id}\0{declared_kind}\0{source_pity}");
+                let occurrence = occurrences.entry(signature).and_modify(|n| *n += 1).or_insert(0);
+                let id = paimon_stable_id(&uid, banner, &time, &item_id, &kind, &source_pity, *occurrence);
+                pulls.push(Pull {
+                    id, game: "hk4e".into(), uid: uid.clone(), gacha_type, gacha_id: String::new(),
+                    item_id, name, item_type: if kind == "character" { "Character" } else { "Weapon" }.into(),
+                    rank_type, time, lang: lang.clone(), count: 1,
+                });
+            }
+        }
+        if found_collection {
+            sum.added += db.merge("hk4e", &uid, tz_from_uid("hk4e", &uid), &pulls)?;
+            sum.accounts += 1;
+        }
+    }
+    if sum.accounts == 0 {
+        return Err(AppError::Format("the Paimon.moe file contains no wish history".into()));
     }
     Ok(sum)
 }
@@ -141,15 +226,69 @@ fn item_json(game: &str, p: &Pull) -> Value {
     o
 }
 
+fn export_paimon(db: &Db, account: &Account, catalog: &Catalog) -> Result<String, AppError> {
+    let pulls = db.pulls_for("hk4e", &account.uid)?;
+    let mut root = Map::new();
+    root.insert("wish-uid".into(), Value::from(account.uid.clone()));
+    for (banner, types) in [
+        ("beginners", & ["100"][..]),
+        ("standard", & ["200"][..]),
+        ("character-event", & ["301", "400"][..]),
+        ("weapon-event", & ["302"][..]),
+        ("chronicled", & ["500"][..]),
+    ] {
+        let rows: Vec<&Pull> = pulls.iter().filter(|p| types.contains(&p.gacha_type.as_str())).collect();
+        if rows.is_empty() { continue; }
+        let mut rare_pity = 0u32;
+        let mut legendary = 0u32;
+        let mut rare = 0u32;
+        let mut list = Vec::with_capacity(rows.len());
+        for p in rows {
+            let catalog_item = catalog.items.iter().find(|item| item.game == "hk4e" && item.id == p.item_id)
+                .and_then(|item| item.paimon_key.as_ref().map(|key| (key.clone(), item.rarity, item.kind.as_str())))
+                .or_else(|| catalog.item_by_english_name("hk4e", &p.name)
+                    .and_then(|item| item.paimon_key.as_ref().map(|key| (key.clone(), item.rarity, item.kind.as_str()))))
+                .or_else(|| crate::paimon_items::lookup(&p.item_id)
+                .map(|(_, rarity, kind)| (p.item_id.clone(), rarity, kind))
+                .or_else(|| {
+                    if p.lang.to_ascii_lowercase().starts_with("en") {
+                        crate::paimon_items::lookup_by_english_name(&p.name).map(|(id, _, rarity, kind)| (id, rarity, kind))
+                    } else { None }
+                }));
+            let Some((paimon_id, _, kind)) = catalog_item else {
+                return Err(AppError::Format("Paimon.moe export needs Paimon item keys; these records were imported from a different source.".into()));
+            };
+            rare_pity += 1;
+            let paimon_pity = if p.rank_type == 4 { rare_pity } else { 1 };
+            if p.rank_type == 5 { legendary += 1; }
+            if p.rank_type == 4 { rare += 1; }
+            list.push(json!({
+                "type": kind, "code": p.gacha_type, "id": paimon_id,
+                "time": p.time, "pity": paimon_pity
+            }));
+            if p.rank_type >= 4 { rare_pity = 0; }
+        }
+        root.insert(format!("wish-counter-{banner}"), json!({
+            "total": list.len(), "legendary": legendary, "rare": rare, "pulls": list
+        }));
+    }
+    Ok(serde_json::to_string_pretty(&Value::Object(root))?)
+}
+
 fn lang_of(pulls: &[Pull]) -> String {
     normalize_lang(pulls.iter().find(|p| !p.lang.is_empty()).map_or("en-us", |p| p.lang.as_str()))
 }
 
 /// `uigf4` exports any selection (all accounts when `game` / `uid` are None).
 /// `uigf3` (hk4e) and `srgf1` (hkrpg) need exactly one matching account.
+#[cfg(test)]
 pub fn export(db: &Db, format: &str, game: Option<Game>, uid: Option<&str>) -> Result<String, AppError> {
+    export_with_catalog(db, format, game, uid, &Catalog::bundled())
+}
+
+pub fn export_with_catalog(db: &Db, format: &str, game: Option<Game>, uid: Option<&str>, catalog: &Catalog) -> Result<String, AppError> {
     let accounts: Vec<_> = db.list_accounts()?.into_iter()
-        .filter(|a| game.map_or(true, |g| g.as_str() == a.game) && uid.map_or(true, |u| u == a.uid))
+        .filter(|a| game.is_none_or(|g| g.as_str() == a.game) && uid.is_none_or(|u| u == a.uid))
         .collect();
     if accounts.is_empty() {
         return Err(AppError::Format("there is nothing to export yet".into()));
@@ -157,6 +296,12 @@ pub fn export(db: &Db, format: &str, game: Option<Game>, uid: Option<&str>) -> R
     let ts = chrono::Utc::now().timestamp();
 
     match format {
+        "paimon" => {
+            if accounts.len() != 1 || accounts[0].game != "hk4e" {
+                return Err(AppError::Format("Paimon.moe local-data export needs exactly one Genshin account selected".into()));
+            }
+            export_paimon(db, &accounts[0], catalog)
+        }
         "uigf4" => {
             let mut root = Map::new();
             root.insert("info".into(), json!({
@@ -247,6 +392,146 @@ mod tests {
             "list":[{"gacha_id":"1","gacha_type":"11","item_id":"1","time":"2024-01-01 00:00:00","name":"Y","item_type":"Character","rank_type":"5","id":"7","count":"1"}]}"#;
         assert_eq!(import(&db, sr).unwrap().added, 1);
         assert!(import(&db, "{\"info\":{}}").is_err());
+    }
+
+    #[test]
+    fn imports_paimon_moe_uigf_v22_export_and_exports_compatible_v3() {
+        // Shape emitted by Paimon.moe's published UIGF converter: a legacy `info` block
+        // (`uigf_version`) and a flat list with string count/rank fields.
+        let db = temp_db("paimon-v22");
+        let paimon = r#"{"info":{"uid":"800000009","lang":"en-us","export_timestamp":1700000000,
+            "export_app":"Paimon Wish Converter","export_app_version":"1.0.0","uigf_version":"v2.2"},
+            "list":[{"gacha_type":"400","uigf_gacha_type":"301","count":"1",
+            "time":"2024-01-05 03:04:05","name":"Jean","item_type":"Character","rank_type":"5","id":"1665723900010000001"}]}"#;
+        let imported = import(&db, paimon).unwrap();
+        assert_eq!((imported.accounts, imported.added), (1, 1));
+        let pulls = db.pulls_for("hk4e", "800000009").unwrap();
+        assert_eq!((pulls[0].gacha_type.as_str(), pulls[0].rank_type), ("400", 5));
+        assert_eq!(pulls[0].name, "Jean");
+        let legacy = export(&db, "uigf3", Some(Game::Hk4e), Some("800000009")).unwrap();
+        let value: Value = serde_json::from_str(&legacy).unwrap();
+        assert_eq!(value["info"]["uigf_version"], "v3.0");
+        assert_eq!(value["list"][0]["uigf_gacha_type"], "301");
+    }
+
+    #[test]
+    fn imports_native_paimon_backup_and_roundtrips_the_wish_collections() {
+        let source = r#"{"wish-uid":"800000009","locale":"en-us",
+          "wish-counter-character-event":{"total":3,"legendary":1,"rare":1,"pulls":[
+            {"type":"weapon","code":"301","id":"cool_steel","time":"2024-01-05 03:04:05","pity":1},
+            {"type":"character","code":"400","id":"albedo","time":"2024-01-05 03:05:05","pity":1},
+            {"type":"character","code":"301","id":"amber","time":"2024-01-05 03:06:05","pity":10}]}}"#;
+        let from = temp_db("native-paimon-a");
+        let imported = import(&from, source).unwrap();
+        assert_eq!((imported.accounts, imported.added, imported.skipped), (1, 3, 0));
+        let rows = from.pulls_for("hk4e", "800000009").unwrap();
+        assert_eq!(rows.iter().map(|p| p.rank_type).collect::<Vec<_>>(), vec![3, 5, 4]);
+        assert_eq!(rows[1].name, "Albedo");
+        assert_eq!(import(&from, source).unwrap().added, 0);
+
+        let exported: Value = serde_json::from_str(&export(&from, "paimon", Some(Game::Hk4e), Some("800000009")).unwrap()).unwrap();
+        assert_eq!(exported["wish-uid"], "800000009");
+        assert_eq!(exported["wish-counter-character-event"]["pulls"].as_array().unwrap().len(), 3);
+        assert_eq!(exported["wish-counter-character-event"]["pulls"][1]["code"], "400");
+        assert_eq!(exported["wish-counter-character-event"]["legendary"], 1);
+
+        let to = temp_db("native-paimon-b");
+        assert_eq!(import(&to, &exported.to_string()).unwrap().added, 3);
+        assert_eq!(to.pulls_for("hk4e", "800000009").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn native_paimon_import_and_live_refresh_do_not_duplicate_same_pull() {
+        let db = temp_db("paimon-live-refresh-dedupe");
+        let source = r#"{"wish-uid":"800000009","locale":"en-us",
+          "wish-counter-character-event":{"pulls":[
+            {"type":"character","code":"301","id":"jean","time":"2024-01-05 03:04:05","pity":78}]}}"#;
+        assert_eq!(import(&db, source).unwrap().added, 1);
+
+        let mut refreshed = pull("1665723900010000001", "301", 5);
+        refreshed.uid = "800000009".into();
+        refreshed.item_id.clear(); // The live HoYoverse record omits this field.
+        refreshed.time = "2024-01-05 03:04:05".into();
+        assert_eq!(db.merge("hk4e", "800000009", 8, &[refreshed]).unwrap(), 0);
+        assert_eq!(db.pulls_for("hk4e", "800000009").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn paimon_export_maps_english_api_item_names_to_native_keys() {
+        let db = temp_db("paimon-api-name-export");
+        let mut api_pull = pull("987654321", "301", 5);
+        api_pull.item_id = "10000003".into();
+        db.merge("hk4e", "800000001", 8, &[api_pull]).unwrap();
+        let exported: Value = serde_json::from_str(
+            &export(&db, "paimon", Some(Game::Hk4e), Some("800000001")).unwrap(),
+        ).unwrap();
+        let row = &exported["wish-counter-character-event"]["pulls"][0];
+        assert_eq!(row["id"], "jean");
+        assert_eq!(row["type"], "character");
+    }
+
+    #[test]
+    fn native_paimon_import_reports_unknown_items_instead_of_inventing_rarity() {
+        let db = temp_db("native-paimon-unknown");
+        let source = r#"{"wish-uid":"800000010","wish-counter-standard":{"pulls":[
+          {"type":"character","code":"200","id":"future_unknown_item","time":"2024-01-05 03:04:05","pity":1}]}}"#;
+        let result = import(&db, source).unwrap();
+        assert_eq!((result.added, result.skipped), (0, 1));
+        assert!(db.pulls_for("hk4e", "800000010").unwrap().is_empty());
+    }
+
+    #[test]
+    fn live_catalog_maps_new_paimon_keys_for_import_and_export() {
+        let catalog = Catalog::parse_and_validate(br#"{"schema_version":1,"catalog_version":2,"generated_at":"2026-10-24T00:00:00Z","items":[{"game":"hk4e","id":"10000077","name":"Future Blade","aliases":[],"rarity":5,"kind":"weapon","traits":{},"paimon_key":"future_blade"}]}"#).unwrap();
+        let db = temp_db("paimon-live-catalog");
+        let source = r#"{"wish-uid":"800000011","wish-counter-standard":{"pulls":[{"type":"weapon","code":"200","id":"future_blade","time":"2024-01-05 03:04:05","pity":1}]}}"#;
+        assert_eq!(import_with_catalog(&db, source, &catalog).unwrap().added, 1);
+        let encoded: Value = serde_json::from_str(&export_with_catalog(&db, "paimon", Some(Game::Hk4e), Some("800000011"), &catalog).unwrap()).unwrap();
+        assert_eq!(encoded["wish-counter-standard"]["pulls"][0]["id"], "future_blade");
+    }
+
+    #[test]
+    fn native_paimon_catalog_covers_missing_weapon_keys_from_real_backup() {
+        // These keys were found in the user-provided Paimon.moe backup. Keep a small,
+        // identifier-only fixture here so future catalog edits don't silently drop them.
+        let keys = [
+            ("sharpshooters_oath", 3, "weapon"),
+            ("dragons_bane", 4, "weapon"),
+            ("lions_roar", 4, "weapon"),
+            ("flower-wreathed_feathers", 4, "weapon"),
+            ("moonweavers_dawn", 4, "weapon"),
+            ("amos_bow", 5, "weapon"),
+            ("primordial_jade_winged-spear", 5, "weapon"),
+            ("the_dockhands_assistant", 4, "weapon"),
+            ("astral_vultures_crimson_plumage", 5, "weapon"),
+            ("cranes_echoing_call", 5, "weapon"),
+            ("kaguras_verity", 5, "weapon"),
+            ("key_of_khaj-nisut", 5, "weapon"),
+            ("mouuns_moon", 4, "weapon"),
+            ("nocturnes_curtain_call", 5, "weapon"),
+            ("sacrificers_staff", 4, "weapon"),
+            ("xiphos_moonlight", 4, "weapon"),
+        ];
+        for (id, rarity, kind) in keys {
+            assert_eq!(crate::paimon_items::lookup(id).map(|(_, r, k)| (r, k)), Some((rarity, kind)), "{id}");
+        }
+    }
+
+    #[test]
+    fn uigf4_preserves_zenless_channel_types_and_item_data() {
+        let db = temp_db("nap-roundtrip");
+        let source = r#"{"info":{"export_timestamp":1700000000,"export_app":"fixture","export_app_version":"1","version":"v4.2"},
+          "nap":[{"uid":"1000000012","timezone":8,"lang":"en-us","list":[
+            {"gacha_id":"2001","gacha_type":"2","item_id":"1181","count":"1","time":"2024-01-05 03:04:05","name":"Grace","item_type":"Agent","rank_type":"4","id":"1234567890123456789"},
+            {"gacha_id":"3001","gacha_type":"5","item_id":"2001","count":"1","time":"2024-01-05 03:05:05","name":"Bangboo","item_type":"Bangboo","rank_type":"3","id":"1234567890123456790"}]}]}"#;
+        assert_eq!(import(&db, source).unwrap().added, 2);
+        let encoded: Value = serde_json::from_str(&export(&db, "uigf4", Some(Game::Nap), Some("1000000012")).unwrap()).unwrap();
+        let rows = encoded["nap"][0]["list"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["gacha_type"], "2");
+        assert_eq!(rows[1]["gacha_type"], "5");
+        assert_eq!(rows[0]["id"], "1234567890123456789");
+        assert_eq!((rows[0]["rank_type"].as_str(), rows[1]["rank_type"].as_str()), (Some("4"), Some("3")));
     }
 
     #[test]

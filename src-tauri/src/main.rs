@@ -8,6 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod authkey;
+mod catalog;
 mod commands;
 mod db;
 mod discover;
@@ -15,6 +16,7 @@ mod error;
 mod fetch;
 mod fsutil;
 mod models;
+mod paimon_items;
 mod pity;
 mod uigf;
 
@@ -27,6 +29,8 @@ fn main() {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             app.manage(db::Db::open(&dir.join("wishtory.db"))?);
+            let catalog = catalog::CatalogStore::open(&dir);
+            app.manage(catalog);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -36,6 +40,9 @@ fn main() {
             commands::refresh_from_game,
             commands::list_accounts,
             commands::delete_account,
+            commands::clear_all_history,
+            commands::get_catalog,
+            commands::refresh_catalog,
             commands::get_history,
             commands::get_pity,
             commands::import_file,

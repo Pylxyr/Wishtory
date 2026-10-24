@@ -1,0 +1,56 @@
+name: Review game catalog updates
+
+on:
+  schedule:
+    - cron: '24 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Prepare review branch
+        shell: bash
+        run: |
+          git fetch origin main
+          git fetch origin catalog-refresh || true
+          if git show-ref --verify --quiet refs/remotes/origin/catalog-refresh; then
+            git checkout -B catalog-refresh origin/catalog-refresh
+            git merge --no-edit origin/main
+          else
+            git checkout -B catalog-refresh origin/main
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Build candidate from upstream metadata
+        run: npm run catalog:update
+      - name: Open or update review PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if git diff --quiet -- catalog/catalog.json; then
+            echo "No catalog changes found."
+            exit 0
+          fi
+          git add catalog/catalog.json
+          git commit -m "chore: update game metadata catalog"
+          git push origin catalog-refresh
+          if gh pr view catalog-refresh --json number >/dev/null 2>&1; then
+            gh pr edit catalog-refresh --title "Review updated game metadata catalog" --body "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog. Please review names, rarity, traits, and Paimon keys before merging."
+          else
+            gh pr create --base main --head catalog-refresh --title "Review updated game metadata catalog" --body "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog. Please review names, rarity, traits, and Paimon keys before merging. This PR does not change wish records or game mechanics."
+          fi

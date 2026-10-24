@@ -3,6 +3,7 @@ node_modules/
 dist/
 .vite/
 npm-debug.log*
+.agents/
 .env
 .env.*
 
@@ -10,6 +11,9 @@ npm-debug.log*
 src-tauri/target/
 src-tauri/gen/
 **/*.rs.bk
+catalog/catalog-signing-key.pem
+catalog/*.envelope.json
+!catalog/catalog-test-envelope.json
 
 # OS / editor
 .DS_Store

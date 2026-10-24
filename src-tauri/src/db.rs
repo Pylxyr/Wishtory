@@ -2,17 +2,41 @@
 
 use crate::{error::AppError, models::{Account, Pull}};
 use rusqlite::{params, Connection};
-use std::{path::Path, sync::{Mutex, MutexGuard}};
+use std::{collections::{HashMap, HashSet}, path::Path, sync::{Mutex, MutexGuard}};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PullSignature {
+    time: String,
+    gacha_type: String,
+    item: String,
+    rank_type: u8,
+}
+
+fn pull_signature(p: &Pull) -> Option<PullSignature> {
+    let item = if !p.name.trim().is_empty() {
+        p.name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    } else if !p.item_id.trim().is_empty() {
+        p.item_id.trim().to_lowercase()
+    } else {
+        return None;
+    };
+    Some(PullSignature {
+        time: p.time.trim().to_string(),
+        gacha_type: p.gacha_type.trim().to_string(),
+        item,
+        rank_type: p.rank_type,
+    })
+}
 
 pub struct Db(Mutex<Connection>);
 
 impl Db {
     pub fn open(path: &Path) -> Result<Db, AppError> {
         let conn = Connection::open(path)?;
+        let user_version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA busy_timeout = 5000;
-             PRAGMA user_version = 1;
              CREATE TABLE IF NOT EXISTS accounts (
                 game TEXT NOT NULL, uid TEXT NOT NULL, nickname TEXT NOT NULL DEFAULT '',
                 timezone INTEGER NOT NULL DEFAULT 8, PRIMARY KEY (game, uid));
@@ -24,11 +48,50 @@ impl Db {
                 PRIMARY KEY (game, uid, id));
              CREATE INDEX IF NOT EXISTS idx_pulls_acc ON pulls (game, uid, gacha_type);",
         )?;
-        Ok(Db(Mutex::new(conn)))
+        let db = Db(Mutex::new(conn));
+        if user_version < 2 {
+            db.deduplicate_legacy_paimon_overlaps()?;
+            db.conn().execute_batch("PRAGMA user_version = 2;")?;
+        }
+        Ok(db)
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Remove duplicate rows written by the old Paimon importer and a later HoYoverse refresh.
+    /// The importer marked its IDs with `pmoe-`; keep those richer rows and remove only the
+    /// matching number of non-Paimon rows. Same-source repeated items remain intact.
+    fn deduplicate_legacy_paimon_overlaps(&self) -> Result<usize, AppError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let rows = {
+            let mut query = tx.prepare(
+                "SELECT id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count
+                 FROM pulls WHERE game = 'hk4e' ORDER BY time, id",
+            )?;
+            let mapped = query.query_map([], |r| Ok(Pull {
+                id: r.get(0)?, game: r.get(1)?, uid: r.get(2)?, gacha_type: r.get(3)?, gacha_id: r.get(4)?,
+                item_id: r.get(5)?, name: r.get(6)?, item_type: r.get(7)?, rank_type: r.get(8)?,
+                time: r.get(9)?, lang: r.get(10)?, count: r.get(11)?,
+            }))?;
+            mapped.collect::<Result<Vec<_>, _>>()?
+        };
+        let mut groups = HashMap::<(String, PullSignature), (Vec<String>, Vec<String>)>::new();
+        for pull in rows {
+            let Some(signature) = pull_signature(&pull) else { continue };
+            let group = groups.entry((pull.uid.clone(), signature)).or_default();
+            if pull.id.starts_with("pmoe-") { group.0.push(pull.id); } else { group.1.push(pull.id); }
+        }
+        let mut removed = 0;
+        for ((uid, _), (paimon_ids, other_ids)) in groups {
+            for id in other_ids.iter().take(paimon_ids.len()) {
+                removed += tx.execute("DELETE FROM pulls WHERE game='hk4e' AND uid=?1 AND id=?2", params![uid, id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(removed)
     }
 
     /// Upserts the account and merges pulls by unique id. Existing rows are kept, but blank
@@ -43,6 +106,27 @@ impl Db {
             params![game, uid, tz],
         )?;
         let mut added = 0;
+        let existing = {
+            let mut query = tx.prepare(
+                "SELECT id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count
+                 FROM pulls WHERE game = ?1 AND uid = ?2 ORDER BY time, id",
+            )?;
+            let rows = query.query_map(params![game, uid], |r| Ok(Pull {
+                id: r.get(0)?, game: r.get(1)?, uid: r.get(2)?, gacha_type: r.get(3)?, gacha_id: r.get(4)?,
+                item_id: r.get(5)?, name: r.get(6)?, item_type: r.get(7)?, rank_type: r.get(8)?,
+                time: r.get(9)?, lang: r.get(10)?, count: r.get(11)?,
+            }))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        let mut existing_by_signature = HashMap::<PullSignature, Vec<Pull>>::new();
+        let mut existing_ids = HashSet::new();
+        for pull in existing {
+            existing_ids.insert(pull.id.clone());
+            if let Some(signature) = pull_signature(&pull) {
+                existing_by_signature.entry(signature).or_default().push(pull);
+            }
+        }
+        let mut incoming_occurrences = HashMap::<PullSignature, usize>::new();
         {
             let mut ins = tx.prepare(
                 "INSERT OR IGNORE INTO pulls (id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count)
@@ -59,12 +143,34 @@ impl Db {
                    AND (gacha_id = '' OR item_id = '' OR name = '' OR item_type = '' OR lang = '')",
             )?;
             for p in pulls {
+                let signature = pull_signature(p);
+                let occurrence = signature.as_ref().map(|key| {
+                    let next = incoming_occurrences.entry(key.clone()).or_default();
+                    let current = *next;
+                    *next += 1;
+                    current
+                });
+                // Paimon.moe and HoYoverse assign different record IDs to the same wish.
+                // Pair matching rows by their occurrence within an exact content signature;
+                // this prevents cross-source duplicates without collapsing legitimate repeated
+                // items from the same timestamp (for example, multiple matching 3★ pulls).
+                let content_match = signature.as_ref().and_then(|key| {
+                    existing_by_signature.get(key).and_then(|rows| rows.get(occurrence.unwrap_or(0)))
+                });
+                let existing_id = if existing_ids.contains(&p.id) {
+                    Some(p.id.as_str())
+                } else {
+                    content_match.map(|old| old.id.as_str())
+                };
+                if let Some(id) = existing_id {
+                    fill.execute(params![game, uid, id, p.gacha_id, p.item_id, p.name, p.item_type, p.lang])?;
+                    continue;
+                }
                 let n = ins.execute(params![
                     p.id, game, uid, p.gacha_type, p.gacha_id, p.item_id, p.name, p.item_type, p.rank_type, p.time, p.lang, p.count
                 ])?;
-                if n == 0 {
-                    fill.execute(params![game, uid, p.id, p.gacha_id, p.item_id, p.name, p.item_type, p.lang])?;
-                }
+                if n == 0 { fill.execute(params![game, uid, p.id, p.gacha_id, p.item_id, p.name, p.item_type, p.lang])?; }
+                existing_ids.insert(p.id.clone());
                 added += n;
             }
         }
@@ -92,6 +198,16 @@ impl Db {
         tx.execute("DELETE FROM accounts WHERE game = ?1 AND uid = ?2", params![game, uid])?;
         tx.commit()?;
         Ok(())
+    }
+
+    /// Permanently remove all saved pulls and their associated accounts.
+    pub fn clear_all_history(&self) -> Result<usize, AppError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let deleted = tx.execute("DELETE FROM pulls", [])?;
+        tx.execute("DELETE FROM accounts", [])?;
+        tx.commit()?;
+        Ok(deleted)
     }
 
     /// Oldest → newest.
@@ -141,5 +257,51 @@ mod tests {
         db.delete_account("hk4e", "1").unwrap();
         assert!(db.pulls_for("hk4e", "1").unwrap().is_empty());
         assert_eq!(db.pulls_for("hk4e", "2").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn open_removes_only_cross_source_paimon_overlaps_and_preserves_multiplicity() {
+        let path = std::env::temp_dir().join(format!("wishtory-dedupe-test-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        let mut first = pull("pmoe-1-1", "Jean");
+        let mut second = pull("pmoe-1-2", "Jean");
+        first.rank_type = 5;
+        second.rank_type = 5;
+        db.merge("hk4e", "1", 8, &[first, second]).unwrap();
+        {
+            let conn = db.conn();
+            conn.execute(
+                "INSERT INTO pulls (id,game,uid,gacha_type,item_id,name,item_type,rank_type,time,lang,count)
+                 VALUES ('123456789','hk4e','1','301','','Jean','Character',5,'2024-01-01 00:00:00','en-us',1)",
+                [],
+            ).unwrap();
+            conn.execute_batch("PRAGMA user_version = 1;").unwrap();
+        }
+        drop(db);
+
+        let reopened = Db::open(&path).unwrap();
+        let rows = reopened.pulls_for("hk4e", "1").unwrap();
+        assert_eq!(rows.len(), 2, "keep both source pulls, remove only the overlapping refresh copy");
+        assert!(rows.iter().all(|row| row.id.starts_with("pmoe-")));
+    }
+
+    #[test]
+    fn clear_all_history_removes_pulls_and_accounts_across_games() {
+        let path = std::env::temp_dir().join(format!("wishtory-clear-test-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        for (game, uid) in [("hk4e", "1"), ("hkrpg", "2"), ("nap", "3")] {
+            let mut row = pull(uid, "Jean");
+            row.game = game.into();
+            row.uid = uid.into();
+            db.merge(game, uid, 8, &[row]).unwrap();
+        }
+
+        assert_eq!(db.clear_all_history().unwrap(), 3);
+        assert!(db.list_accounts().unwrap().is_empty());
+        assert!(db.pulls_for("hk4e", "1").unwrap().is_empty());
+        assert!(db.pulls_for("hkrpg", "2").unwrap().is_empty());
+        assert!(db.pulls_for("nap", "3").unwrap().is_empty());
     }
 }

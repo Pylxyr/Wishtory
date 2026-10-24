@@ -15,13 +15,18 @@
 
   onMount(async () => {
     initTheme();
+    app.catalog = await api.getCatalog().catch(() => null);
+    // Best-effort data-only refresh; the bundled catalog remains available offline.
+    void api.refreshCatalog().then(async (status) => {
+      if (status === 'updated') app.catalog = await api.getCatalog();
+    }).catch(() => {});
     app.installs = await api.discoverGames().catch(() => []);
     await reloadAccounts().catch(() => {});
     if (!localStorage.getItem('wishtory.tutorialDone')) app.tutorial = true;
   });
 </script>
 
-<div class="shell">
+<div class="shell" data-game={app.game}>
   <Sidebar />
   <main>
     {#key app.page}

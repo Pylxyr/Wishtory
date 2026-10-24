@@ -6,11 +6,30 @@ export interface Pull {
   id: string; game: string; uid: string; gacha_type: string; gacha_id: string; item_id: string;
   name: string; item_type: string; rank_type: number; time: string; lang: string; count: number;
 }
-export interface FiveStar { name: string; pity: number; time: string; off_banner: boolean | null; }
+
+export interface CatalogItem {
+  game: string;
+  id: string;
+  name: string;
+  aliases: string[];
+  rarity: number;
+  kind: string;
+  traits: Record<string, string>;
+  paimon_key: string | null;
+}
+export interface GameCatalog {
+  schema_version: number;
+  catalog_version: number;
+  generated_at: string;
+  items: CatalogItem[];
+}
+export interface FiveStar { name: string; pity: number; time: string; off_banner: boolean | null; outcome: 'win' | 'loss' | 'guaranteed' | null; }
+export interface FourStar { name: string; pity: number; time: string; }
 export interface BannerPity {
   banner: string; label: string; pity: number; hard_pity: number; soft_pity: number | null;
   guaranteed: boolean | null; total: number; five_stars: number; four_stars: number;
-  avg_five_pity: number | null; recent_fives: FiveStar[];
+  avg_five_pity: number | null; avg_four_pity: number | null;
+  recent_fives: FiveStar[]; recent_fours: FourStar[];
 }
 export interface FetchSummary { game: string; uid: string; fetched: number; added: number; warning: string | null; }
 export interface ImportSummary { format: string; accounts: number; added: number; skipped: number; }
@@ -18,7 +37,7 @@ export interface ImportSummary { format: string; accounts: number; added: number
 export const GAMES: Record<GameId, { name: string; short: string; howTo: string }> = {
   hk4e: { name: 'Genshin Impact', short: 'Genshin', howTo: 'Open the Paimon menu, then Wish, then History, and flick through a banner tab.' },
   hkrpg: { name: 'Honkai: Star Rail', short: 'Star Rail', howTo: 'Open Warp → Records (Warp History) and let the list load.' },
-  nap: { name: 'Zenless Zone Zero', short: 'ZZZ', howTo: 'Open Signal Search → History and let the list load.' }
+  nap: { name: 'Zenless Zone Zero', short: 'Zenless Zone Zero', howTo: 'Open Signal Search → History and let the list load.' }
 };
 
 export const BANNERS: Record<GameId, { key: string; label: string }[]> = {
@@ -38,6 +57,6 @@ export const BANNERS: Record<GameId, { key: string; label: string }[]> = {
 
 export const GACHA_LABELS: Record<GameId, Record<string, string>> = {
   hk4e: { '100': "Beginners'", '200': 'Standard', '301': 'Character', '400': 'Character', '302': 'Weapon', '500': 'Chronicled' },
-  hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone' },
+  hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone', '21': 'Character Event', '22': 'Light Cone Event' },
   nap: { '1': 'Standard', '2': 'Exclusive', '3': 'W-Engine', '5': 'Bangboo' }
 };

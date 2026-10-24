@@ -14,7 +14,7 @@
 <nav class="sidebar" aria-label="Main">
   <div class="brand">Wish<span>tory</span></div>
   {#each items as it}
-    <button class="nav" class:active={app.page === it.id} onclick={() => (app.page = it.id)}>
+    <button class="nav" class:active={app.page === it.id} aria-current={app.page === it.id ? 'page' : undefined} onclick={() => (app.page = it.id)}>
       <Icon name={it.icon} />{it.label}
     </button>
   {/each}

@@ -7,6 +7,7 @@
   import EmptyState from '../lib/components/EmptyState.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import AnimatedNumber from '../lib/components/AnimatedNumber.svelte';
+  import { elementTone } from '../lib/elements';
 
   let pity = $state<BannerPity[]>([]);
   let loading = $state(false);
@@ -14,13 +15,18 @@
 
   const info = $derived(GAMES[app.game]);
   const install = $derived(app.installs.find((i) => i.game === app.game));
+  const wishCurrency = $derived(({ hk4e: 'Primogems', hkrpg: 'Stellar Jade', nap: 'Polychromes' })[app.game]);
   const totalPulls = $derived(pity.reduce((s, b) => s + b.total, 0));
   const totalFives = $derived(pity.reduce((s, b) => s + b.five_stars, 0));
+  const primogemEquivalent = $derived(totalPulls * 160);
+  const recentFives = $derived(pity.flatMap((b) => b.recent_fives.map((pull) => ({ ...pull, banner: b.label })))
+    .sort((a, b) => b.time.localeCompare(a.time)).slice(0, 8));
 
   $effect(() => {
     const game = app.game, uid = app.uid;
     void app.refreshKey;
     if (!uid) { pity = []; return; }
+    pity = [];
     loading = true;
     let stale = false; // ignore an answer that arrives after the selection changed
     api.getPity(game, uid)
@@ -31,8 +37,8 @@
   });
 </script>
 
-<h1>Dashboard</h1>
-<p class="muted">Pity counters and statistics for your selected account.</p>
+<h1>Wish history</h1>
+<p class="muted">A clear view of every pull, your five-star milestones, and current banner progress.</p>
 <GameBar />
 
 <div class="card rise busy-host" class:is-busy={app.busy}>
@@ -65,17 +71,42 @@
     </div>
   </EmptyState>
 {:else}
-  <div class="stats">
-    <div class="card stat rise"><span class="muted">Total pulls</span><b><AnimatedNumber value={totalPulls} /></b></div>
-    <div class="card stat rise" style="animation-delay:60ms"><span class="muted">Five-star items</span><b><AnimatedNumber value={totalFives} /></b></div>
-    <div class="card stat rise" style="animation-delay:120ms"><span class="muted">Account</span><b style="font-size:18px">UID {app.uid}</b></div>
-  </div>
+  <section class="wish-overview rise" aria-label="Wish history overview">
+    <div class="wish-overview-head">
+      <div><span class="eyebrow">PULL SUMMARY</span><h2>Wish totals</h2></div>
+      <span class="account-tag">UID {app.uid}</span>
+    </div>
+    <div class="wish-metrics">
+      <div class="wish-metric"><span>Total pulls</span><strong><AnimatedNumber value={totalPulls} /></strong><small>Across all channels</small></div>
+      <div class="wish-metric"><span>Five-star finds</span><strong class="gold-number"><AnimatedNumber value={totalFives} /></strong><small>Recorded in your history</small></div>
+      <div class="wish-metric"><span>Pull value</span><strong><AnimatedNumber value={primogemEquivalent} /></strong><small>{wishCurrency} equivalent · 160 per pull</small></div>
+    </div>
+    {#if recentFives.length}
+      <div class="five-star-strip">
+        <div class="strip-heading"><span class="eyebrow">RECENT FIVE-STAR PULLS</span><span class="muted">Newest first</span></div>
+        <div class="five-star-list">
+          {#each recentFives as pull, i (`${pull.time}:${pull.name}:${i}`)}
+            {@const itemMeta = app.catalog?.items.find((item) => item.game === app.game && (item.name === pull.name || item.aliases.includes(pull.name)))}
+            <article class="five-star-item element-{itemMeta?.traits.element ?? elementTone(pull.name)}" style="animation-delay:{i * 45}ms">
+              <span class="star-mark" aria-hidden="true">✦</span>
+              <div class="five-star-copy"><strong>{pull.name || 'Five-star item'}</strong><span>{pull.banner}</span></div>
+              {#if pull.outcome === 'loss'}<span class="outcome-badge outcome-loss">Loss</span>
+              {:else if pull.outcome === 'win'}<span class="outcome-badge outcome-win">Win</span>
+              {:else if pull.outcome === 'guaranteed'}<span class="outcome-badge outcome-next">Guaranteed</span>{/if}
+              <div class="five-star-meta"><b>{pull.pity}</b><span>pulls</span></div>
+            </article>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  </section>
   {#if loading && !pity.length}
     <div class="grid" aria-busy="true">{#each [0, 1, 2, 3] as n}<div class="card skeleton" style="animation-delay:{n * 80}ms"></div>{/each}</div>
   {/if}
   <div class="grid">
     {#each pity as p, i (p.banner)}
-      <div class="rise" style="animation-delay:{i * 60}ms"><PityRing {p} /></div>
+      <div class="rise" style="animation-delay:{i * 60}ms"><PityRing {p} game={app.game} catalog={app.catalog} /></div>
     {/each}
   </div>
+  <p class="equivalent-note">The value treats every pull as 160 {wishCurrency.toLowerCase()}; it’s a comparison value, not a record of currency spent.</p>
 {/if}

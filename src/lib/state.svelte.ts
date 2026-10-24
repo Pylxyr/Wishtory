@@ -1,5 +1,5 @@
 import { api, errMsg } from './api';
-import type { Account, FetchSummary, GameId, GameInstall } from './types';
+import type { Account, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
 
 export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help';
 interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
@@ -10,6 +10,7 @@ export const app = $state({
   uid: null as string | null,
   accounts: [] as Account[],
   installs: [] as GameInstall[],
+  catalog: null as GameCatalog | null,
   busy: false,
   refreshKey: 0, // bump to make pages reload their data
   toasts: [] as Toast[],

@@ -12,6 +12,16 @@ const PAGE_SIZE: usize = 20;
 /// Hard stop per banner (100 000 pulls). Protects against a server that never ends the list.
 const MAX_PAGES: u32 = 5_000;
 
+fn next_cursor(page_len: usize, last_id: Option<String>, current: &str) -> Result<Option<String>, AppError> {
+    if page_len < PAGE_SIZE { return Ok(None); }
+    let id = last_id.filter(|id| !id.is_empty())
+        .ok_or_else(|| AppError::Api("The server returned a full history page without a usable cursor.".into()))?;
+    if id == current {
+        return Err(AppError::Api("The server repeated a history page; open history again and retry.".into()));
+    }
+    Ok(Some(id))
+}
+
 pub struct Fetched {
     pub uid: String,
     pub timezone: i32,
@@ -50,6 +60,25 @@ fn api_base(game: Game, cn: bool) -> &'static str {
     }
 }
 
+/// ZZZ uses an internal channel id plus its normalized channel id. The endpoint
+/// returns an empty list when only `real_gacha_type` is supplied.
+fn gacha_params(game: Game, channel: &str) -> Vec<(&'static str, String)> {
+    if game == Game::Nap {
+        let internal = match channel {
+            "1" => "1001", "2" => "2001", "3" => "3001", "5" => "5001",
+            _ => channel,
+        };
+        vec![
+            ("gacha_type", internal.to_string()),
+            ("real_gacha_type", channel.to_string()),
+            ("init_log_gacha_type", internal.to_string()),
+            ("init_log_gacha_base_type", channel.to_string()),
+        ]
+    } else {
+        vec![("gacha_type", channel.to_string())]
+    }
+}
+
 fn is_hoyo_host(h: &str) -> bool {
     ["hoyoverse.com", "mihoyo.com"].iter().any(|d| h == *d || h.ends_with(&format!(".{d}")))
 }
@@ -84,6 +113,7 @@ pub async fn fetch_all(game: Game, history_url: &str) -> Result<Fetched, AppErro
     let common: Vec<(&str, String)> = vec![
         ("authkey_ver", p.get("authkey_ver").cloned().unwrap_or_else(|| "1".into())),
         ("sign_type", p.get("sign_type").cloned().unwrap_or_else(|| "2".into())),
+        ("auth_appid", p.get("auth_appid").cloned().unwrap_or_else(|| "webview_gacha".into())),
         ("lang", p.get("lang").cloned().unwrap_or_else(|| "en".into())),
         ("region", region.clone()),
         ("game_biz", biz),
@@ -145,7 +175,7 @@ async fn fetch_banner(
     let mut tz = None;
     let mut end_id = "0".to_string();
     for page in 1..=MAX_PAGES {
-        let (list, rtz) = request_page(client, base, common, gacha_type, page, &end_id).await?;
+        let (list, rtz) = request_page(client, game, base, common, gacha_type, page, &end_id).await?;
         tz = tz.or(rtz);
         let n = list.len();
         let last_id = list.last().map(|i| i.id.clone());
@@ -158,9 +188,10 @@ async fn fetch_banner(
                 count: it.count.parse().unwrap_or(1),
             });
         }
-        match last_id {
-            Some(id) if n >= PAGE_SIZE && id != end_id => end_id = id,
-            _ => break, // short page = end of list; repeated cursor = server ignored it
+        match next_cursor(n, last_id, &end_id)? {
+            Some(id) if page < MAX_PAGES => end_id = id,
+            Some(_) => return Err(AppError::Api("This banner exceeds the 100,000-pull safety limit and was not fully fetched.".into())),
+            None => break,
         }
         sleep(Duration::from_millis(400)).await; // be polite to the API
     }
@@ -169,6 +200,7 @@ async fn fetch_banner(
 
 async fn request_page(
     client: &reqwest::Client,
+    game: Game,
     base: &str,
     common: &[(&str, String)],
     gacha_type: &str,
@@ -179,7 +211,7 @@ async fn request_page(
     let mut rate_attempts = 0u32;
     loop {
         let mut q = common.to_vec();
-        q.push(("gacha_type", gacha_type.to_string()));
+        q.extend(gacha_params(game, gacha_type));
         q.push(("page", page.to_string()));
         q.push(("size", PAGE_SIZE.to_string()));
         q.push(("end_id", end_id.to_string()));
@@ -241,9 +273,36 @@ mod tests {
     }
 
     #[test]
+    fn zenless_requests_use_the_nap_history_api() {
+        assert_eq!(api_base(Game::Nap, false), "https://public-operation-nap-sg.hoyoverse.com/common/gacha_record/api/getGachaLog");
+        assert_eq!(api_base(Game::Nap, true), "https://public-operation-nap.mihoyo.com/common/gacha_record/api/getGachaLog");
+        assert_eq!(Game::Nap.gacha_types(), &["1", "2", "3", "5"]);
+        assert_eq!(gacha_params(Game::Nap, "5"), vec![
+            ("gacha_type", "5001".into()), ("real_gacha_type", "5".into()),
+            ("init_log_gacha_type", "5001".into()), ("init_log_gacha_base_type", "5".into()),
+        ]);
+        assert_eq!(gacha_params(Game::Nap, "2")[0], ("gacha_type", "2001".into()));
+        assert_eq!(gacha_params(Game::Hk4e, "301"), vec![("gacha_type", "301".into())]);
+        assert_eq!(gacha_params(Game::Hkrpg, "21"), vec![("gacha_type", "21".into())]);
+    }
+
+    #[test]
+    fn star_rail_queries_every_current_uigf_warp_type() {
+        assert_eq!(Game::Hkrpg.gacha_types(), &["1", "2", "11", "12", "21", "22"]);
+    }
+
+    #[test]
     fn auth_errors_are_recognised() {
         assert!(looks_like_auth_error(-101, ""));
         assert!(looks_like_auth_error(-1, "authkey timeout"));
         assert!(!looks_like_auth_error(-110, "visit too frequently"));
+    }
+
+    #[test]
+    fn pagination_rejects_repeated_or_missing_cursors_instead_of_calling_them_complete() {
+        assert_eq!(next_cursor(19, Some("19".into()), "0").unwrap(), None);
+        assert_eq!(next_cursor(20, Some("20".into()), "0").unwrap(), Some("20".into()));
+        assert!(next_cursor(20, Some("20".into()), "20").is_err());
+        assert!(next_cursor(20, None, "0").is_err());
     }
 }

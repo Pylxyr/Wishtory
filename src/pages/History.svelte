@@ -21,6 +21,7 @@
     if (b && !BANNERS[game].some((x) => x.key === b)) { banner = ''; return; }
     limit = 200;
     if (!uid) { pulls = []; return; }
+    pulls = [];
     loading = true;
     let stale = false;
     api.getHistory(game, uid, b || null)
@@ -51,11 +52,12 @@
       <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Banner</th></tr></thead>
       <tbody>
         {#each shown as p, i (p.id)}
+          {@const rank = app.game === 'nap' && p.rank_type >= 2 && p.rank_type <= 4 ? p.rank_type + 1 : p.rank_type}
           <tr class="rise" style="animation-delay:{Math.min(i, 20) * 18}ms">
             <td class="muted">{p.time}</td>
-            <td class={`r${p.rank_type}`}>{p.name}</td>
+            <td class={`r${rank}`}>{p.name}</td>
             <td class="muted">{p.item_type}</td>
-            <td class={`r${p.rank_type}`}>{'★'.repeat(p.rank_type)}</td>
+            <td class={`r${rank}`}>{'★'.repeat(rank)}</td>
             <td class="muted">{GACHA_LABELS[app.game][p.gacha_type] ?? p.gacha_type}</td>
           </tr>
         {:else}

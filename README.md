@@ -41,7 +41,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Checks that CI also runs: `npm run check` and `cargo test --manifest-path src-tauri/Cargo.toml`.
+Checks that CI also runs: `npm run check`, `npm run build`, and `cargo test --locked --manifest-path src-tauri/Cargo.toml`.
 
 ## Releasing
 
@@ -54,11 +54,23 @@ The workflow checks that the three versions agree, runs the tests, builds on `wi
 
 Data is stored in `%APPDATA%\app.wishtory.desktop\wishtory.db`.
 
+## Game metadata updates
+
+Wishtory checks its signed, data-only catalog quietly at startup, at most once per day. Wish records and account identifiers are never sent with this request. A verified catalog is cached locally for offline use; names and rarities already stored in wish history remain usable if an item is missing from the catalog.
+
+The weekly **Review game catalog updates** workflow reads EnkaNetwork's public game metadata and Paimon.moe's item-key catalog, validates all three games, preserves previously known entries, and opens a review PR. A maintainer reviews and merges that PR; the **Publish signed game catalog** workflow then updates the rolling data-only release. Catalog changes do not alter wish or guarantee mechanics.
+
+See [the catalog update guide](docs/game-catalog-updates.md) for source details, secret setup, review cadence, and rollback steps.
+
+To enable publishing, add a repository Actions secret named `CATALOG_SIGNING_KEY` with the PEM contents of the locally generated `catalog/catalog-signing-key.pem`. The matching public key is pinned in `catalog/catalog-public-key.txt`; the private key is ignored by Git. Until the secret is configured and the first catalog PR is merged, the app continues using its bundled catalog and existing offline item mappings.
+
+Run `npm run catalog:test` for source-shape and regression fixtures, `npm run catalog:update` to build a candidate locally, and `npm run catalog:sign` to create a signed envelope when the signing key is available.
+
 ## UIGF support declaration
 
 Wishtory imports and exports the [UIGF](https://uigf.org) interchange standard:
 
-- UIGF v4.x (hk4e, hkrpg, nap), export as v4.2
+- UIGF v4.x (Genshin, Star Rail, ZZZ), export as v4.2 (including Star Rail event pool types 21/22)
 - Import of older UIGF (v2.x / v3.x, hk4e) and SRGF v1.0 (hkrpg)
 - Times are kept as the account's server-local time and normalised to `YYYY-MM-DD HH:MM:SS`; a missing time zone is guessed from the UID region
 - Rows without a rarity cannot be used for pity and are skipped (the import summary reports how many)
@@ -66,7 +78,7 @@ Wishtory imports and exports the [UIGF](https://uigf.org) interchange standard:
 
 ### Paimon.moe
 
-Paimon.moe's own backup file (the JSON from its settings page) is not UIGF: from the public converter source it stores per-banner pulls with an item name, time and gacha code, but no record ids and no rarity. Importing it directly would mean inventing ids, which would create duplicates the next time you refresh from the game. Native Paimon.moe import and export is therefore not supported yet. Convert a Paimon.moe backup to UIGF first (for example with the community "paimon wish uigf converter") and import that. Whether Paimon.moe itself accepts a Wishtory UIGF export has not been verified.
+Wishtory imports and exports Paimon.moe's native Genshin local-data JSON backup. Since those rows do not contain HoYoverse record IDs or rarities, Wishtory derives rarity and item names from its bundled or updated Paimon item catalog and creates stable local IDs for repeat-import deduplication. Unknown catalog items are reported as skipped rather than assigned an assumed rarity. Paimon.moe exports cover one Genshin account at a time; API-synced item IDs are mapped through exact catalog keys or English names. An unmapped or localized name may not be exportable in this format. UIGF remains the recommended format for moving records between trackers.
 
 ## Project layout
 

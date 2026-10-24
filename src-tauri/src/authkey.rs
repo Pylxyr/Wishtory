@@ -56,7 +56,7 @@ fn data_2_candidates(data_dir: &Path) -> Vec<PathBuf> {
         .filter(|p| p.is_file())
         .map(|p| (fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), p))
         .collect();
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().map(|(_, p)| p).collect()
 }
 
@@ -108,11 +108,12 @@ mod tests {
         let a = "https://gs.hoyoverse.com/genshin/event/index.html?authkey_ver=1&authkey=AAA%2B&game_biz=hk4e_global#/log";
         let b = "https://gs.hoyoverse.com/genshin/event/index.html?authkey=BBB&game_biz=hk4e_global";
         let sr = "https://hkrpg.hoyoverse.com/x?authkey=ZZZ&game_biz=hkrpg_global";
+        let nap = "https://zzz.hoyoverse.com/x?authkey=NAP&game_biz=nap_global";
         let no_key = "https://gs.hoyoverse.com/x?game_biz=hk4e_global";
-        let data = blob(&[a, no_key, sr, b, a]);
+        let data = blob(&[a, no_key, sr, nap, b, a]);
         let urls = find_history_urls(Game::Hk4e, &data);
         assert_eq!(urls, vec![a.to_string(), b.to_string()]);
         assert_eq!(find_history_urls(Game::Hkrpg, &data), vec![sr.to_string()]);
-        assert!(find_history_urls(Game::Nap, &data).is_empty());
+        assert_eq!(find_history_urls(Game::Nap, &data), vec![nap.to_string()]);
     }
 }

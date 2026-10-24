@@ -31,6 +31,12 @@ impl Serialize for AppError {
     }
 }
 impl From<rusqlite::Error> for AppError { fn from(e: rusqlite::Error) -> Self { Self::Db(e.to_string()) } }
-impl From<reqwest::Error> for AppError { fn from(e: reqwest::Error) -> Self { Self::Network(e.to_string()) } }
+impl From<reqwest::Error> for AppError {
+    fn from(e: reqwest::Error) -> Self {
+        // reqwest includes the request URL in its display text; for history requests
+        // that URL contains the account's authkey, so never forward it to the UI.
+        Self::Network(e.without_url().to_string())
+    }
+}
 impl From<std::io::Error> for AppError { fn from(e: std::io::Error) -> Self { Self::Io(e.to_string()) } }
 impl From<serde_json::Error> for AppError { fn from(e: serde_json::Error) -> Self { Self::Format(e.to_string()) } }

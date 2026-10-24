@@ -23,7 +23,8 @@ impl Game {
         match self {
             // 301 also returns 400 (second character banner) from the API.
             Game::Hk4e => &["100", "200", "301", "302", "500"],
-            Game::Hkrpg => &["1", "2", "11", "12"],
+            // UIGF v4.1 added the additional event pool types introduced with Star Rail 3.4.
+            Game::Hkrpg => &["1", "2", "11", "12", "21", "22"],
             Game::Nap => &["1", "2", "3", "5"],
         }
     }

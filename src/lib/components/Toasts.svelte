@@ -7,7 +7,7 @@
 
 <div class="toasts" aria-live="polite">
   {#each app.toasts as t (t.id)}
-    <div class="toast {t.kind}" in:fly={{ x: 40, duration: dur(220) }} out:fly={{ x: 40, duration: dur(180) }} animate:flip={{ duration: dur(200) }}>
+    <div class="toast {t.kind}" role={t.kind === 'err' ? 'alert' : 'status'} in:fly={{ x: 40, duration: dur(220) }} out:fly={{ x: 40, duration: dur(180) }} animate:flip={{ duration: dur(200) }}>
       {t.text}
     </div>
   {/each}

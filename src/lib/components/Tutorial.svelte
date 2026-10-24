@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fly, fade } from 'svelte/transition';
+  import { onMount } from 'svelte';
   import { app } from '../state.svelte';
   import { dur } from '../motion';
 
@@ -10,6 +11,34 @@
     { title: 'Import, export, and share', body: 'Use Import / Export to move data in or out via UIGF, the standard used by most trackers. You can replay this tour any time from the Help page.' }
   ];
   let i = $state(0);
+  let dialog: HTMLDivElement;
+  let previousFocus: HTMLElement | null = null;
+
+  onMount(() => {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.querySelector<HTMLButtonElement>('button')?.focus();
+    return () => previousFocus?.focus();
+  });
+
+  function keepFocus(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    if (!controls.length) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   function close() {
     localStorage.setItem('wishtory.tutorialDone', '1');
@@ -17,11 +46,11 @@
   }
 </script>
 
-<div class="overlay" transition:fade={{ duration: dur(150) }} role="dialog" aria-modal="true" aria-label="Welcome tutorial">
+<div class="overlay" transition:fade={{ duration: dur(150) }} role="dialog" aria-modal="true" aria-labelledby="tutorial-title" tabindex="-1" bind:this={dialog} onkeydown={keepFocus}>
   <div class="card modal" in:fly={{ y: 20, duration: dur(250) }}>
     {#key i}
       <div in:fly={{ x: 24, duration: dur(200) }}>
-        <h2>{steps[i].title}</h2>
+        <h2 id="tutorial-title">{steps[i].title}</h2>
         <p class="muted">{steps[i].body}</p>
       </div>
     {/key}
