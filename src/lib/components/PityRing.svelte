@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BannerPity } from '../types';
   import AnimatedNumber from './AnimatedNumber.svelte';
-  import { elementTone } from '../elements';
+  import { elementTone, iconUrl } from '../elements';
 
   let { p, game, catalog }: { p: BannerPity; game: string; catalog: import('../types').GameCatalog | null } = $props();
   const inSoft = $derived(p.soft_pity !== null && p.pity >= p.soft_pity);
@@ -19,10 +19,21 @@
       <h3>{p.label}</h3>
     </div>
     <div class="current-pity" aria-label="{p.pity} pulls toward a five-star, out of {p.hard_pity}">
-      <span class="pity-track"><i style="width:{Math.min(p.pity / p.hard_pity * 100, 100)}%"></i></span>
-      <strong><AnimatedNumber value={p.pity} /></strong><small> / {p.hard_pity} pity</small>
+      <strong><AnimatedNumber value={p.pity} /></strong><small>/ {p.hard_pity}</small>
     </div>
   </header>
+
+  <div class="pity-meter" aria-hidden="true">
+    <span class="pity-track">
+      <i style="width:{Math.min(p.pity / p.hard_pity * 100, 100)}%"></i>
+      {#if p.soft_pity}<b class="soft-tick" style="left:{p.soft_pity / p.hard_pity * 100}%"></b>{/if}
+    </span>
+    <span class="pity-scale">
+      <span>0</span>
+      {#if p.soft_pity}<span class="soft-label" style="left:{p.soft_pity / p.hard_pity * 100}%">soft {p.soft_pity}</span>{/if}
+      <span class="end">{p.hard_pity}</span>
+    </span>
+  </div>
 
   <div class="analysis-table" role="table" aria-label="{p.label} pull breakdown">
     <div class="analysis-row analysis-labels" role="row"><span>Rarity</span><span>Total</span><span>Share</span><span>Avg pity</span></div>
@@ -41,9 +52,9 @@
 
   <div class="analysis-status">
     {#if p.banner === 'character'}
-      {#if p.guaranteed === true}<span class="outcome-badge outcome-neutral">Next 5★ guaranteed</span>
-      {:else if p.guaranteed === false}<span class="outcome-badge outcome-neutral">Next 5★: featured chance</span>
-      {:else}<span class="outcome-badge outcome-neutral">Guarantee status unknown</span>{/if}
+      {#if p.guaranteed === true}<span class="outcome-badge state state-guaranteed">Next 5★ guaranteed</span>
+      {:else if p.guaranteed === false}<span class="outcome-badge state state-fifty">Next 5★: featured chance</span>
+      {:else}<span class="outcome-badge state state-fifty">Guarantee status unknown</span>{/if}
       <span class="status-note">{fivesWon} wins · {fivesLost} losses · {fivesGuaranteed} guaranteed</span>
     {:else}
       <span class="chip">Separate featured-rate rules apply</span>
@@ -57,8 +68,12 @@
       <div class="pull-chip-list">
         {#each p.recent_fives as pull, i (`${pull.time}:${pull.name}:${i}`)}
           {@const itemMeta = catalog?.items.find((item) => item.game === game && (item.name === pull.name || item.aliases.includes(pull.name)))}
+          {@const icon = iconUrl(itemMeta)}
           <span class="pull-chip five-chip element-{itemMeta?.traits.element ?? elementTone(pull.name)}" style="animation-delay:{Math.min(i, 12) * 25}ms">
-            <span class="element-star" aria-hidden="true">✦</span>
+            <span class="item-icon" class:cover={itemMeta?.kind === 'light_cone'}>
+              <span class="glyph" aria-hidden="true">✦</span>
+              {#if icon}<img src={icon} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload={(e) => e.currentTarget.parentElement?.classList.add('loaded')} onerror={(e) => e.currentTarget.remove()} />{/if}
+            </span>
             <strong>{pull.name || 'Five-star item'}</strong>
             {#if pull.outcome === 'loss'}<em class="outcome-badge outcome-loss" title="Off-banner five-star; the following five-star is guaranteed">Loss</em>
             {:else if pull.outcome === 'win'}<em class="outcome-badge outcome-win" title="Featured five-star won the featured chance">Win</em>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
-  import { app, initTheme, reloadAccounts } from './lib/state.svelte';
+  import { app, initLogging, initProgress, reloadAccounts } from './lib/state.svelte';
   import { api } from './lib/api';
   import { dur } from './lib/motion';
   import Sidebar from './lib/components/Sidebar.svelte';
@@ -12,9 +12,12 @@
   import Accounts from './pages/Accounts.svelte';
   import ImportExport from './pages/ImportExport.svelte';
   import Help from './pages/Help.svelte';
+  import Settings from './pages/Settings.svelte';
+  import Logging from './pages/Logging.svelte';
 
   onMount(async () => {
-    initTheme();
+    initProgress();
+    await initLogging();
     app.catalog = await api.getCatalog().catch(() => null);
     // Best-effort data-only refresh; the bundled catalog remains available offline.
     void api.refreshCatalog().then(async (status) => {
@@ -35,6 +38,8 @@
         {:else if app.page === 'history'}<History />
         {:else if app.page === 'accounts'}<Accounts />
         {:else if app.page === 'importexport'}<ImportExport />
+        {:else if app.page === 'settings'}<Settings />
+        {:else if app.page === 'logging' && app.loggingEnabled}<Logging />
         {:else}<Help />{/if}
       </div>
     {/key}

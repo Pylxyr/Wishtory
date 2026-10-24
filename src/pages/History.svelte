@@ -8,12 +8,17 @@
   let pulls = $state<Pull[]>([]);
   let banner = $state('');
   let query = $state('');
+  let rarity = $state(0); // 0 = all; 5 = 5★ / S rank; 4 = 4★ / A rank
   let limit = $state(200);
   let loading = $state(false);
 
-  const shown = $derived(
-    pulls.filter((p) => !query || p.name.toLowerCase().includes(query.toLowerCase())).slice(0, limit)
+  // Zenless Zone Zero reports ranks 2-4 (B/A/S); show them on the same 3-5 scale as the other games.
+  const rankOf = (p: Pull) => (app.game === 'nap' && p.rank_type >= 2 && p.rank_type <= 4 ? p.rank_type + 1 : p.rank_type);
+  const rarityLabel = (r: number) => (app.game === 'nap' ? (r === 5 ? 'S rank' : 'A rank') : `${r}★`);
+  const matched = $derived(
+    pulls.filter((p) => (!rarity || rankOf(p) === rarity) && (!query || p.name.toLowerCase().includes(query.toLowerCase())))
   );
+  const shown = $derived(matched.slice(0, limit));
 
   $effect(() => {
     const game = app.game, uid = app.uid, b = banner;
@@ -44,15 +49,20 @@
       <option value="">All banners</option>
       {#each BANNERS[app.game] as b}<option value={b.key}>{b.label}</option>{/each}
     </select>
+    <select bind:value={rarity} aria-label="Rarity">
+      <option value={0}>All rarities</option>
+      <option value={5}>{rarityLabel(5)}</option>
+      <option value={4}>{rarityLabel(4)}</option>
+    </select>
     <input bind:value={query} placeholder="Search by name..." aria-label="Search" />
-    <span class="muted">{pulls.length} pulls</span>
+    <span class="muted">{matched.length} pulls</span>
   </div>
   <div class="card" style="padding:4px 8px">
     <table>
       <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Banner</th></tr></thead>
       <tbody>
         {#each shown as p, i (p.id)}
-          {@const rank = app.game === 'nap' && p.rank_type >= 2 && p.rank_type <= 4 ? p.rank_type + 1 : p.rank_type}
+          {@const rank = rankOf(p)}
           <tr class="rise" style="animation-delay:{Math.min(i, 20) * 18}ms">
             <td class="muted">{p.time}</td>
             <td class={`r${rank}`}>{p.name}</td>
@@ -66,7 +76,7 @@
       </tbody>
     </table>
   </div>
-  {#if pulls.length > limit}
+  {#if matched.length > limit}
     <p style="text-align:center;margin-top:12px"><button class="btn" onclick={() => (limit += 300)}>Show more</button></p>
   {/if}
 {/if}

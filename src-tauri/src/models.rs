@@ -12,10 +12,18 @@ impl Game {
     pub const ALL: [Game; 3] = [Game::Hk4e, Game::Hkrpg, Game::Nap];
 
     pub fn as_str(&self) -> &'static str {
-        match self { Game::Hk4e => "hk4e", Game::Hkrpg => "hkrpg", Game::Nap => "nap" }
+        match self {
+            Game::Hk4e => "hk4e",
+            Game::Hkrpg => "hkrpg",
+            Game::Nap => "nap",
+        }
     }
     pub fn display(&self) -> &'static str {
-        match self { Game::Hk4e => "Genshin Impact", Game::Hkrpg => "Honkai: Star Rail", Game::Nap => "Zenless Zone Zero" }
+        match self {
+            Game::Hk4e => "Genshin Impact",
+            Game::Hkrpg => "Honkai: Star Rail",
+            Game::Nap => "Zenless Zone Zero",
+        }
     }
     /// Gacha types queried from the API. Add new types here when the game adds banners
     /// (e.g. collaboration banners in Star Rail).

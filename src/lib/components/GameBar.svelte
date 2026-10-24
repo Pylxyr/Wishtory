@@ -7,7 +7,7 @@
 <div class="gamebar">
   <div class="tabs" role="group" aria-label="Game">
     {#each Object.entries(GAMES) as [id, g]}
-      <button aria-pressed={app.game === id} class:active={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
+      <button data-game={id} aria-pressed={app.game === id} class:active={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
     {/each}
   </div>
   {#if mine.length}

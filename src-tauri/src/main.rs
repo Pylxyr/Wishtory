@@ -7,6 +7,8 @@
 // -----------------------------------------------------------------------------
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[macro_use]
+mod logging;
 mod authkey;
 mod catalog;
 mod commands;
@@ -47,6 +49,9 @@ fn main() {
             commands::get_pity,
             commands::import_file,
             commands::export_file,
+            logging::set_logging_enabled,
+            logging::get_logs,
+            logging::clear_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Wishtory");

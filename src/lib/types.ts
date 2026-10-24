@@ -60,3 +60,5 @@ export const GACHA_LABELS: Record<GameId, Record<string, string>> = {
   hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone', '21': 'Character Event', '22': 'Light Cone Event' },
   nap: { '1': 'Standard', '2': 'Exclusive', '3': 'W-Engine', '5': 'Bangboo' }
 };
+
+export interface LogEntry { seq: number; time: string; level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'; source: string; message: string; }

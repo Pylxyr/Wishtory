@@ -10,4 +10,4 @@
   });
 </script>
 
-<span class="tabnum">{Math.round(t.current)}</span>
+<span class="tabnum">{Math.round(t.current).toLocaleString()}</span>

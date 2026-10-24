@@ -1,7 +1,8 @@
+import { listen } from '@tauri-apps/api/event';
 import { api, errMsg } from './api';
 import type { Account, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
 
-export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help';
+export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'logging';
 interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
 
 export const app = $state({
@@ -15,7 +16,9 @@ export const app = $state({
   refreshKey: 0, // bump to make pages reload their data
   toasts: [] as Toast[],
   tutorial: false,
-  theme: 'light' as 'light' | 'dark'
+  theme: 'dark' as 'light' | 'dark',
+  status: '', // latest refresh progress line, shown while busy
+  loggingEnabled: false // off by default; persisted in localStorage next to the theme
 });
 
 let nextToast = 1;
@@ -33,7 +36,31 @@ export function setTheme(t: 'light' | 'dark') {
 }
 export function initTheme() {
   const saved = localStorage.getItem('wishtory.theme') as 'light' | 'dark' | null;
-  setTheme(saved ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  setTheme(saved ?? 'dark'); // dark-first; the sidebar toggle switches to light and is remembered
+}
+
+/** Restores the saved logging switch and tells the backend. Off (the default) leaves the backend silent. */
+export async function initLogging() {
+  if (localStorage.getItem('wishtory.logging') !== '1') return;
+  try {
+    await api.setLoggingEnabled(true);
+    app.loggingEnabled = true;
+  } catch { /* backend unavailable: stay off */ }
+}
+export async function setLogging(on: boolean) {
+  try {
+    await api.setLoggingEnabled(on);
+    app.loggingEnabled = on;
+    if (on) localStorage.setItem('wishtory.logging', '1'); else localStorage.removeItem('wishtory.logging');
+    if (!on && app.page === 'logging') app.page = 'settings';
+  } catch (e) {
+    toast('err', errMsg(e));
+  }
+}
+
+/** Status lines from the backend while a refresh runs ("Downloading banner 2 of 5…"). */
+export function initProgress() {
+  void listen<string>('refresh-progress', (e) => { if (app.busy) app.status = e.payload; }).catch(() => {});
 }
 
 export async function reloadAccounts() {
@@ -49,6 +76,7 @@ export function selectGame(g: GameId) {
 async function run(action: () => Promise<FetchSummary>) {
   if (app.busy) return;
   app.busy = true;
+  app.status = 'Starting…';
   try {
     const r = await action();
     await reloadAccounts();
@@ -60,12 +88,12 @@ async function run(action: () => Promise<FetchSummary>) {
     toast('err', errMsg(e));
   } finally {
     app.busy = false;
+    app.status = '';
   }
 }
 
 /** Read-only: finds the link the game already cached, then fetches. */
 export const refreshFromGame = () => {
-  toast('info', "Reading the game's cache (read-only)...");
   return run(() => api.refreshFromGame(app.game));
 };
 export const fetchFromUrl = (url: string) => run(() => api.fetchHistory(app.game, url));

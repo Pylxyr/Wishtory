@@ -2,7 +2,10 @@
 //! SAFETY: READ-ONLY. We only read the log files the game itself writes under
 //! %USERPROFILE%\AppData\LocalLow and inspect directory metadata. Nothing is written.
 
-use crate::{fsutil, models::{Game, GameInstall}};
+use crate::{
+    fsutil,
+    models::{Game, GameInstall},
+};
 use regex::Regex;
 use std::{fs, path::PathBuf, time::SystemTime};
 
@@ -11,16 +14,32 @@ fn locallow() -> Option<PathBuf> {
 }
 
 fn modified(p: &PathBuf) -> SystemTime {
-    fs::metadata(p).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
+    fs::metadata(p)
+        .and_then(|m| m.modified())
+        .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
 /// Existing log files for a game, newest first (global + CN folder names).
 fn log_candidates(game: Game) -> Vec<PathBuf> {
     let Some(low) = locallow() else { return vec![] };
     let (dirs, files): (&[&str], &[&str]) = match game {
-        Game::Hk4e => (&["miHoYo/Genshin Impact", "miHoYo/原神"], &["Player.log", "output_log.txt", "Player-prev.log", "output_log.txt.last"]),
-        Game::Hkrpg => (&["Cognosphere/Star Rail", "miHoYo/崩坏：星穹铁道"], &["Player.log", "Player-prev.log"]),
-        Game::Nap => (&["miHoYo/ZenlessZoneZero", "miHoYo/绝区零"], &["Player.log", "Player-prev.log"]),
+        Game::Hk4e => (
+            &["miHoYo/Genshin Impact", "miHoYo/原神"],
+            &[
+                "Player.log",
+                "output_log.txt",
+                "Player-prev.log",
+                "output_log.txt.last",
+            ],
+        ),
+        Game::Hkrpg => (
+            &["Cognosphere/Star Rail", "miHoYo/崩坏：星穹铁道"],
+            &["Player.log", "Player-prev.log"],
+        ),
+        Game::Nap => (
+            &["miHoYo/ZenlessZoneZero", "miHoYo/绝区零"],
+            &["Player.log", "Player-prev.log"],
+        ),
     };
     let mut found: Vec<PathBuf> = dirs
         .iter()
@@ -42,22 +61,37 @@ pub fn data_dir_names(game: Game) -> &'static [&'static str] {
 
 /// True when `name` is the name of any known game data folder (case-insensitive).
 pub fn is_game_data_dir_name(name: &str) -> bool {
-    Game::ALL.iter().flat_map(|g| data_dir_names(*g)).any(|n| n.eq_ignore_ascii_case(name))
+    Game::ALL
+        .iter()
+        .flat_map(|g| data_dir_names(*g))
+        .any(|n| n.eq_ignore_ascii_case(name))
 }
 
 /// Last install path mentioned in a Unity log text, if any.
 fn last_data_dir_in(text: &str, re: &Regex) -> Option<PathBuf> {
-    re.captures_iter(text).last().map(|cap| PathBuf::from(cap[1].replace('/', "\\")))
+    re.captures_iter(text)
+        .last()
+        .map(|cap| PathBuf::from(cap[1].replace('/', "\\")))
 }
 
 /// All existing `*_Data` directories mentioned in the game's logs (read-only), newest log
 /// first, without duplicates. Several entries mean several installs (for example global + CN).
 pub fn find_data_dirs(game: Game) -> Vec<PathBuf> {
-    let alternatives = data_dir_names(game).iter().map(|n| regex::escape(n)).collect::<Vec<_>>().join("|");
-    let Ok(re) = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alternatives}))")) else { return vec![] };
+    let alternatives = data_dir_names(game)
+        .iter()
+        .map(|n| regex::escape(n))
+        .collect::<Vec<_>>()
+        .join("|");
+    let Ok(re) = Regex::new(&format!(
+        r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alternatives}))"
+    )) else {
+        return vec![];
+    };
     let mut dirs: Vec<PathBuf> = Vec::new();
     for log in log_candidates(game) {
-        let Ok(bytes) = fsutil::read_shared(&log) else { continue };
+        let Ok(bytes) = fsutil::read_shared(&log) else {
+            continue;
+        };
         let text = String::from_utf8_lossy(&bytes);
         if let Some(dir) = last_data_dir_in(&text, &re) {
             if dir.is_dir() && !dirs.contains(&dir) {
@@ -119,6 +153,9 @@ mod tests {
         let alt = data_dir_names(Game::Hk4e).join("|");
         let re = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alt}))")).unwrap();
         let log = "Loading C:/Old/Genshin Impact Game/GenshinImpact_Data/x\nSubsystems at D:/Games/Genshin Impact Game/GenshinImpact_Data/UnitySubsystems\n";
-        assert_eq!(last_data_dir_in(log, &re).unwrap(), PathBuf::from("D:\\Games\\Genshin Impact Game\\GenshinImpact_Data"));
+        assert_eq!(
+            last_data_dir_in(log, &re).unwrap(),
+            PathBuf::from("D:\\Games\\Genshin Impact Game\\GenshinImpact_Data")
+        );
     }
 }

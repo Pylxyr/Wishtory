@@ -7,7 +7,7 @@
   import EmptyState from '../lib/components/EmptyState.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import AnimatedNumber from '../lib/components/AnimatedNumber.svelte';
-  import { elementTone } from '../lib/elements';
+  import { elementTone, iconUrl } from '../lib/elements';
 
   let pity = $state<BannerPity[]>([]);
   let loading = $state(false);
@@ -52,7 +52,11 @@
     {:else}
       <span class="chip" data-tip="Launch the game once so it creates its log file">{info.name} not detected yet</span>
     {/if}
-    <span class="muted">First open the history page in-game, then click Refresh.</span>
+    {#if app.busy}
+      <span class="status-line" role="status" aria-live="polite"><i class="pulse" aria-hidden="true"></i>{app.status}</span>
+    {:else}
+      <span class="muted">First open the history page in-game, then click Refresh.</span>
+    {/if}
   </div>
   <details>
     <summary>Refresh not working? Paste a history link instead</summary>
@@ -87,8 +91,12 @@
         <div class="five-star-list">
           {#each recentFives as pull, i (`${pull.time}:${pull.name}:${i}`)}
             {@const itemMeta = app.catalog?.items.find((item) => item.game === app.game && (item.name === pull.name || item.aliases.includes(pull.name)))}
+            {@const icon = iconUrl(itemMeta)}
             <article class="five-star-item element-{itemMeta?.traits.element ?? elementTone(pull.name)}" style="animation-delay:{i * 45}ms">
-              <span class="star-mark" aria-hidden="true">✦</span>
+              <span class="item-icon" class:cover={itemMeta?.kind === 'light_cone'}>
+                <span class="glyph" aria-hidden="true">✦</span>
+                {#if icon}<img src={icon} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload={(e) => e.currentTarget.parentElement?.classList.add('loaded')} onerror={(e) => e.currentTarget.remove()} />{/if}
+              </span>
               <div class="five-star-copy"><strong>{pull.name || 'Five-star item'}</strong><span>{pull.banner}</span></div>
               {#if pull.outcome === 'loss'}<span class="outcome-badge outcome-loss">Loss</span>
               {:else if pull.outcome === 'win'}<span class="outcome-badge outcome-win">Win</span>

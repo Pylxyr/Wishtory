@@ -1,8 +1,15 @@
 //! Local multi-account SQLite storage (our own file in the app-data folder).
 
-use crate::{error::AppError, models::{Account, Pull}};
+use crate::{
+    error::AppError,
+    models::{Account, Pull},
+};
 use rusqlite::{params, Connection};
-use std::{collections::{HashMap, HashSet}, path::Path, sync::{Mutex, MutexGuard}};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::{Mutex, MutexGuard},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PullSignature {
@@ -14,7 +21,11 @@ struct PullSignature {
 
 fn pull_signature(p: &Pull) -> Option<PullSignature> {
     let item = if !p.name.trim().is_empty() {
-        p.name.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+        p.name
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
     } else if !p.item_id.trim().is_empty() {
         p.item_id.trim().to_lowercase()
     } else {
@@ -71,23 +82,43 @@ impl Db {
                 "SELECT id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count
                  FROM pulls WHERE game = 'hk4e' ORDER BY time, id",
             )?;
-            let mapped = query.query_map([], |r| Ok(Pull {
-                id: r.get(0)?, game: r.get(1)?, uid: r.get(2)?, gacha_type: r.get(3)?, gacha_id: r.get(4)?,
-                item_id: r.get(5)?, name: r.get(6)?, item_type: r.get(7)?, rank_type: r.get(8)?,
-                time: r.get(9)?, lang: r.get(10)?, count: r.get(11)?,
-            }))?;
+            let mapped = query.query_map([], |r| {
+                Ok(Pull {
+                    id: r.get(0)?,
+                    game: r.get(1)?,
+                    uid: r.get(2)?,
+                    gacha_type: r.get(3)?,
+                    gacha_id: r.get(4)?,
+                    item_id: r.get(5)?,
+                    name: r.get(6)?,
+                    item_type: r.get(7)?,
+                    rank_type: r.get(8)?,
+                    time: r.get(9)?,
+                    lang: r.get(10)?,
+                    count: r.get(11)?,
+                })
+            })?;
             mapped.collect::<Result<Vec<_>, _>>()?
         };
         let mut groups = HashMap::<(String, PullSignature), (Vec<String>, Vec<String>)>::new();
         for pull in rows {
-            let Some(signature) = pull_signature(&pull) else { continue };
+            let Some(signature) = pull_signature(&pull) else {
+                continue;
+            };
             let group = groups.entry((pull.uid.clone(), signature)).or_default();
-            if pull.id.starts_with("pmoe-") { group.0.push(pull.id); } else { group.1.push(pull.id); }
+            if pull.id.starts_with("pmoe-") {
+                group.0.push(pull.id);
+            } else {
+                group.1.push(pull.id);
+            }
         }
         let mut removed = 0;
         for ((uid, _), (paimon_ids, other_ids)) in groups {
             for id in other_ids.iter().take(paimon_ids.len()) {
-                removed += tx.execute("DELETE FROM pulls WHERE game='hk4e' AND uid=?1 AND id=?2", params![uid, id])?;
+                removed += tx.execute(
+                    "DELETE FROM pulls WHERE game='hk4e' AND uid=?1 AND id=?2",
+                    params![uid, id],
+                )?;
             }
         }
         tx.commit()?;
@@ -111,11 +142,22 @@ impl Db {
                 "SELECT id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count
                  FROM pulls WHERE game = ?1 AND uid = ?2 ORDER BY time, id",
             )?;
-            let rows = query.query_map(params![game, uid], |r| Ok(Pull {
-                id: r.get(0)?, game: r.get(1)?, uid: r.get(2)?, gacha_type: r.get(3)?, gacha_id: r.get(4)?,
-                item_id: r.get(5)?, name: r.get(6)?, item_type: r.get(7)?, rank_type: r.get(8)?,
-                time: r.get(9)?, lang: r.get(10)?, count: r.get(11)?,
-            }))?;
+            let rows = query.query_map(params![game, uid], |r| {
+                Ok(Pull {
+                    id: r.get(0)?,
+                    game: r.get(1)?,
+                    uid: r.get(2)?,
+                    gacha_type: r.get(3)?,
+                    gacha_id: r.get(4)?,
+                    item_id: r.get(5)?,
+                    name: r.get(6)?,
+                    item_type: r.get(7)?,
+                    rank_type: r.get(8)?,
+                    time: r.get(9)?,
+                    lang: r.get(10)?,
+                    count: r.get(11)?,
+                })
+            })?;
             rows.collect::<Result<Vec<_>, _>>()?
         };
         let mut existing_by_signature = HashMap::<PullSignature, Vec<Pull>>::new();
@@ -123,7 +165,10 @@ impl Db {
         for pull in existing {
             existing_ids.insert(pull.id.clone());
             if let Some(signature) = pull_signature(&pull) {
-                existing_by_signature.entry(signature).or_default().push(pull);
+                existing_by_signature
+                    .entry(signature)
+                    .or_default()
+                    .push(pull);
             }
         }
         let mut incoming_occurrences = HashMap::<PullSignature, usize>::new();
@@ -155,7 +200,9 @@ impl Db {
                 // this prevents cross-source duplicates without collapsing legitimate repeated
                 // items from the same timestamp (for example, multiple matching 3★ pulls).
                 let content_match = signature.as_ref().and_then(|key| {
-                    existing_by_signature.get(key).and_then(|rows| rows.get(occurrence.unwrap_or(0)))
+                    existing_by_signature
+                        .get(key)
+                        .and_then(|rows| rows.get(occurrence.unwrap_or(0)))
                 });
                 let existing_id = if existing_ids.contains(&p.id) {
                     Some(p.id.as_str())
@@ -163,13 +210,44 @@ impl Db {
                     content_match.map(|old| old.id.as_str())
                 };
                 if let Some(id) = existing_id {
-                    fill.execute(params![game, uid, id, p.gacha_id, p.item_id, p.name, p.item_type, p.lang])?;
+                    fill.execute(params![
+                        game,
+                        uid,
+                        id,
+                        p.gacha_id,
+                        p.item_id,
+                        p.name,
+                        p.item_type,
+                        p.lang
+                    ])?;
                     continue;
                 }
                 let n = ins.execute(params![
-                    p.id, game, uid, p.gacha_type, p.gacha_id, p.item_id, p.name, p.item_type, p.rank_type, p.time, p.lang, p.count
+                    p.id,
+                    game,
+                    uid,
+                    p.gacha_type,
+                    p.gacha_id,
+                    p.item_id,
+                    p.name,
+                    p.item_type,
+                    p.rank_type,
+                    p.time,
+                    p.lang,
+                    p.count
                 ])?;
-                if n == 0 { fill.execute(params![game, uid, p.id, p.gacha_id, p.item_id, p.name, p.item_type, p.lang])?; }
+                if n == 0 {
+                    fill.execute(params![
+                        game,
+                        uid,
+                        p.id,
+                        p.gacha_id,
+                        p.item_id,
+                        p.name,
+                        p.item_type,
+                        p.lang
+                    ])?;
+                }
                 existing_ids.insert(p.id.clone());
                 added += n;
             }
@@ -186,7 +264,13 @@ impl Db {
              FROM accounts a ORDER BY a.game, a.uid",
         )?;
         let rows = st.query_map([], |r| {
-            Ok(Account { game: r.get(0)?, uid: r.get(1)?, nickname: r.get(2)?, timezone: r.get(3)?, pull_count: r.get(4)? })
+            Ok(Account {
+                game: r.get(0)?,
+                uid: r.get(1)?,
+                nickname: r.get(2)?,
+                timezone: r.get(3)?,
+                pull_count: r.get(4)?,
+            })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -194,8 +278,14 @@ impl Db {
     pub fn delete_account(&self, game: &str, uid: &str) -> Result<(), AppError> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM pulls WHERE game = ?1 AND uid = ?2", params![game, uid])?;
-        tx.execute("DELETE FROM accounts WHERE game = ?1 AND uid = ?2", params![game, uid])?;
+        tx.execute(
+            "DELETE FROM pulls WHERE game = ?1 AND uid = ?2",
+            params![game, uid],
+        )?;
+        tx.execute(
+            "DELETE FROM accounts WHERE game = ?1 AND uid = ?2",
+            params![game, uid],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -219,9 +309,18 @@ impl Db {
         )?;
         let rows = st.query_map(params![game, uid], |r| {
             Ok(Pull {
-                id: r.get(0)?, game: r.get(1)?, uid: r.get(2)?, gacha_type: r.get(3)?, gacha_id: r.get(4)?,
-                item_id: r.get(5)?, name: r.get(6)?, item_type: r.get(7)?, rank_type: r.get(8)?,
-                time: r.get(9)?, lang: r.get(10)?, count: r.get(11)?,
+                id: r.get(0)?,
+                game: r.get(1)?,
+                uid: r.get(2)?,
+                gacha_type: r.get(3)?,
+                gacha_id: r.get(4)?,
+                item_id: r.get(5)?,
+                name: r.get(6)?,
+                item_type: r.get(7)?,
+                rank_type: r.get(8)?,
+                time: r.get(9)?,
+                lang: r.get(10)?,
+                count: r.get(11)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
@@ -234,9 +333,18 @@ mod tests {
 
     fn pull(id: &str, name: &str) -> Pull {
         Pull {
-            id: id.into(), game: "hk4e".into(), uid: "1".into(), gacha_type: "301".into(), gacha_id: String::new(),
-            item_id: String::new(), name: name.into(), item_type: String::new(), rank_type: 4,
-            time: "2024-01-01 00:00:00".into(), lang: String::new(), count: 1,
+            id: id.into(),
+            game: "hk4e".into(),
+            uid: "1".into(),
+            gacha_type: "301".into(),
+            gacha_id: String::new(),
+            item_id: String::new(),
+            name: name.into(),
+            item_type: String::new(),
+            rank_type: 4,
+            time: "2024-01-01 00:00:00".into(),
+            lang: String::new(),
+            count: 1,
         }
     }
 
@@ -245,9 +353,17 @@ mod tests {
         let path = std::env::temp_dir().join(format!("wishtory-db-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path).unwrap();
-        assert_eq!(db.merge("hk4e", "1", 8, &[pull("10", ""), pull("11", "Keep")]).unwrap(), 2);
+        assert_eq!(
+            db.merge("hk4e", "1", 8, &[pull("10", ""), pull("11", "Keep")])
+                .unwrap(),
+            2
+        );
         // Same ids again: nothing new, but the blank name of id 10 gets filled and "Keep" stays.
-        assert_eq!(db.merge("hk4e", "1", 8, &[pull("10", "Filled"), pull("11", "Other")]).unwrap(), 0);
+        assert_eq!(
+            db.merge("hk4e", "1", 8, &[pull("10", "Filled"), pull("11", "Other")])
+                .unwrap(),
+            0
+        );
         let rows = db.pulls_for("hk4e", "1").unwrap();
         assert_eq!(rows.iter().find(|p| p.id == "10").unwrap().name, "Filled");
         assert_eq!(rows.iter().find(|p| p.id == "11").unwrap().name, "Keep");
@@ -261,7 +377,8 @@ mod tests {
 
     #[test]
     fn open_removes_only_cross_source_paimon_overlaps_and_preserves_multiplicity() {
-        let path = std::env::temp_dir().join(format!("wishtory-dedupe-test-{}.db", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("wishtory-dedupe-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path).unwrap();
         let mut first = pull("pmoe-1-1", "Jean");
@@ -282,13 +399,18 @@ mod tests {
 
         let reopened = Db::open(&path).unwrap();
         let rows = reopened.pulls_for("hk4e", "1").unwrap();
-        assert_eq!(rows.len(), 2, "keep both source pulls, remove only the overlapping refresh copy");
+        assert_eq!(
+            rows.len(),
+            2,
+            "keep both source pulls, remove only the overlapping refresh copy"
+        );
         assert!(rows.iter().all(|row| row.id.starts_with("pmoe-")));
     }
 
     #[test]
     fn clear_all_history_removes_pulls_and_accounts_across_games() {
-        let path = std::env::temp_dir().join(format!("wishtory-clear-test-{}.db", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("wishtory-clear-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path).unwrap();
         for (game, uid) in [("hk4e", "1"), ("hkrpg", "2"), ("nap", "3")] {

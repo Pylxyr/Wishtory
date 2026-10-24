@@ -131,7 +131,9 @@ pub fn lookup(id: &str) -> Option<(&'static str, u8, &'static str)> {
         "zibai" => Some(("Zibai", 5, "character")),
         "aquila_favonia" => Some(("Aquila Favonia", 5, "weapon")),
         "amos_bow" => Some(("Amos' Bow", 5, "weapon")),
-        "astral_vultures_crimson_plumage" => Some(("Astral Vulture's Crimson Plumage", 5, "weapon")),
+        "astral_vultures_crimson_plumage" => {
+            Some(("Astral Vulture's Crimson Plumage", 5, "weapon"))
+        }
         "cranes_echoing_call" => Some(("Crane's Echoing Call", 5, "weapon")),
         "dragons_bane" => Some(("Dragon's Bane", 4, "weapon")),
         "flower-wreathed_feathers" => Some(("Flower-Wreathed Feathers", 4, "weapon")),
@@ -226,7 +228,9 @@ pub fn lookup(id: &str) -> Option<(&'static str, u8, &'static str)> {
         "emerald_orb" => Some(("Emerald Orb", 3, "weapon")),
         "twin_nephrite" => Some(("Twin Nephrite", 3, "weapon")),
         "fillet_blade" => Some(("Fillet Blade", 3, "weapon")),
-        "thrilling_tales_of_dragon_slayers" => Some(("Thrilling Tales of Dragon Slayers", 3, "weapon")),
+        "thrilling_tales_of_dragon_slayers" => {
+            Some(("Thrilling Tales of Dragon Slayers", 3, "weapon"))
+        }
         "magic_guide" => Some(("Magic Guide", 3, "weapon")),
         "silver_sword" => Some(("Silver Sword", 2, "weapon")),
         "pocket_grimoire" => Some(("Pocket Grimoire", 2, "weapon")),
@@ -294,7 +298,9 @@ pub fn lookup(id: &str) -> Option<(&'static str, u8, &'static str)> {
         "range_gauge" => Some(("Range Gauge", 4, "weapon")),
         "splendor_of_tranquil_waters" => Some(("Splendor of Tranquil Waters", 5, "weapon")),
         "verdict" => Some(("Verdict", 5, "weapon")),
-        "ultimate_overlords_mega_magic_sword" => Some(("\"Ultimate Overlord\'s Mega Magic Sword\"", 4, "weapon")),
+        "ultimate_overlords_mega_magic_sword" => {
+            Some(("\"Ultimate Overlord\'s Mega Magic Sword\"", 4, "weapon"))
+        }
         "dialogues_of_the_desert_sages" => Some(("Dialogues of the Desert Sages", 4, "weapon")),
         "uraku_misugiri" => Some(("Uraku Misugiri", 5, "weapon")),
         "absolution" => Some(("Absolution", 5, "weapon")),
@@ -352,7 +358,7 @@ pub fn lookup(id: &str) -> Option<(&'static str, u8, &'static str)> {
         "hymn_of_the_maelstrom" => Some(("Hymn of the Maelstrom", 5, "weapon")),
         "new_bough" => Some(("New Bough", 4, "weapon")),
         "silver_light" => Some(("Silver Light", 4, "weapon")),
-    _ => None,
+        _ => None,
     }
 }
 
@@ -360,7 +366,9 @@ pub fn lookup(id: &str) -> Option<(&'static str, u8, &'static str)> {
 /// intentionally English-only: localized names must not be guessed into another item.
 pub fn lookup_by_english_name(name: &str) -> Option<(String, &'static str, u8, &'static str)> {
     let key = normalize_name(name);
-    if key.is_empty() { return None; }
+    if key.is_empty() {
+        return None;
+    }
     let slug = key.replace(' ', "_");
     let (canonical, rarity, kind) = lookup(&slug)?;
     (normalize_name(canonical) == key).then_some((slug, canonical, rarity, kind))

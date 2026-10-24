@@ -114,17 +114,14 @@ impl Catalog {
                         "elation",
                     ]
                     .contains(&value.as_str()),
-                    ("nap", "element") => {
-                        ["physical", "ice", "fire", "electric", "ether", "wind", "lumen"]
-                            .contains(&value.as_str())
-                    }
-                    ("nap", "specialty") => {
-                        [
-                            "attack", "stun", "support", "anomaly", "defense", "rupture",
-                            "armorer",
-                        ]
-                        .contains(&value.as_str())
-                    }
+                    ("nap", "element") => [
+                        "physical", "ice", "fire", "electric", "ether", "wind", "lumen",
+                    ]
+                    .contains(&value.as_str()),
+                    ("nap", "specialty") => [
+                        "attack", "stun", "support", "anomaly", "defense", "rupture", "armorer",
+                    ]
+                    .contains(&value.as_str()),
                     _ => false,
                 };
                 if !allowed {

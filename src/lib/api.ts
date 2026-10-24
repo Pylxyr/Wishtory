@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Account, BannerPity, FetchSummary, GameCatalog, GameId, GameInstall, ImportSummary, Pull } from './types';
+import type { Account, BannerPity, FetchSummary, GameCatalog, GameId, GameInstall, ImportSummary, LogEntry, Pull } from './types';
 
 export const errMsg = (e: unknown): string => (typeof e === 'string' ? e : e instanceof Error ? e.message : 'Something went wrong.');
 
@@ -17,5 +17,8 @@ export const api = {
   refreshCatalog: () => invoke<string>('refresh_catalog'),
   importFile: (path: string) => invoke<ImportSummary>('import_file', { path }),
   exportFile: (path: string, format: string, game: GameId | null, uid: string | null) =>
-    invoke<void>('export_file', { path, format, game, uid })
+    invoke<void>('export_file', { path, format, game, uid }),
+  setLoggingEnabled: (enabled: boolean) => invoke<void>('set_logging_enabled', { enabled }),
+  getLogs: () => invoke<LogEntry[]>('get_logs'),
+  clearLogs: () => invoke<void>('clear_logs')
 };

@@ -29,9 +29,7 @@ pub fn read_shared(path: &Path) -> std::io::Result<Vec<u8>> {
     })();
     match direct {
         Ok(b) => Ok(b),
-        Err(first) => {
-            read_from_private_copy(path).map_err(|_| first)
-        }
+        Err(first) => read_from_private_copy(path).map_err(|_| first),
     }
 }
 
@@ -40,8 +38,13 @@ fn read_from_private_copy(path: &Path) -> std::io::Result<Vec<u8>> {
     // truncate a predictable temp-path symlink, which could overwrite an arbitrary file.
     for _ in 0..16 {
         let n = COPY_SEQ.fetch_add(1, Ordering::Relaxed);
-        let tmp = std::env::temp_dir().join(format!("wishtory-copy-{}-{n}.tmp", std::process::id()));
-        let mut output = match fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+        let tmp =
+            std::env::temp_dir().join(format!("wishtory-copy-{}-{n}.tmp", std::process::id()));
+        let mut output = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e),
@@ -56,7 +59,10 @@ fn read_from_private_copy(path: &Path) -> std::io::Result<Vec<u8>> {
         let _ = fs::remove_file(&tmp);
         return copied;
     }
-    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "could not allocate a private temporary file"))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not allocate a private temporary file",
+    ))
 }
 
 #[cfg(test)]
@@ -65,7 +71,11 @@ mod tests {
 
     #[test]
     fn private_copy_reads_data_and_leaves_no_temp_file() {
-        let source = std::env::temp_dir().join(format!("wishtory-source-{}-{}.tmp", std::process::id(), COPY_SEQ.fetch_add(1, Ordering::Relaxed)));
+        let source = std::env::temp_dir().join(format!(
+            "wishtory-source-{}-{}.tmp",
+            std::process::id(),
+            COPY_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::write(&source, b"read-only fallback").unwrap();
         let contents = read_from_private_copy(&source).unwrap();
         assert_eq!(contents, b"read-only fallback");
