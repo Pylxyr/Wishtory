@@ -14,15 +14,20 @@ const URLS = {
 const normalize = (s) => String(s ?? '').normalize('NFKD').replace(/[’']/g, '').replace(/[^a-z\d]+/gi, ' ').trim().toLowerCase();
 const slug = (s) => normalize(s).replace(/\s+/g, '_');
 const mapElement = (value, game) => {
+  const values = Array.isArray(value) ? value : [value];
+  if (!values.some(v => v && String(v).toLowerCase() !== 'none')) return undefined;
   const games = {
     hk4e: { Ice: 'cryo', Fire: 'pyro', Wind: 'anemo', Lightning: 'electro', Electric: 'electro', Electro: 'electro', Water: 'hydro', Rock: 'geo', Grass: 'dendro' },
     hkrpg: { Ice: 'ice', Fire: 'fire', Wind: 'wind', Lightning: 'lightning', Thunder: 'lightning', Physical: 'physical', Imaginary: 'imaginary', Quantum: 'quantum' },
-    nap: { Ice: 'ice', Fire: 'fire', Elec: 'electric', Electric: 'electric', Thunder: 'electric', Ether: 'ether', Physical: 'physical' }
+    nap: { Ice: 'ice', Fire: 'fire', Elec: 'electric', Electric: 'electric', Thunder: 'electric', Ether: 'ether', Physical: 'physical', Physics: 'physical', Wind: 'wind', Lumen: 'lumen' }
   };
-  return games[game]?.[value] ?? String(value ?? '').toLowerCase();
+  const mappings = games[game] ?? {};
+  const mapped = values.filter(v => v && String(v).toLowerCase() !== 'none').map(v => mappings[v] ?? String(v).toLowerCase());
+  const accepted = new Set(Object.values(mappings));
+  return mapped.find(v => accepted.has(v)) ?? mapped[0];
 };
-const mapPath = (value) => ({ Warrior: 'destruction', Rogue: 'hunt', Mage: 'erudition', Shaman: 'harmony', Warlock: 'nihility', Knight: 'preservation', Priest: 'abundance', Memory: 'remembrance' }[value]);
-const mapSpecialty = (value) => ({ Attack: 'attack', Stun: 'stun', Support: 'support', Anomaly: 'anomaly', Defense: 'defense', Rupture: 'rupture' }[value]);
+const mapPath = (value) => ({ Warrior: 'destruction', Rogue: 'hunt', Mage: 'erudition', Shaman: 'harmony', Warlock: 'nihility', Knight: 'preservation', Priest: 'abundance', Memory: 'remembrance', Elation: 'elation' }[value]);
+const mapSpecialty = (value) => ({ Attack: 'attack', Stun: 'stun', Support: 'support', Anomaly: 'anomaly', Defense: 'defense', Rupture: 'rupture', Armorer: 'armorer' }[value]);
 
 export function buildItems(source, oldItems = [], minimumCounts = MINIMUM_ITEMS_PER_GAME) {
   const oldById = new Map(oldItems.map(item => [`${item.game}:${item.id}`, item]));
@@ -42,6 +47,7 @@ export function buildItems(source, oldItems = [], minimumCounts = MINIMUM_ITEMS_
     const baseName = giNames[String(row.NameTextMapHash)];
     if (!baseName) continue;
     const element = mapElement(row.Element, 'hk4e');
+    if (!element) continue;
     const name = baseName === 'Traveler' && element ? `Traveler (${element[0].toUpperCase()}${element.slice(1)})` : baseName;
     const key = baseName === 'Traveler' ? `traveler_${element}` : slug(baseName);
     add({ game: 'hk4e', id, name, rarity, kind: 'character', traits: element ? { element } : {}, paimon_key: charSlugs.has(key) ? key : null });
@@ -74,7 +80,7 @@ export function buildItems(source, oldItems = [], minimumCounts = MINIMUM_ITEMS_
     if (![3, 4].includes(row.Rarity)) continue;
     const name = zzzLocs[row.Name];
     if (!name) continue;
-    const element = mapElement(row.ElementTypes?.[0], 'nap');
+    const element = mapElement(row.ElementTypes, 'nap');
     const specialty = mapSpecialty(row.ProfessionType);
     add({ game: 'nap', id, name, rarity: row.Rarity + 1, kind: 'character', traits: { ...(element ? { element } : {}), ...(specialty ? { specialty } : {}) } });
   }
@@ -92,8 +98,8 @@ export function buildItems(source, oldItems = [], minimumCounts = MINIMUM_ITEMS_
     seen.add(key);
     const allowed = {
       hk4e: { element: ['anemo', 'cryo', 'dendro', 'electro', 'geo', 'hydro', 'pyro'] },
-      hkrpg: { element: ['physical', 'fire', 'ice', 'lightning', 'wind', 'quantum', 'imaginary'], path: ['destruction', 'hunt', 'erudition', 'harmony', 'nihility', 'preservation', 'abundance', 'remembrance'] },
-      nap: { element: ['physical', 'ice', 'fire', 'electric', 'ether'], specialty: ['attack', 'stun', 'support', 'anomaly', 'defense', 'rupture'] }
+      hkrpg: { element: ['physical', 'fire', 'ice', 'lightning', 'wind', 'quantum', 'imaginary'], path: ['destruction', 'hunt', 'erudition', 'harmony', 'nihility', 'preservation', 'abundance', 'remembrance', 'elation'] },
+      nap: { element: ['physical', 'ice', 'fire', 'electric', 'ether', 'wind', 'lumen'], specialty: ['attack', 'stun', 'support', 'anomaly', 'defense', 'rupture', 'armorer'] }
     }[item.game];
     for (const [key, value] of Object.entries(item.traits)) {
       if (!allowed[key]?.includes(value)) throw new Error(`Unsupported ${item.game} trait ${key}=${value}`);

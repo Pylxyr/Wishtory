@@ -34,6 +34,74 @@ test('retains known items when an upstream dataset drops an old record', () => {
   assert.ok(items.some(x => x.id === '9999' && x.name === 'Retired Light Cone'));
 });
 
+test('ignores non-playable Genshin avatar rows with no element sentinel', () => {
+  const withPlaceholder = {
+    ...sources,
+    giAvatars: {
+      ...sources.giAvatars,
+      10009999: { QualityType: 'QUALITY_ORANGE', NameTextMapHash: 1, Element: 'none' }
+    }
+  };
+  const items = buildItems(withPlaceholder, [], fixtureMinimum);
+  assert.deepEqual(items.filter(item => item.game === 'hk4e' && item.kind === 'character').map(item => item.id), ['10000002']);
+});
+
+test('normalizes the new Star Rail Elation path', () => {
+  const withElation = {
+    ...sources,
+    hsrLocs: { en: { ...sources.hsrLocs.en, '789': 'Sparxie' } },
+    hsrAvatars: {
+      ...sources.hsrAvatars,
+      1501: { Rarity: 5, AvatarName: { Hash: '789' }, Element: 'Fire', AvatarBaseType: 'Elation' }
+    }
+  };
+  const sparxie = buildItems(withElation, [], fixtureMinimum).find(item => item.name === 'Sparxie');
+  assert.deepEqual(sparxie.traits, { element: 'fire', path: 'elation' });
+});
+
+test('normalizes the Zenless Physics element spelling', () => {
+  const withPhysics = {
+    ...sources,
+    zzzLocs: { en: { ...sources.zzzLocs.en, Agent_Trigger: 'Trigger' } },
+    zzzAvatars: {
+      ...sources.zzzAvatars,
+      1151: { Rarity: 4, Name: 'Agent_Trigger', ElementTypes: ['Physics'], ProfessionType: 'Attack' }
+    }
+  };
+  const trigger = buildItems(withPhysics, [], fixtureMinimum).find(item => item.name === 'Trigger');
+  assert.equal(trigger.traits.element, 'physical');
+});
+
+test('keeps the standard element for Zenless variant attributes and accepts newer elements', () => {
+  const withNewElements = {
+    ...sources,
+    zzzLocs: { en: { ...sources.zzzLocs.en, Agent_Miyabi: 'Miyabi', Agent_Velina: 'Velina', Agent_Remielle: 'Remielle' } },
+    zzzAvatars: {
+      ...sources.zzzAvatars,
+      1091: { Rarity: 4, Name: 'Agent_Miyabi', ElementTypes: ['FireFrost', 'Ice'], ProfessionType: 'Anomaly' },
+      1201: { Rarity: 4, Name: 'Agent_Velina', ElementTypes: ['Wind'], ProfessionType: 'Anomaly' },
+      1581: { Rarity: 4, Name: 'Agent_Remielle', ElementTypes: ['Lumen'], ProfessionType: 'Anomaly' }
+    }
+  };
+  const items = buildItems(withNewElements, [], fixtureMinimum);
+  assert.equal(items.find(item => item.name === 'Miyabi').traits.element, 'ice');
+  assert.equal(items.find(item => item.name === 'Velina').traits.element, 'wind');
+  assert.equal(items.find(item => item.name === 'Remielle').traits.element, 'lumen');
+});
+
+test('normalizes the new Zenless Armorer specialty', () => {
+  const withArmorer = {
+    ...sources,
+    zzzLocs: { en: { ...sources.zzzLocs.en, Agent_Claret: 'Claret' } },
+    zzzAvatars: {
+      ...sources.zzzAvatars,
+      1611: { Rarity: 4, Name: 'Agent_Claret', ElementTypes: ['Elec'], ProfessionType: 'Armorer' }
+    }
+  };
+  const claret = buildItems(withArmorer, [], fixtureMinimum).find(item => item.name === 'Claret');
+  assert.equal(claret.traits.specialty, 'armorer');
+});
+
 test('rejects incomplete or malformed upstream data instead of publishing it', () => {
   assert.throws(() => buildItems({ ...sources, zzzAvatars: {}, zzzWeapons: {} }, [], fixtureMinimum), /incomplete for nap/);
   const bad = { ...sources, hsrAvatars: { ...sources.hsrAvatars, 1001: { ...sources.hsrAvatars['1001'], AvatarBaseType: 'UnknownPath' } } };

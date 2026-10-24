@@ -111,14 +111,19 @@ impl Catalog {
                         "preservation",
                         "abundance",
                         "remembrance",
+                        "elation",
                     ]
                     .contains(&value.as_str()),
                     ("nap", "element") => {
-                        ["physical", "ice", "fire", "electric", "ether"].contains(&value.as_str())
+                        ["physical", "ice", "fire", "electric", "ether", "wind", "lumen"]
+                            .contains(&value.as_str())
                     }
                     ("nap", "specialty") => {
-                        ["attack", "stun", "support", "anomaly", "defense", "rupture"]
-                            .contains(&value.as_str())
+                        [
+                            "attack", "stun", "support", "anomaly", "defense", "rupture",
+                            "armorer",
+                        ]
+                        .contains(&value.as_str())
                     }
                     _ => false,
                 };
@@ -382,6 +387,23 @@ mod tests {
     }
 
     #[test]
+    fn validates_star_rail_elation_path() {
+        let with_elation = String::from_utf8(SAMPLE.to_vec())
+            .unwrap()
+            .replace("\"path\":\"preservation\"", "\"path\":\"elation\"");
+        assert!(Catalog::parse_and_validate(with_elation.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn validates_new_zenless_attributes_and_specialty() {
+        let updated = String::from_utf8(SAMPLE.to_vec())
+            .unwrap()
+            .replace("\"element\":\"electric\"", "\"element\":\"lumen\"")
+            .replace("\"specialty\":\"stun\"", "\"specialty\":\"armorer\"");
+        assert!(Catalog::parse_and_validate(updated.as_bytes()).is_ok());
+    }
+
+    #[test]
     fn rejects_duplicate_game_item_ids() {
         let duplicate = String::from_utf8(SAMPLE.to_vec()).unwrap().replace(
             "{\"game\":\"nap\",\"id\":\"1011\"",
@@ -531,6 +553,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&app_data);
         std::fs::create_dir_all(&app_data).unwrap();
         let store = test_store(&app_data);
+        // Model an older app bundle so the version-2 fixture is a genuinely new feed.
+        store.catalog.write().unwrap().catalog_version = 1;
         let envelope = include_bytes!("../../catalog/catalog-test-envelope.json");
         assert_eq!(store.install_envelope(envelope).unwrap(), "updated");
         assert_eq!(store.current().catalog_version, 2);
