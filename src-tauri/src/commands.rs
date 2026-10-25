@@ -2,7 +2,7 @@
 
 use crate::{
     authkey,
-    catalog::{Catalog, CatalogStore},
+    catalog::{BannerSet, BannerStore, BannerUpdate, Catalog, CatalogStore},
     db::Db,
     discover,
     error::AppError,
@@ -203,6 +203,33 @@ pub async fn refresh_catalog(catalog: State<'_, CatalogStore>) -> Result<String,
     match &result {
         Ok(status) => wlog!(Level::Debug, "catalog refresh: {status}"),
         Err(e) => wlog!(Level::Warn, "catalog refresh failed: {e}"),
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn get_banners(banners: State<'_, BannerStore>) -> Result<BannerSet, String> {
+    Ok(banners.current())
+}
+
+/// The last installed banner update, so the app can show what changed after a restart.
+#[tauri::command]
+pub async fn get_banner_update(
+    banners: State<'_, BannerStore>,
+) -> Result<Option<BannerUpdate>, String> {
+    Ok(banners.last_update())
+}
+
+/// `force` skips the once-a-day gate (the "Update banners" button).
+#[tauri::command]
+pub async fn refresh_banners(
+    banners: State<'_, BannerStore>,
+    force: bool,
+) -> Result<BannerUpdate, String> {
+    let result = banners.refresh(force).await;
+    match &result {
+        Ok(update) => wlog!(Level::Debug, "banner refresh: {}", update.status),
+        Err(e) => wlog!(Level::Warn, "banner refresh failed: {e}"),
     }
     result
 }

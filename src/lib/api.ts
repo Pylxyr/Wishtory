@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Account, BannerPity, FetchSummary, GameCatalog, GameId, GameInstall, ImportSummary, LogEntry, Pull } from './types';
+import type { Account, BannerPity, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall, ImportSummary, LogEntry, Pull } from './types';
 
 export const errMsg = (e: unknown): string => (typeof e === 'string' ? e : e instanceof Error ? e.message : 'Something went wrong.');
 
@@ -15,6 +15,9 @@ export const api = {
   getPity: (game: GameId, uid: string) => invoke<BannerPity[]>('get_pity', { game, uid }),
   getCatalog: () => invoke<GameCatalog>('get_catalog'),
   refreshCatalog: () => invoke<string>('refresh_catalog'),
+  getBanners: () => invoke<BannerSet>('get_banners'),
+  getBannerUpdate: () => invoke<BannerUpdate | null>('get_banner_update'),
+  refreshBanners: (force: boolean) => invoke<BannerUpdate>('refresh_banners', { force }),
   importFile: (path: string) => invoke<ImportSummary>('import_file', { path }),
   exportFile: (path: string, format: string, game: GameId | null, uid: string | null) =>
     invoke<void>('export_file', { path, format, game, uid }),

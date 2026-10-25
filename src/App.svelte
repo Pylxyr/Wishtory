@@ -50,6 +50,8 @@
     void api.refreshCatalog().then(async (status) => {
       if (status === 'updated') app.catalog = await api.getCatalog();
     }).catch(() => {});
+    // Same daily, best-effort refresh for the signed banner list.
+    void api.refreshBanners(false).catch(() => {});
     app.installs = await api.discoverGames().catch(() => []);
     await reloadAccounts().catch(() => {});
     if (!localStorage.getItem('wishtory.tutorialDone')) app.tutorial = true;

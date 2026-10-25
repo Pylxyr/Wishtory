@@ -3,7 +3,7 @@ name: Publish signed game catalog
 on:
   push:
     branches: [main]
-    paths: [catalog/catalog.json]
+    paths: [catalog/catalog.json, catalog/banners.json]
   workflow_dispatch:
 
 permissions:
@@ -23,13 +23,15 @@ jobs:
       - name: Sign catalog envelope
         env:
           CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
-        run: node scripts/sign-catalog.mjs catalog/catalog.json catalog/catalog.envelope.json
+        run: |
+          node scripts/sign-catalog.mjs catalog/catalog.json catalog/catalog.envelope.json
+          node scripts/sign-catalog.mjs catalog/banners.json catalog/banners.envelope.json
       - name: Publish rolling catalog release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view catalog-v1 >/dev/null 2>&1; then
-            gh release upload catalog-v1 catalog/catalog.envelope.json --clobber
+            gh release upload catalog-v1 catalog/catalog.envelope.json catalog/banners.envelope.json --clobber
           else
-            gh release create catalog-v1 catalog/catalog.envelope.json --title "Wishtory game catalog" --notes "Signed metadata catalog for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero. This release contains data only."
+            gh release create catalog-v1 catalog/catalog.envelope.json catalog/banners.envelope.json --title "Wishtory game catalog" --notes "Signed metadata catalog and banner list for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero. This release contains data only."
           fi

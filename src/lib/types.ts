@@ -23,6 +23,15 @@ export interface GameCatalog {
   generated_at: string;
   items: CatalogItem[];
 }
+export interface BannerEntry {
+  id: string; game: GameId; pool: string; name: string; gacha_ids: string[];
+  start: string; end: string; featured_5: string[]; featured_4: string[];
+}
+export interface BannerSet { schema_version: number; banners_version: number; generated_at: string; banners: BannerEntry[]; }
+export interface BannerUpdate {
+  status: 'updated' | 'up-to-date' | 'already-checking'; banners_version: number; installed_at: number;
+  added: string[]; changed: string[]; removed: string[];
+}
 export interface FiveStar { name: string; pity: number; time: string; off_banner: boolean | null; outcome: 'win' | 'loss' | 'guaranteed' | null; }
 export interface FourStar { name: string; pity: number; time: string; }
 export interface BannerPity {

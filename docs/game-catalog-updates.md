@@ -12,7 +12,16 @@ These projects and their data remain theirs; Wishtory is an independent, non-aff
 
 The **Review game catalog updates** workflow runs each Monday and can also be run manually from GitHub Actions after a game patch. It builds a candidate, checks required metadata and minimum per-game counts, retains known rows omitted by an upstream refresh, and creates or updates a PR. Review the diff before merging. The action never edits wish records or pity rules.
 
-After merge, **Publish signed game catalog** signs the catalog using the repository secret and updates the `catalog-v1` release asset. The app checks once per day when online and keeps its last valid cache when the feed is unavailable or invalid.
+After merge, **Publish signed game catalog** signs the catalog and the banner list using the repository secret and updates the `catalog-v1` release assets. The app checks once per day when online and keeps its last valid cache when the feed is unavailable or invalid.
+
+## Banner list
+
+`catalog/banners.json` lists banner events: which 5★ items each one featured and when it ran. It is signed with the same key and published as the `banners.json` asset of the `catalog-v1` release. The app checks it once per day and when you press **Update banners**, and keeps the last valid copy when the feed is unavailable or invalid.
+
+- `start` and `end` are inclusive **server-local** clock times (`YYYY-MM-DD HH:MM:SS`), the same clock as the `time` of each wish record, so they are compared with it directly. Genshin Impact banners change at 18:00 server time: a phase starts at `18:00:00` and the previous one ends at `17:59:59`.
+- `pool` is the banner key used by the pity rules: `character` or `weapon` for every game, plus `collab` and `collab_weapon` for Honkai: Star Rail.
+- `featured_5` holds the game item IDs of every 5★ featured in that event. A Genshin character event with two concurrent banners lists both characters. `gacha_ids` holds the `gacha_id` values the game reports for the banner (Honkai: Star Rail and Zenless Zone Zero) and may be empty.
+- Add new events in a PR and raise `banners_version` above the published value. Clients ignore lower or equal versions, so a correction is published as a newer version. Every `featured_5` ID must exist in `catalog/catalog.json` with rarity 5; a test checks this.
 
 ## One-time setup
 

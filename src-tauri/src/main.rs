@@ -33,6 +33,7 @@ fn main() {
             app.manage(db::Db::open(&dir.join("wishtory.db"))?);
             let catalog = catalog::CatalogStore::open(&dir);
             app.manage(catalog);
+            app.manage(catalog::BannerStore::open(&dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -45,6 +46,9 @@ fn main() {
             commands::clear_all_history,
             commands::get_catalog,
             commands::refresh_catalog,
+            commands::get_banners,
+            commands::get_banner_update,
+            commands::refresh_banners,
             commands::get_history,
             commands::get_pity,
             commands::import_file,

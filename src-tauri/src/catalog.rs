@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use ring::signature::{UnparsedPublicKey, ED25519};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -371,6 +371,330 @@ fn write_versioned(dir: &Path, version: u64, bytes: &[u8]) -> Result<(), String>
     Ok(())
 }
 
+const MAX_BANNER_BYTES: usize = 2 * 1024 * 1024;
+const MAX_BANNER_ENVELOPE_BYTES: usize = MAX_BANNER_BYTES * 4 / 3 + 2048;
+const MAX_BANNERS: usize = 5_000;
+const BANNERS_URL: &str =
+    "https://github.com/Pylxyr/Wishtory/releases/download/catalog-v1/banners.json";
+
+/// One banner event window. `start` and `end` are inclusive server-local clock times
+/// (`YYYY-MM-DD HH:MM:SS`), the same clock the game uses for the `time` of each wish record, so
+/// they can be compared with a pull's time directly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BannerEntry {
+    pub id: String,
+    pub game: String,
+    /// Banner key, matching `pity::banner_key` ("character", "weapon", "collab", ...).
+    pub pool: String,
+    pub name: String,
+    /// `gacha_id` values the game reports for this banner (Star Rail and Zenless only).
+    #[serde(default)]
+    pub gacha_ids: Vec<String>,
+    pub start: String,
+    pub end: String,
+    #[serde(default)]
+    pub featured_5: Vec<String>,
+    #[serde(default)]
+    pub featured_4: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BannerSet {
+    pub schema_version: u32,
+    pub banners_version: u64,
+    pub generated_at: String,
+    pub banners: Vec<BannerEntry>,
+}
+
+/// What a banner refresh changed, by banner id. Saved so the app can show it after a restart.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct BannerUpdate {
+    /// "updated", "up-to-date" or "already-checking".
+    pub status: String,
+    pub banners_version: u64,
+    /// Unix seconds when this update was installed (0 when nothing was installed).
+    pub installed_at: u64,
+    pub added: Vec<String>,
+    pub changed: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+fn is_clock(value: &str) -> bool {
+    let b = value.as_bytes();
+    if b.len() != 19 {
+        return false;
+    }
+    let shape = b.iter().enumerate().all(|(i, c)| match i {
+        4 | 7 => *c == b'-',
+        10 => *c == b' ',
+        13 | 16 => *c == b':',
+        _ => c.is_ascii_digit(),
+    });
+    let part = |range: std::ops::Range<usize>| value[range].parse::<u32>().ok();
+    shape
+        && part(5..7).is_some_and(|m| (1..=12).contains(&m))
+        && part(8..10).is_some_and(|d| (1..=31).contains(&d))
+        && part(11..13).is_some_and(|h| h < 24)
+        && part(14..16).is_some_and(|m| m < 60)
+        && part(17..19).is_some_and(|s| s < 60)
+}
+
+impl BannerSet {
+    pub fn bundled() -> Self {
+        Self::parse_and_validate(include_bytes!("../../catalog/banners.json"))
+            .expect("bundled banner list must validate")
+    }
+
+    pub fn parse_and_validate(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.is_empty() || bytes.len() > MAX_BANNER_BYTES {
+            return Err("banner list size is empty or exceeds 2 MiB".into());
+        }
+        let set: Self =
+            serde_json::from_slice(bytes).map_err(|e| format!("invalid banner list JSON: {e}"))?;
+        if set.schema_version != 1 {
+            return Err("unsupported banner list schema".into());
+        }
+        if set.banners_version == 0 || set.generated_at.trim().is_empty() {
+            return Err("banner list version and generation time are required".into());
+        }
+        if set.banners.is_empty() || set.banners.len() > MAX_BANNERS {
+            return Err("banner list has an invalid banner count".into());
+        }
+        let mut ids = HashSet::with_capacity(set.banners.len());
+        for banner in &set.banners {
+            let pool_ok = match banner.game.as_str() {
+                "hk4e" | "nap" => ["character", "weapon"].contains(&banner.pool.as_str()),
+                "hkrpg" => ["character", "weapon", "collab", "collab_weapon"]
+                    .contains(&banner.pool.as_str()),
+                _ => false,
+            };
+            if !pool_ok
+                || banner.id.trim().is_empty()
+                || banner.id.len() > 80
+                || banner.name.trim().is_empty()
+                || banner.name.len() > 160
+                || !is_clock(&banner.start)
+                || !is_clock(&banner.end)
+                || banner.start > banner.end
+                || banner.featured_5.is_empty()
+                || banner.featured_5.len() > 8
+                || banner.featured_4.len() > 16
+                || banner.gacha_ids.len() > 8
+                || !ids.insert(banner.id.as_str())
+            {
+                return Err("banner list contains an invalid or duplicate banner".into());
+            }
+            if banner
+                .featured_5
+                .iter()
+                .chain(&banner.featured_4)
+                .chain(&banner.gacha_ids)
+                .any(|value| value.trim().is_empty() || value.len() > 80)
+            {
+                return Err("banner list contains an invalid item or pool id".into());
+            }
+        }
+        Ok(set)
+    }
+
+    pub fn verify_envelope(envelope: &[u8]) -> Result<Self, String> {
+        let public_key = BASE64
+            .decode(PINNED_PUBLIC_KEY.trim())
+            .map_err(|_| "invalid pinned catalog key".to_string())?;
+        Self::verify_envelope_with_key(envelope, &public_key)
+    }
+
+    fn verify_envelope_with_key(envelope: &[u8], public_key: &[u8]) -> Result<Self, String> {
+        if envelope.is_empty() || envelope.len() > MAX_BANNER_ENVELOPE_BYTES {
+            return Err("banner envelope is empty or exceeds the size limit".into());
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct SignedEnvelope {
+            payload: String,
+            signature: String,
+        }
+        let envelope: SignedEnvelope = serde_json::from_slice(envelope)
+            .map_err(|e| format!("invalid banner envelope: {e}"))?;
+        let payload = BASE64
+            .decode(envelope.payload)
+            .map_err(|_| "invalid banner payload encoding".to_string())?;
+        let signature = BASE64
+            .decode(envelope.signature.trim())
+            .map_err(|_| "invalid banner signature encoding".to_string())?;
+        if !verify_signature_with_key(&payload, &signature, public_key) {
+            return Err("banner signature verification failed".into());
+        }
+        Self::parse_and_validate(&payload)
+    }
+
+    /// Banner ids that were added, changed (any field differs) or removed going from `self`
+    /// to `newer`.
+    fn diff(&self, newer: &BannerSet) -> (Vec<String>, Vec<String>, Vec<String>) {
+        let old: HashMap<&str, &BannerEntry> =
+            self.banners.iter().map(|b| (b.id.as_str(), b)).collect();
+        let new: HashMap<&str, &BannerEntry> =
+            newer.banners.iter().map(|b| (b.id.as_str(), b)).collect();
+        let mut added = Vec::new();
+        let mut changed = Vec::new();
+        for banner in &newer.banners {
+            match old.get(banner.id.as_str()) {
+                None => added.push(banner.id.clone()),
+                Some(previous) if *previous != banner => changed.push(banner.id.clone()),
+                Some(_) => {}
+            }
+        }
+        let removed = self
+            .banners
+            .iter()
+            .filter(|b| !new.contains_key(b.id.as_str()))
+            .map(|b| b.id.clone())
+            .collect();
+        (added, changed, removed)
+    }
+}
+
+pub struct BannerStore {
+    set: RwLock<BannerSet>,
+    cache_dir: PathBuf,
+    check_file: PathBuf,
+    update_file: PathBuf,
+    checking: AtomicBool,
+}
+
+impl BannerStore {
+    pub fn open(app_data: &Path) -> Self {
+        let cache_dir = app_data.join("banners-cache");
+        let cached = std::fs::read_dir(&cache_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .filter_map(|entry| {
+                let path = entry.path();
+                let metadata = std::fs::metadata(&path).ok()?;
+                if !metadata.is_file() || metadata.len() > MAX_BANNER_ENVELOPE_BYTES as u64 {
+                    return None;
+                }
+                std::fs::read(path).ok()
+            })
+            .filter_map(|bytes| BannerSet::verify_envelope(&bytes).ok())
+            .max_by_key(|set| set.banners_version);
+        let embedded = BannerSet::bundled();
+        let current = cached
+            .filter(|set| set.banners_version >= embedded.banners_version)
+            .unwrap_or(embedded);
+        Self {
+            set: RwLock::new(current),
+            cache_dir,
+            check_file: app_data.join("banners-last-check"),
+            update_file: app_data.join("banners-last-update.json"),
+            checking: AtomicBool::new(false),
+        }
+    }
+
+    pub fn current(&self) -> BannerSet {
+        self.set.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// The most recent installed update, if any (kept across restarts).
+    pub fn last_update(&self) -> Option<BannerUpdate> {
+        serde_json::from_slice(&std::fs::read(&self.update_file).ok()?).ok()
+    }
+
+    /// Downloads the signed banner list. `force` skips the once-a-day gate (the update button).
+    pub async fn refresh(&self, force: bool) -> Result<BannerUpdate, String> {
+        let status_only = |status: &str, store: &Self| BannerUpdate {
+            status: status.into(),
+            banners_version: store.current().banners_version,
+            ..BannerUpdate::default()
+        };
+        if self.checking.swap(true, Ordering::AcqRel) {
+            return Ok(status_only("already-checking", self));
+        }
+        let _checking = ResetBool(&self.checking);
+        if !force && !self.check_due() {
+            return Ok(status_only("up-to-date", self));
+        }
+        // Count a failed download as a check too, so an offline start is not retried on every launch.
+        let _ = std::fs::write(&self.check_file, unix_now().to_string());
+        let envelope = download_limited(BANNERS_URL, MAX_BANNER_ENVELOPE_BYTES).await?;
+        self.install_envelope(&envelope)
+    }
+
+    fn install_envelope(&self, envelope_bytes: &[u8]) -> Result<BannerUpdate, String> {
+        let incoming = BannerSet::verify_envelope(envelope_bytes)?;
+        self.install_verified(incoming, envelope_bytes)
+    }
+
+    fn install_verified(
+        &self,
+        incoming: BannerSet,
+        envelope_bytes: &[u8],
+    ) -> Result<BannerUpdate, String> {
+        let current = self.current();
+        let _ = std::fs::write(&self.check_file, unix_now().to_string());
+        if incoming.banners_version <= current.banners_version {
+            return Ok(BannerUpdate {
+                status: "up-to-date".into(),
+                banners_version: current.banners_version,
+                ..BannerUpdate::default()
+            });
+        }
+        write_versioned(&self.cache_dir, incoming.banners_version, envelope_bytes)?;
+        let (added, changed, removed) = current.diff(&incoming);
+        let update = BannerUpdate {
+            status: "updated".into(),
+            banners_version: incoming.banners_version,
+            installed_at: unix_now(),
+            added,
+            changed,
+            removed,
+        };
+        *self.set.write().unwrap_or_else(|e| e.into_inner()) = incoming;
+        if let Ok(json) = serde_json::to_vec(&update) {
+            let _ = std::fs::write(&self.update_file, json);
+        }
+        Ok(update)
+    }
+
+    fn check_due(&self) -> bool {
+        let last = std::fs::read_to_string(&self.check_file)
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+        last.is_none_or(|v| unix_now().saturating_sub(v) >= UPDATE_INTERVAL.as_secs())
+    }
+}
+
+async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("download returned {}", response.status()));
+    }
+    if response
+        .content_length()
+        .is_some_and(|len| len > max_bytes as u64)
+    {
+        return Err("download exceeds the size limit".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > max_bytes {
+            return Err("download exceeds the size limit".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -558,6 +882,124 @@ mod tests {
         assert_eq!(store.install_envelope(envelope).unwrap(), "updated");
         assert_eq!(store.current().catalog_version, 2);
         assert!(store.cache_dir.join("2.json").is_file());
+        let _ = std::fs::remove_dir_all(app_data);
+    }
+
+    const BANNER_SAMPLE: &[u8] = br#"{"schema_version":1,"banners_version":1,"generated_at":"2026-10-25T00:00:00Z","banners":[{"id":"hk4e-character-a","game":"hk4e","pool":"character","name":"Event A","start":"2026-01-01 18:00:00","end":"2026-01-21 17:59:59","featured_5":["10000002"]},{"id":"nap-character-b","game":"nap","pool":"character","name":"Channel B","gacha_ids":["2001"],"start":"2026-01-01 12:00:00","end":"2026-01-21 11:59:59","featured_5":["1011"],"featured_4":["1021"]}]}"#;
+
+    #[test]
+    fn bundled_banner_list_only_features_catalog_five_stars() {
+        let banners = BannerSet::bundled();
+        let catalog = Catalog::bundled();
+        assert!(!banners.banners.is_empty());
+        for banner in &banners.banners {
+            for id in &banner.featured_5 {
+                assert!(
+                    catalog
+                        .items
+                        .iter()
+                        .any(|i| i.game == banner.game && &i.id == id && i.rarity == 5),
+                    "{} features unknown 5-star {id}",
+                    banner.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn validates_banner_list_and_rejects_bad_entries() {
+        let set = BannerSet::parse_and_validate(BANNER_SAMPLE).unwrap();
+        assert_eq!(set.banners.len(), 2);
+        assert_eq!(set.banners[1].gacha_ids, vec!["2001".to_string()]);
+        for (from, to) in [
+            ("\"schema_version\":1", "\"schema_version\":2"),
+            (
+                "\"start\":\"2026-01-01 18:00:00\"",
+                "\"start\":\"2026-02-01 18:00:00\"",
+            ),
+            ("2026-01-21 17:59:59", "2026-01-21 25:00:00"),
+            ("\"featured_5\":[\"10000002\"]", "\"featured_5\":[]"),
+            ("\"pool\":\"character\"", "\"pool\":\"bangboo\""),
+            ("\"game\":\"hk4e\"", "\"game\":\"other\""),
+            ("\"id\":\"nap-character-b\"", "\"id\":\"hk4e-character-a\""),
+        ] {
+            let invalid = String::from_utf8(BANNER_SAMPLE.to_vec())
+                .unwrap()
+                .replacen(from, to, 1);
+            assert!(
+                BannerSet::parse_and_validate(invalid.as_bytes()).is_err(),
+                "accepted {to}"
+            );
+        }
+        assert!(BannerSet::parse_and_validate(&vec![b' '; MAX_BANNER_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn clock_strings_must_be_real_server_times() {
+        assert!(is_clock("2026-10-25 18:00:00"));
+        assert!(!is_clock("2026-10-25T18:00:00"));
+        assert!(!is_clock("2026-13-25 18:00:00"));
+        assert!(!is_clock("2026-10-25 24:00:00"));
+        assert!(!is_clock("2026-10-25"));
+    }
+
+    #[test]
+    fn signed_banner_envelope_verifies_and_rejects_tampering() {
+        let key = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[7u8; 32]).unwrap();
+        let signature = BASE64.encode(key.sign(BANNER_SAMPLE).as_ref());
+        let envelope =
+            serde_json::json!({"payload": BASE64.encode(BANNER_SAMPLE), "signature": signature})
+                .to_string();
+        let set =
+            BannerSet::verify_envelope_with_key(envelope.as_bytes(), key.public_key().as_ref())
+                .unwrap();
+        assert_eq!(set.banners_version, 1);
+        let mut changed_payload = BANNER_SAMPLE.to_vec();
+        changed_payload[10] ^= 1;
+        let mut tampered: serde_json::Value = serde_json::from_str(&envelope).unwrap();
+        tampered["payload"] = serde_json::Value::from(BASE64.encode(changed_payload));
+        assert!(BannerSet::verify_envelope_with_key(
+            tampered.to_string().as_bytes(),
+            key.public_key().as_ref()
+        )
+        .is_err());
+        let other = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[8u8; 32]).unwrap();
+        assert!(BannerSet::verify_envelope_with_key(
+            envelope.as_bytes(),
+            other.public_key().as_ref()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn banner_update_records_added_changed_and_removed_ids() {
+        let app_data =
+            std::env::temp_dir().join(format!("wishtory-banners-install-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&app_data);
+        std::fs::create_dir_all(&app_data).unwrap();
+        let store = BannerStore::open(&app_data);
+        *store.set.write().unwrap() = BannerSet::parse_and_validate(BANNER_SAMPLE).unwrap();
+        let newer = String::from_utf8(BANNER_SAMPLE.to_vec())
+            .unwrap()
+            .replace("\"banners_version\":1", "\"banners_version\":2")
+            .replace("\"name\":\"Event A\"", "\"name\":\"Event A renamed\"")
+            .replace("{\"id\":\"nap-character-b\"", "{\"id\":\"nap-character-c\"");
+        let incoming = BannerSet::parse_and_validate(newer.as_bytes()).unwrap();
+        let update = store
+            .install_verified(incoming.clone(), b"signed bytes")
+            .unwrap();
+        assert_eq!(update.status, "updated");
+        assert_eq!(update.banners_version, 2);
+        assert_eq!(update.added, vec!["nap-character-c".to_string()]);
+        assert_eq!(update.changed, vec!["hk4e-character-a".to_string()]);
+        assert_eq!(update.removed, vec!["nap-character-b".to_string()]);
+        assert_eq!(store.current(), incoming);
+        assert_eq!(store.last_update(), Some(update));
+        assert!(store.cache_dir.join("2.json").is_file());
+        // The same version is not installed twice and leaves the saved update untouched.
+        let again = store.install_verified(incoming, b"signed bytes").unwrap();
+        assert_eq!(again.status, "up-to-date");
+        assert_eq!(store.last_update().unwrap().status, "updated");
         let _ = std::fs::remove_dir_all(app_data);
     }
 }
