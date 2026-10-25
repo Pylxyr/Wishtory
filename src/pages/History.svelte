@@ -2,7 +2,6 @@
   import { app, toast } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
   import { BANNERS, GACHA_LABELS, type Pull } from '../lib/types';
-  import GameBar from '../lib/components/GameBar.svelte';
   import EmptyState from '../lib/components/EmptyState.svelte';
 
   let pulls = $state<Pull[]>([]);
@@ -37,46 +36,47 @@
   });
 </script>
 
-<h1>History</h1>
-<p class="muted">Newest first.</p>
-<GameBar />
+<div class="page-head">
+  <h1>History</h1>
+  <p>Every saved pull, newest first.</p>
+</div>
 
 {#if !app.uid}
-  <EmptyState title="Nothing to show yet" text="Open the history page in-game, then click Refresh on the Dashboard." />
+  <EmptyState title="Nothing to show yet" text="Open the history page in-game, then click Refresh at the top of the window." />
 {:else}
-  <div class="row" style="margin-bottom:12px">
+  <div class="toolbar">
     <select bind:value={banner} aria-label="Banner">
       <option value="">All banners</option>
       {#each BANNERS[app.game] as b}<option value={b.key}>{b.label}</option>{/each}
     </select>
-    <select bind:value={rarity} aria-label="Rarity">
-      <option value={0}>All rarities</option>
-      <option value={5}>{rarityLabel(5)}</option>
-      <option value={4}>{rarityLabel(4)}</option>
-    </select>
-    <input bind:value={query} placeholder="Search by name..." aria-label="Search" />
-    <span class="muted">{matched.length} pulls</span>
+    <div class="seg" role="group" aria-label="Rarity">
+      <button aria-pressed={rarity === 0} onclick={() => (rarity = 0)}>All</button>
+      <button aria-pressed={rarity === 5} onclick={() => (rarity = 5)}>{rarityLabel(5)}</button>
+      <button aria-pressed={rarity === 4} onclick={() => (rarity = 4)}>{rarityLabel(4)}</button>
+    </div>
+    <input bind:value={query} placeholder="Search by name…" aria-label="Search" />
+    <span class="count" aria-live="polite">{matched.length.toLocaleString()} pulls</span>
   </div>
-  <div class="card" style="padding:4px 8px">
+  <div class="table-wrap">
     <table>
       <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Banner</th></tr></thead>
       <tbody>
-        {#each shown as p, i (p.id)}
+        {#each shown as p (p.id)}
           {@const rank = rankOf(p)}
-          <tr class="rise" style="animation-delay:{Math.min(i, 20) * 18}ms">
-            <td class="muted">{p.time}</td>
-            <td class={`r${rank}`}>{p.name}</td>
+          <tr class="row-r{rank}">
+            <td>{p.time}</td>
+            <td class="item r{rank}">{p.name}</td>
             <td class="muted">{p.item_type}</td>
-            <td class={`r${rank}`}>{'★'.repeat(rank)}</td>
+            <td><span class="rank r{rank}"><span aria-hidden="true">{'★'.repeat(rank)}</span><span class="sr">{rank} star</span></span></td>
             <td class="muted">{GACHA_LABELS[app.game][p.gacha_type] ?? p.gacha_type}</td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">{loading ? 'Loading...' : 'No matching pulls.'}</td></tr>
+          <tr><td colspan="5" class="muted">{loading ? 'Loading…' : 'No matching pulls.'}</td></tr>
         {/each}
       </tbody>
     </table>
   </div>
   {#if matched.length > limit}
-    <p style="text-align:center;margin-top:12px"><button class="btn" onclick={() => (limit += 300)}>Show more</button></p>
+    <div class="more"><button class="btn" onclick={() => (limit += 300)}>Show more</button></div>
   {/if}
 {/if}

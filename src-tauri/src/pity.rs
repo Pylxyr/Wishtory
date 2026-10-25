@@ -125,7 +125,7 @@ fn standard_fives(game: Game) -> &'static [&'static str] {
     match game {
         // Paimon.moe local exports store character slugs instead of HoYo numeric IDs.
         Game::Hk4e => &[
-            "10000003", "10000016", "10000035", "10000041", "10000042", "10000071", "10000079",
+            "10000003", "10000016", "10000035", "10000041", "10000042", "10000069", "10000079",
             "diluc", "jean", "keqing", "qiqi", "mona", "tighnari", "dehya",
         ],
         Game::Hkrpg => &["1003", "1004", "1101", "1104", "1107", "1209", "1211"],
@@ -394,6 +394,17 @@ mod tests {
         let c = find(&result, "character");
         assert_eq!(c.guaranteed, Some(true));
         assert_eq!(c.recent_fives[0].outcome.as_deref(), Some("loss"));
+
+        // Numeric ids: Tighnari (10000069) is permanent, Cyno (10000071) is a featured 5-star.
+        let result = compute(Game::Hk4e, &[p(1, 5, "10000069")]);
+        let c = find(&result, "character");
+        assert_eq!(c.recent_fives[0].outcome.as_deref(), Some("loss"));
+        let result = compute(Game::Hk4e, &[p(1, 5, "10000071")]);
+        let c = find(&result, "character");
+        assert_eq!(
+            (c.guaranteed, c.recent_fives[0].outcome.as_deref()),
+            (Some(false), None)
+        );
     }
 
     #[test]

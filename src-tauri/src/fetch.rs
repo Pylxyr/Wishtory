@@ -145,7 +145,37 @@ pub fn tz_from_region(region: &str) -> i32 {
 }
 
 fn looks_like_auth_error(code: i64, message: &str) -> bool {
-    matches!(code, -100 | -101) || message.to_ascii_lowercase().contains("authkey")
+    // Servers word this differently ("authkey timeout", "auth key time out"), so ignore spacing.
+    let squashed: String = message
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    matches!(code, -100 | -101) || squashed.contains("authkey")
+}
+
+/// Banner names for status lines. The part before the first colon in a status line identifies the
+/// banner, so names must not contain one.
+fn banner_name(game: Game, gacha_type: &str) -> String {
+    let name = match (game, gacha_type) {
+        (Game::Hk4e, "100") => "Beginners' Wish",
+        (Game::Hk4e, "200") => "Standard Wish",
+        (Game::Hk4e, "301") => "Character Event Wish",
+        (Game::Hk4e, "302") => "Weapon Event Wish",
+        (Game::Hk4e, "500") => "Chronicled Wish",
+        (Game::Hkrpg, "1") => "Stellar Warp",
+        (Game::Hkrpg, "2") => "Departure Warp",
+        (Game::Hkrpg, "11") => "Character Event Warp",
+        (Game::Hkrpg, "12") => "Light Cone Event Warp",
+        (Game::Hkrpg, "21") => "Character Collaboration Warp",
+        (Game::Hkrpg, "22") => "Light Cone Collaboration Warp",
+        (Game::Nap, "1") => "Standard Channel",
+        (Game::Nap, "2") => "Exclusive Channel",
+        (Game::Nap, "3") => "W-Engine Channel",
+        (Game::Nap, "5") => "Bangboo Channel",
+        _ => return format!("Banner {gacha_type}"),
+    };
+    name.to_string()
 }
 
 /// `progress` receives short, link-free status lines for the UI ("Downloading banner 2 of 5…").
@@ -211,17 +241,15 @@ pub async fn fetch_all(
     let mut failure: Option<(AppError, usize)> = None;
     let total = game.gacha_types().len();
     for (done, gt) in game.gacha_types().iter().enumerate() {
-        progress(if pulls.is_empty() {
-            format!("Downloading banner {} of {total}…", done + 1)
-        } else {
-            format!(
-                "Downloading banner {} of {total} · {} pulls so far",
-                done + 1,
-                pulls.len()
-            )
-        });
-        match fetch_banner(&client, game, base, &common, gt).await {
+        let name = banner_name(game, gt);
+        progress(format!(
+            "{name}: starting (banner {} of {total}, {} pulls so far)",
+            done + 1,
+            pulls.len()
+        ));
+        match fetch_banner(&client, game, base, &common, gt, &name, progress).await {
             Ok((items, rtz)) => {
+                progress(format!("{name}: done, {} pulls", items.len()));
                 wlog!(
                     Level::Debug,
                     "{}: banner {gt} read ({} pulls)",
@@ -273,13 +301,24 @@ async fn fetch_banner(
     base: &str,
     common: &[(&str, String)],
     gacha_type: &str,
+    name: &str,
+    progress: &impl Fn(String),
 ) -> Result<(Vec<Pull>, Option<i32>), AppError> {
+    let say = |message: &str| progress(format!("{name}: {message}"));
     let mut out = Vec::new();
     let mut tz = None;
     let mut end_id = "0".to_string();
     for page in 1..=MAX_PAGES {
-        let (list, rtz) =
-            request_page(client, game, base, common, gacha_type, page, &end_id).await?;
+        let (list, rtz) = request_page(
+            client,
+            game,
+            base,
+            common,
+            gacha_type,
+            (page, &end_id),
+            &say,
+        )
+        .await?;
         tz = tz.or(rtz);
         let n = list.len();
         let last_id = list.last().map(|i| i.id.clone());
@@ -305,6 +344,7 @@ async fn fetch_banner(
                 count: it.count.parse().unwrap_or(1),
             });
         }
+        say(&format!("{} pulls read", out.len()));
         match next_cursor(n, last_id, &end_id)? {
             Some(id) if page < MAX_PAGES => end_id = id,
             Some(_) => {
@@ -326,9 +366,10 @@ async fn request_page(
     base: &str,
     common: &[(&str, String)],
     gacha_type: &str,
-    page: u32,
-    end_id: &str,
+    cursor: (u32, &str),
+    say: &impl Fn(&str),
 ) -> Result<(Vec<Item>, Option<i32>), AppError> {
+    let (page, end_id) = cursor;
     let mut net_attempts = 0u32;
     let mut rate_attempts = 0u32;
     loop {
@@ -341,12 +382,24 @@ async fn request_page(
         let resp = match client.get(base).query(&q).send().await {
             Ok(r) if r.status().is_server_error() && net_attempts < 2 => {
                 net_attempts += 1;
+                say(&format!(
+                    "the server had a problem, retrying ({net_attempts} of 2)…"
+                ));
                 sleep(Duration::from_millis(1000 * u64::from(net_attempts))).await;
                 continue;
+            }
+            Ok(r) if r.status().is_server_error() => {
+                return Err(AppError::Api(format!(
+                    "the history server answered with HTTP {}",
+                    r.status().as_u16()
+                )));
             }
             Ok(r) => r,
             Err(e) if (e.is_timeout() || e.is_connect()) && net_attempts < 2 => {
                 net_attempts += 1;
+                say(&format!(
+                    "connection problem, retrying ({net_attempts} of 2)…"
+                ));
                 sleep(Duration::from_millis(1000 * u64::from(net_attempts))).await;
                 continue;
             }
@@ -365,10 +418,22 @@ async fn request_page(
             c if looks_like_auth_error(c, &body.message) => return Err(AppError::AuthExpired),
             -110 if rate_attempts < 2 => {
                 rate_attempts += 1;
+                say(&format!(
+                    "the server asked Wishtory to slow down, waiting to retry ({rate_attempts} of 2)…"
+                ));
                 sleep(Duration::from_millis(2500)).await;
             }
             -110 => return Err(AppError::RateLimited),
-            _ => return Err(AppError::Api(body.message)),
+            c => {
+                let detail = if body.message.is_empty() {
+                    "no details given"
+                } else {
+                    body.message.as_str()
+                };
+                return Err(AppError::Api(format!(
+                    "{detail} (code {c}). Wait a minute, then click Refresh again. If it keeps happening, reopen the history page in the game first."
+                )));
+            }
         }
     }
 }
@@ -451,6 +516,7 @@ mod tests {
     fn auth_errors_are_recognised() {
         assert!(looks_like_auth_error(-101, ""));
         assert!(looks_like_auth_error(-1, "authkey timeout"));
+        assert!(looks_like_auth_error(-1, "auth key time out"));
         assert!(!looks_like_auth_error(-110, "visit too frequently"));
     }
 

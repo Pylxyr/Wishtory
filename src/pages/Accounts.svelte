@@ -42,10 +42,34 @@
   function open(a: Account) { app.game = a.game; app.uid = a.uid; app.page = 'dashboard'; }
 </script>
 
-<h1>Accounts</h1>
-<p class="muted">Everything is stored locally on this PC.</p>
+<div class="page-head">
+  <h1>Accounts</h1>
+  <p>Everything is stored locally on this PC.</p>
+</div>
 
-<section class="card clear-history-card" aria-labelledby="clear-history-heading">
+{#if !app.accounts.length}
+  <EmptyState title="No accounts yet" text="Accounts appear automatically after your first Refresh or import." />
+{:else}
+  <div class="account-list">
+    {#each app.accounts as a (a.game + a.uid)}
+      <div class="account" data-game={a.game}>
+        <div class="account-main">
+          <strong>{GAMES[a.game].name}</strong>
+          <span class="muted">UID {a.uid}{a.nickname ? `, ${a.nickname}` : ''}</span>
+        </div>
+        <span class="account-meta">{a.pull_count.toLocaleString()} pulls, UTC{a.timezone >= 0 ? '+' : ''}{a.timezone}</span>
+        <div class="account-actions">
+          <button class="btn" onclick={() => open(a)}>Open</button>
+          <button class="btn" class:danger={confirming === `${a.game}:${a.uid}`} onclick={() => remove(a)}>
+            <Icon name="trash" size={16} />{confirming === `${a.game}:${a.uid}` ? 'Click again to confirm' : 'Remove'}
+          </button>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
+<section class="danger-zone" aria-labelledby="clear-history-heading">
   <div>
     <h2 id="clear-history-heading">Clear all history</h2>
     <p class="muted">Remove every saved pull and account from this PC.</p>
@@ -66,22 +90,3 @@
     </div>
   </div>
 </dialog>
-
-{#if !app.accounts.length}
-  <EmptyState title="No accounts yet" text="Accounts appear automatically after your first Refresh or import." />
-{:else}
-  <div class="grid">
-    {#each app.accounts as a, i (a.game + a.uid)}
-      <div class="card hover rise" style="animation-delay:{i * 50}ms">
-        <h3>{GAMES[a.game].name}</h3>
-        <p class="muted">UID {a.uid} · UTC{a.timezone >= 0 ? '+' : ''}{a.timezone} · {a.pull_count} pulls</p>
-        <div class="row">
-          <button class="btn" onclick={() => open(a)}>Open</button>
-          <button class="btn" class:danger={confirming === `${a.game}:${a.uid}`} onclick={() => remove(a)}>
-            <Icon name="trash" size={16} />{confirming === `${a.game}:${a.uid}` ? 'Click again to confirm' : 'Remove'}
-          </button>
-        </div>
-      </div>
-    {/each}
-  </div>
-{/if}

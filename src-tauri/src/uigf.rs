@@ -189,20 +189,17 @@ const PAIMON_BANNERS: [(&str, &str); 5] = [
     ("chronicled", "500"),
 ];
 
-fn paimon_stable_id(
-    uid: &str,
-    banner: &str,
-    time: &str,
-    item: &str,
-    kind: &str,
-    pity: &str,
-    occurrence: u32,
-) -> String {
-    let source = format!("{uid}\0{banner}\0{time}\0{item}\0{kind}\0{pity}\0{occurrence}");
+/// Ids sort by `CAST(id AS INTEGER)` when pulls share a timestamp, so pulls of one banner and
+/// time share a hash prefix and `seq` (their position in the backup) decides the order.
+fn paimon_stable_id(uid: &str, banner: &str, time: &str, seq: u32) -> String {
+    let source = format!("{uid}\0{banner}\0{time}");
     let hash = source.bytes().fold(0xcbf29ce484222325u64, |h, b| {
         (h ^ u64::from(b)).wrapping_mul(0x100000001b3)
     });
-    (1_000_000_000_000_000_000u64 + hash % 8_000_000_000_000_000_000u64).to_string()
+    (1_000_000_000_000_000_000u64
+        + (hash % 7_000_000_000_000_000u64) * 1_000
+        + u64::from(seq.min(999)))
+    .to_string()
 }
 
 /// Reads Paimon.moe's native local-data backup without changing the source file. Its wish
@@ -244,7 +241,6 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
     let lang = normalize_lang(&get(root, "locale"));
     for (account, uid) in accounts {
         let mut pulls = Vec::new();
-        let mut occurrences = std::collections::HashMap::<String, u32>::new();
         let mut found_collection = false;
         for (banner, default_type) in PAIMON_BANNERS {
             let key = if account.is_empty() {
@@ -260,6 +256,15 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
                 continue;
             };
             found_collection = true;
+            // Backups are normally oldest first; a newest-first file is read back to front so the
+            // sequence numbers below always follow the order the pulls were made in.
+            let mut rows: Vec<&Value> = rows.iter().collect();
+            if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
+                if normalize_time(&get(first, "time")) > normalize_time(&get(last, "time")) {
+                    rows.reverse();
+                }
+            }
+            let mut same_time = std::collections::HashMap::<String, u32>::new();
             for row in rows {
                 let item_id = get(row, "id");
                 let time = normalize_time(&get(row, "time"));
@@ -283,22 +288,11 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
                     "100" | "200" | "301" | "302" | "400" | "500" => get(row, "code"),
                     _ => default_type.into(),
                 };
-                let source_pity = get(row, "pity");
-                let signature =
-                    format!("{banner}\0{time}\0{item_id}\0{declared_kind}\0{source_pity}");
-                let occurrence = occurrences
-                    .entry(signature)
+                let seq = same_time
+                    .entry(time.clone())
                     .and_modify(|n| *n += 1)
                     .or_insert(0);
-                let id = paimon_stable_id(
-                    &uid,
-                    banner,
-                    &time,
-                    &item_id,
-                    &kind,
-                    &source_pity,
-                    *occurrence,
-                );
+                let id = paimon_stable_id(&uid, banner, &time, *seq);
                 pulls.push(Pull {
                     id,
                     game: "hk4e".into(),
@@ -667,20 +661,23 @@ mod tests {
     #[test]
     fn imports_native_paimon_backup_and_roundtrips_the_wish_collections() {
         let source = r#"{"wish-uid":"800000009","locale":"en-us",
-          "wish-counter-character-event":{"total":3,"legendary":1,"rare":1,"pulls":[
+          "wish-counter-character-event":{"total":5,"legendary":2,"rare":1,"pulls":[
             {"type":"weapon","code":"301","id":"cool_steel","time":"2024-01-05 03:04:05","pity":1},
             {"type":"character","code":"400","id":"albedo","time":"2024-01-05 03:05:05","pity":1},
-            {"type":"character","code":"301","id":"amber","time":"2024-01-05 03:06:05","pity":10}]}}"#;
+            {"type":"character","code":"301","id":"amber","time":"2024-01-05 03:06:05","pity":10},
+            {"type":"weapon","code":"301","id":"cool_steel","time":"2024-01-05 03:07:05","pity":1},
+            {"type":"character","code":"301","id":"albedo","time":"2024-01-05 03:07:05","pity":1}]}}"#;
         let from = temp_db("native-paimon-a");
         let imported = import(&from, source).unwrap();
         assert_eq!(
             (imported.accounts, imported.added, imported.skipped),
-            (1, 3, 0)
+            (1, 5, 0)
         );
         let rows = from.pulls_for("hk4e", "800000009").unwrap();
         assert_eq!(
             rows.iter().map(|p| p.rank_type).collect::<Vec<_>>(),
-            vec![3, 5, 4]
+            vec![3, 5, 4, 3, 5],
+            "pulls sharing a timestamp keep the order of the backup"
         );
         assert_eq!(rows[1].name, "Albedo");
         assert_eq!(import(&from, source).unwrap().added, 0);
@@ -695,17 +692,17 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            3
+            5
         );
         assert_eq!(
             exported["wish-counter-character-event"]["pulls"][1]["code"],
             "400"
         );
-        assert_eq!(exported["wish-counter-character-event"]["legendary"], 1);
+        assert_eq!(exported["wish-counter-character-event"]["legendary"], 2);
 
         let to = temp_db("native-paimon-b");
-        assert_eq!(import(&to, &exported.to_string()).unwrap().added, 3);
-        assert_eq!(to.pulls_for("hk4e", "800000009").unwrap().len(), 3);
+        assert_eq!(import(&to, &exported.to_string()).unwrap().added, 5);
+        assert_eq!(to.pulls_for("hk4e", "800000009").unwrap().len(), 5);
     }
 
     #[test]

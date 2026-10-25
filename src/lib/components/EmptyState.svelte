@@ -4,9 +4,9 @@
   let { title, text, children }: { title: string; text: string; children?: Snippet } = $props();
 </script>
 
-<div class="card empty rise">
+<div class="empty">
   <div class="empty-summary">
-    <div class="art"><Icon name="sparkle" size={44} /></div>
+    <Icon name="sparkle" size={28} />
     <h2>{title}</h2>
     <p class="muted">{text}</p>
   </div>

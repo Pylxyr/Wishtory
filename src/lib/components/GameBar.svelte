@@ -1,13 +1,24 @@
 <script lang="ts">
-  import { app, selectGame } from '../state.svelte';
+  import { app, selectGame, refreshFromGame } from '../state.svelte';
   import { GAMES, type GameId } from '../types';
+  import Icon from './Icon.svelte';
+
   const mine = $derived(app.accounts.filter((a) => a.game === app.game));
+  const install = $derived(app.installs.find((i) => i.game === app.game));
+  const info = $derived(GAMES[app.game]);
+  const shownSteps = $derived(app.steps.slice(-6));
+  // Screen readers hear the banner or phase name, not every page update.
+  const phase = $derived.by(() => {
+    const last = app.steps.at(-1) ?? '';
+    const colon = last.indexOf(':');
+    return colon === -1 ? last : last.slice(0, colon);
+  });
 </script>
 
-<div class="gamebar">
-  <div class="tabs" role="group" aria-label="Game">
+<div class="context" class:is-busy={app.busy}>
+  <div class="seg" role="group" aria-label="Game">
     {#each Object.entries(GAMES) as [id, g]}
-      <button data-game={id} aria-pressed={app.game === id} class:active={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
+      <button data-game={id} aria-pressed={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
     {/each}
   </div>
   {#if mine.length}
@@ -17,4 +28,40 @@
       {/each}
     </select>
   {/if}
+  <div class="context-end">
+    {#if app.busy}
+      <span class="sr" role="status">{phase}</span>
+      <span class="status-line" aria-hidden="true"><i class="pulse"></i><span class="status-text">{app.status}</span></span>
+    {:else if install?.found}
+      <span class="chip ok">{info.name} detected</span>
+    {:else}
+      <span class="chip" data-tip="Launch the game once so it creates its log file">{info.name} not detected yet</span>
+    {/if}
+    <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads your history">
+      <span class:spin={app.busy}><Icon name="refresh" size={16} /></span>{app.busy ? 'Working…' : `Refresh ${info.short}`}
+    </button>
+  </div>
+  {#if app.steps.length}
+    <div class="activity">
+      <ol aria-label="Refresh progress">
+        {#each shownSteps as step, i}
+          {@const last = i === shownSteps.length - 1}
+          {@const failed = last && !app.busy && app.result?.kind === 'err'}
+          <li class:current={last && app.busy} class:failed>
+            <span class="mark" aria-hidden="true">{failed ? '✕' : last && app.busy ? '' : '✓'}</span>{step}
+          </li>
+        {/each}
+      </ol>
+      {#if app.result}
+        <div class="activity-foot">
+          <p class="result {app.result.kind}">{app.result.text}</p>
+          <div class="row">
+            {#if app.result.kind === 'err'}<button class="btn" onclick={() => (app.page = 'help')}>Open Help</button>{/if}
+            <button class="btn" onclick={() => { app.steps = []; app.result = null; }}>Dismiss</button>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
+  <div class="busybar" aria-hidden="true"></div>
 </div>

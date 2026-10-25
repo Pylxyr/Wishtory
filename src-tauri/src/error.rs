@@ -7,15 +7,15 @@ pub enum AppError {
     GameNotFound(&'static str),
     #[error("No history page found in the game's cache yet. In the game, open the Wish / Warp / Signal Search history page, wait until it loads, then come back and click Refresh.")]
     HistoryPageNotOpened,
-    #[error("This history link has expired. Reopen the history page in the game and click Refresh again.")]
+    #[error("This history link has expired. In the game, open the Wish / Warp / Signal Search history page again, wait until the list loads, then click Refresh.")]
     AuthExpired,
-    #[error("That doesn't look like a valid HoYoverse history link for this game.")]
+    #[error("That doesn't look like a valid HoYoverse history link for this game. Use Refresh instead, or paste the full link: it starts with https:// and contains authkey=.")]
     InvalidUrl,
     #[error("The server asked us to slow down. Please wait a minute and try again.")]
     RateLimited,
     #[error("The server returned an error: {0}")]
     Api(String),
-    #[error("Network problem: {0}")]
+    #[error("Network problem: {0}. Check your internet connection (and turn off any VPN or proxy that blocks HoYoverse), then click Refresh again.")]
     Network(String),
     #[error("Database error: {0}")]
     Db(String),

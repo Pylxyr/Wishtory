@@ -99,7 +99,7 @@ pub async fn fetch_history(
     let f = fetch::fetch_all(game, &url, &progress)
         .await // network first; never hold the DB lock across await
         .inspect_err(|e| wlog!(Level::Warn, "{}: fetch failed: {e}", game.as_str()))?;
-    progress("Saving to this PC…".into());
+    progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
     store(&db, game, f)
 }
 
@@ -144,7 +144,7 @@ pub async fn refresh_from_game(
         match fetch::fetch_all(game, &url, &progress).await {
             Ok(f) => {
                 wlog!(Level::Debug, "{}: link {} accepted", game.as_str(), i + 1);
-                progress("Saving to this PC…".into());
+                progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
                 return store(&db, game, f);
             }
             Err(AppError::AuthExpired) => {

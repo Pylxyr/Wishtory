@@ -1,26 +1,36 @@
 <script lang="ts">
-  import { app, refreshFromGame, fetchFromUrl, toast } from '../lib/state.svelte';
+  import { app, fetchFromUrl, toast } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
   import { GAMES, type BannerPity } from '../lib/types';
-  import GameBar from '../lib/components/GameBar.svelte';
   import PityRing from '../lib/components/PityRing.svelte';
   import EmptyState from '../lib/components/EmptyState.svelte';
   import Icon from '../lib/components/Icon.svelte';
-  import AnimatedNumber from '../lib/components/AnimatedNumber.svelte';
-  import { elementTone, iconUrl } from '../lib/elements';
 
   let pity = $state<BannerPity[]>([]);
   let loading = $state(false);
   let pasted = $state('');
+  let selected = $state('');
 
   const info = $derived(GAMES[app.game]);
-  const install = $derived(app.installs.find((i) => i.game === app.game));
   const wishCurrency = $derived(({ hk4e: 'Primogems', hkrpg: 'Stellar Jade', nap: 'Polychromes' })[app.game]);
   const totalPulls = $derived(pity.reduce((s, b) => s + b.total, 0));
   const totalFives = $derived(pity.reduce((s, b) => s + b.five_stars, 0));
-  const primogemEquivalent = $derived(totalPulls * 160);
-  const recentFives = $derived(pity.flatMap((b) => b.recent_fives.map((pull) => ({ ...pull, banner: b.label })))
-    .sort((a, b) => b.time.localeCompare(a.time)).slice(0, 8));
+  const avgFive = $derived(
+    totalFives ? pity.reduce((s, b) => s + (b.avg_five_pity ?? 0) * b.five_stars, 0) / totalFives : null
+  );
+  const latestFive = $derived(
+    pity.flatMap((b) => b.recent_fives).sort((a, b) => b.time.localeCompare(a.time))[0] ?? null
+  );
+  const current = $derived(pity.find((b) => b.banner === selected) ?? pity[0] ?? null);
+
+  function rowNote(b: BannerPity): string {
+    if (!b.total) return 'No pulls yet';
+    if (b.banner === 'character') {
+      if (b.guaranteed === true) return 'Next 5★ is guaranteed';
+      if (b.guaranteed === false) return 'Not guaranteed: next 5★ is a 50/50';
+    }
+    return `${b.total} pulls, ${b.five_stars} five-star${b.five_stars === 1 ? '' : 's'}`;
+  }
 
   $effect(() => {
     const game = app.game, uid = app.uid;
@@ -37,84 +47,55 @@
   });
 </script>
 
-<h1>Wish history</h1>
-<p class="muted">A clear view of every pull, your five-star milestones, and current banner progress.</p>
-<GameBar />
-
-<div class="card rise busy-host" class:is-busy={app.busy}>
-  <div class="busybar" aria-hidden="true"></div>
-  <div class="row">
-    <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads your history">
-      <span class:spin={app.busy}><Icon name="refresh" /></span>{app.busy ? 'Working...' : `Refresh ${info.short}`}
-    </button>
-    {#if install?.found}
-      <span class="chip ok">{info.name} detected</span>
-    {:else}
-      <span class="chip" data-tip="Launch the game once so it creates its log file">{info.name} not detected yet</span>
-    {/if}
-    {#if app.busy}
-      <span class="status-line" role="status" aria-live="polite"><i class="pulse" aria-hidden="true"></i>{app.status}</span>
-    {:else}
-      <span class="muted">First open the history page in-game, then click Refresh.</span>
-    {/if}
-  </div>
-  <details>
-    <summary>Refresh not working? Paste a history link instead</summary>
-    <div class="row" style="margin-top:10px">
-      <input bind:value={pasted} placeholder="https://…authkey=…" aria-label="History URL" />
-      <button class="btn" disabled={!pasted.trim() || app.busy} onclick={() => fetchFromUrl(pasted.trim())}><Icon name="link" />Fetch</button>
-    </div>
-  </details>
+<div class="page-head">
+  <h1>Overview</h1>
+  <p>Pity and guarantee status for every banner.</p>
 </div>
 
 {#if !app.uid}
   <EmptyState title="No history yet" text="Let's pull in your first wishes. It takes two steps:">
     <div class="steps">
       <div class="step"><i>1</i><div><b>Open the history page in-game.</b><br /><span class="muted">{info.howTo}</span></div></div>
-      <div class="step"><i>2</i><div><b>Click Refresh above.</b><br /><span class="muted">Wishtory reads the cache and does the rest.</span></div></div>
+      <div class="step"><i>2</i><div><b>Click Refresh at the top of the window.</b><br /><span class="muted">Wishtory reads the cache and does the rest.</span></div></div>
     </div>
   </EmptyState>
 {:else}
-  <section class="wish-overview rise" aria-label="Wish history overview">
-    <div class="wish-overview-head">
-      <div><span class="eyebrow">PULL SUMMARY</span><h2>Wish totals</h2></div>
-      <span class="account-tag">UID {app.uid}</span>
-    </div>
-    <div class="wish-metrics">
-      <div class="wish-metric"><span>Total pulls</span><strong><AnimatedNumber value={totalPulls} /></strong><small>Across all channels</small></div>
-      <div class="wish-metric"><span>Five-star finds</span><strong class="gold-number"><AnimatedNumber value={totalFives} /></strong><small>Recorded in your history</small></div>
-      <div class="wish-metric"><span>Pull value</span><strong><AnimatedNumber value={primogemEquivalent} /></strong><small>{wishCurrency} equivalent · 160 per pull</small></div>
-    </div>
-    {#if recentFives.length}
-      <div class="five-star-strip">
-        <div class="strip-heading"><span class="eyebrow">RECENT FIVE-STAR PULLS</span><span class="muted">Newest first</span></div>
-        <div class="five-star-list">
-          {#each recentFives as pull, i (`${pull.time}:${pull.name}:${i}`)}
-            {@const itemMeta = app.catalog?.items.find((item) => item.game === app.game && (item.name === pull.name || item.aliases.includes(pull.name)))}
-            {@const icon = iconUrl(itemMeta)}
-            <article class="five-star-item element-{itemMeta?.traits.element ?? elementTone(pull.name)}" style="animation-delay:{i * 45}ms">
-              <span class="item-icon" class:cover={itemMeta?.kind === 'light_cone'}>
-                <span class="glyph" aria-hidden="true">✦</span>
-                {#if icon}<img src={icon} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload={(e) => e.currentTarget.parentElement?.classList.add('loaded')} onerror={(e) => e.currentTarget.remove()} />{/if}
-              </span>
-              <div class="five-star-copy"><strong>{pull.name || 'Five-star item'}</strong><span>{pull.banner}</span></div>
-              {#if pull.outcome === 'loss'}<span class="outcome-badge outcome-loss">Loss</span>
-              {:else if pull.outcome === 'win'}<span class="outcome-badge outcome-win">Win</span>
-              {:else if pull.outcome === 'guaranteed'}<span class="outcome-badge outcome-next">Guaranteed</span>{/if}
-              <div class="five-star-meta"><b>{pull.pity}</b><span>pulls</span></div>
-            </article>
-          {/each}
-        </div>
-      </div>
+  <dl class="facts">
+    <div class="fact"><dt>pulls</dt><dd>{totalPulls.toLocaleString()}</dd></div>
+    <div class="fact gold"><dt>five-stars</dt><dd>{totalFives.toLocaleString()}</dd></div>
+    <div class="fact"><dt>average five-star pity</dt><dd>{avgFive === null ? '—' : avgFive.toFixed(1)}</dd></div>
+    {#if latestFive}
+      <div class="fact"><dt>latest five-star, {latestFive.time.slice(0, 10)}</dt><dd class="small">{latestFive.name || 'Five-star item'}</dd></div>
     {/if}
-  </section>
+    <div class="fact" title="Every pull counted as 160 {wishCurrency.toLowerCase()}. A comparison value, not a record of currency spent.">
+      <dt>{wishCurrency.toLowerCase()} worth of pulls</dt><dd>{(totalPulls * 160).toLocaleString()}</dd>
+    </div>
+  </dl>
+
   {#if loading && !pity.length}
-    <div class="grid" aria-busy="true">{#each [0, 1, 2, 3] as n}<div class="card skeleton" style="animation-delay:{n * 80}ms"></div>{/each}</div>
+    <div class="overview" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div></div>
+  {:else if current}
+    <div class="overview">
+      <nav class="banner-list" aria-label="Banners">
+        {#each pity as b (b.banner)}
+          {@const soft = b.soft_pity !== null && b.pity >= b.soft_pity}
+          <button class="banner-row" class:soft aria-current={current.banner === b.banner ? 'true' : undefined} onclick={() => (selected = b.banner)}>
+            <span class="name">{b.label}</span>
+            <span class="count">{b.pity}<small> / {b.hard_pity}</small></span>
+            <span class="meter" aria-hidden="true"><i style="width:{Math.min((b.pity / b.hard_pity) * 100, 100)}%"></i></span>
+            <span class="sub">{rowNote(b)}</span>
+          </button>
+        {/each}
+      </nav>
+      <PityRing p={current} game={app.game} catalog={app.catalog} />
+    </div>
   {/if}
-  <div class="grid">
-    {#each pity as p, i (p.banner)}
-      <div class="rise" style="animation-delay:{i * 60}ms"><PityRing {p} game={app.game} catalog={app.catalog} /></div>
-    {/each}
-  </div>
-  <p class="equivalent-note">The value treats every pull as 160 {wishCurrency.toLowerCase()}; it’s a comparison value, not a record of currency spent.</p>
+
+  <details class="manual">
+    <summary>Refresh not working? Paste a history link instead</summary>
+    <div class="row" style="margin-top:10px">
+      <input bind:value={pasted} placeholder="https://…authkey=…" aria-label="History URL" />
+      <button class="btn" disabled={!pasted.trim() || app.busy} onclick={() => fetchFromUrl(pasted.trim())}><Icon name="link" />Fetch</button>
+    </div>
+  </details>
 {/if}

@@ -36,8 +36,10 @@
   });
 </script>
 
-<h1>Logging</h1>
-<p class="muted">Recent activity, newest at the bottom. Kept in memory only (last 1000 lines).</p>
+<div class="page-head">
+  <h1>Logging</h1>
+  <p>Recent activity, newest at the bottom. Kept in memory only (last 1000 lines).</p>
+</div>
 
 <div class="row log-tools">
   <select bind:value={level} aria-label="Minimum level">
