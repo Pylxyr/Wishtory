@@ -279,11 +279,36 @@ const FEATURED_WINDOWS: &[(&str, &str, &str, &str)] = &[
     ("15502", "Amos' Bow", "2023-05-02", "2023-05-23"),
     ("11501", "Aquila Favonia", "2020-09-28", "2020-10-18"),
     ("11501", "Aquila Favonia", "2021-05-18", "2021-06-08"),
-    ("14502", "Lost Prayer to the Sacred Winds", "2020-10-20", "2020-11-10"),
-    ("14502", "Lost Prayer to the Sacred Winds", "2021-04-06", "2021-04-27"),
-    ("14502", "Lost Prayer to the Sacred Winds", "2021-06-09", "2021-06-29"),
-    ("14502", "Lost Prayer to the Sacred Winds", "2022-07-13", "2022-08-02"),
-    ("14502", "Lost Prayer to the Sacred Winds", "2023-07-05", "2023-07-25"),
+    (
+        "14502",
+        "Lost Prayer to the Sacred Winds",
+        "2020-10-20",
+        "2020-11-10",
+    ),
+    (
+        "14502",
+        "Lost Prayer to the Sacred Winds",
+        "2021-04-06",
+        "2021-04-27",
+    ),
+    (
+        "14502",
+        "Lost Prayer to the Sacred Winds",
+        "2021-06-09",
+        "2021-06-29",
+    ),
+    (
+        "14502",
+        "Lost Prayer to the Sacred Winds",
+        "2022-07-13",
+        "2022-08-02",
+    ),
+    (
+        "14502",
+        "Lost Prayer to the Sacred Winds",
+        "2023-07-05",
+        "2023-07-25",
+    ),
     ("12502", "Wolf's Gravestone", "2020-10-20", "2020-11-10"),
     ("12502", "Wolf's Gravestone", "2021-02-23", "2021-03-16"),
     ("15501", "Skyward Harp", "2020-11-11", "2020-12-01"),
@@ -293,11 +318,36 @@ const FEATURED_WINDOWS: &[(&str, &str, &str, &str)] = &[
     ("14501", "Skyward Atlas", "2021-06-29", "2021-07-20"),
     ("12501", "Skyward Pride", "2021-01-12", "2021-02-02"),
     ("12501", "Skyward Pride", "2021-06-09", "2021-06-29"),
-    ("13505", "Primordial Jade Winged-Spear", "2021-02-03", "2021-02-23"),
-    ("13505", "Primordial Jade Winged-Spear", "2022-01-05", "2022-01-25"),
-    ("13505", "Primordial Jade Winged-Spear", "2022-05-31", "2022-06-21"),
-    ("13505", "Primordial Jade Winged-Spear", "2023-01-18", "2023-02-07"),
-    ("13505", "Primordial Jade Winged-Spear", "2024-02-20", "2024-03-12"),
+    (
+        "13505",
+        "Primordial Jade Winged-Spear",
+        "2021-02-03",
+        "2021-02-23",
+    ),
+    (
+        "13505",
+        "Primordial Jade Winged-Spear",
+        "2022-01-05",
+        "2022-01-25",
+    ),
+    (
+        "13505",
+        "Primordial Jade Winged-Spear",
+        "2022-05-31",
+        "2022-06-21",
+    ),
+    (
+        "13505",
+        "Primordial Jade Winged-Spear",
+        "2023-01-18",
+        "2023-02-07",
+    ),
+    (
+        "13505",
+        "Primordial Jade Winged-Spear",
+        "2024-02-20",
+        "2024-03-12",
+    ),
     ("11502", "Skyward Blade", "2021-03-17", "2021-04-06"),
     ("11502", "Skyward Blade", "2021-08-10", "2021-08-31"),
     ("13502", "Skyward Spine", "2021-07-21", "2021-08-10"),
@@ -317,9 +367,7 @@ fn was_featured(game: Game, pull: &Pull) -> bool {
     };
     let name = fold(&pull.name);
     FEATURED_WINDOWS.iter().any(|(id, item, from, to)| {
-        (id.eq_ignore_ascii_case(&pull.item_id) || fold(item) == name)
-            && *from <= day
-            && day <= *to
+        (id.eq_ignore_ascii_case(&pull.item_id) || fold(item) == name) && *from <= day && day <= *to
     })
 }
 
@@ -578,7 +626,10 @@ mod tests {
         assert_eq!(w.recent_fives[0].outcome.as_deref(), Some("loss"));
         // Tighnari (10000069) headlined the 3.0 banner (2022-08-24 to 2022-09-09), before he
         // joined the permanent pool.
-        let r = compute(Game::Hk4e, &[at(p(1, 5, "10000069"), "2022-09-01 12:00:00")]);
+        let r = compute(
+            Game::Hk4e,
+            &[at(p(1, 5, "10000069"), "2022-09-01 12:00:00")],
+        );
         let c = find(&r, "character");
         assert_eq!(
             (c.guaranteed, c.recent_fives[0].outcome.as_deref()),
