@@ -10,11 +10,13 @@
   const fivesNewestFirst = $derived([...p.recent_fives].reverse());
   const foursNewestFirst = $derived([...p.recent_fours].reverse());
   const pct = (n: number) => Math.min((n / p.hard_pity) * 100, 100);
+  // 50/50 on character banners, 75/25 on weapon banners; null when the banner tracks no result.
+  const odds = $derived(p.guarantee_odds !== null ? `${p.guarantee_odds}/${100 - p.guarantee_odds}` : '');
   const outcomeLabel = (o: FiveStar['outcome']) =>
-    o === 'win' ? 'Won 50/50' : o === 'loss' ? 'Lost 50/50' : o === 'guaranteed' ? 'Guaranteed' : '';
+    o === 'win' ? `Won ${odds}` : o === 'loss' ? `Lost ${odds}` : o === 'guaranteed' ? 'Guaranteed' : '';
   const legend = $derived(
-    p.banner === 'character'
-      ? [['win', 'Won 50/50'], ['loss', 'Lost 50/50'], ['guaranteed', 'Guaranteed'], ['plain', 'Result unknown'], ['now', 'Current pity']]
+    p.guarantee_odds !== null
+      ? [['win', `Won ${odds}`], ['loss', `Lost ${odds}`], ['guaranteed', 'Guaranteed'], ['plain', 'Result unknown'], ['now', 'Current pity']]
       : [['plain', 'Five-star pull'], ['now', 'Current pity']]
   );
 </script>
@@ -24,19 +26,19 @@
     <div>
       <h2 id="detail-title">{p.label}</h2>
       <p class="guarantee">
-        {#if p.banner === 'character'}
+        {#if p.guarantee_odds !== null}
           {#if p.guaranteed === true}
             <span class="state state-guaranteed">Next 5★ is guaranteed to be featured</span>
             <span class="muted">Your last 5★ was not the featured one.</span>
           {:else if p.guaranteed === false}
-            <span class="state">Not guaranteed: next 5★ is a 50/50</span>
+            <span class="state">Not guaranteed: next 5★ is a {odds}</span>
             <span class="muted">Your last 5★ was the featured one.</span>
           {:else}
             <span class="state">Guarantee status unknown</span>
             <span class="muted">Not enough history to tell.</span>
           {/if}
         {:else}
-          <span class="muted">Featured-rate rules differ on this banner, so no guarantee is tracked.</span>
+          <span class="muted">The featured item cannot be told from the history on this banner, so no guarantee is tracked.</span>
         {/if}
         {#if inSoft}<span class="chip">Past soft pity</span>{/if}
       </p>

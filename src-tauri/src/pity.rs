@@ -5,6 +5,12 @@
 //! values are the in-game guarantees. Re-check both whenever a game changes its banner rules.
 //! The Chronicled Wish values follow secondary sources (hard 90, soft near 74) and are the least
 //! certain entry in the table.
+//!
+//! Win/loss tracking ("odds") exists for the banners whose off-banner result is a permanent-pool
+//! item: character banners (50/50) and weapon / Light Cone / W-Engine banners (75/25). A result
+//! counts as a loss only when the 5-star is in the permanent pool; any other 5-star counts as
+//! featured, including a non-selected weapon under Epitomized Path. Chronicled, Bangboo and the
+//! Star Rail collaboration warps have no tracked result.
 
 use crate::models::{Game, Pull};
 use serde::Serialize;
@@ -14,8 +20,14 @@ struct Banner {
     label: &'static str,
     hard: u32,
     soft: Option<u32>,
-    /// Track the 50/50 "guaranteed" state (needs a standard-5★ id table).
-    fifty: bool,
+    /// Percent chance that a non-guaranteed 5★ is featured (50 for characters, 75 for weapons).
+    /// `Some` tracks the win / loss / guarantee state against the permanent-pool tables below.
+    odds: Option<u8>,
+}
+
+/// Banners that only exist for part of the game's life stay hidden until they have a pull.
+fn hidden_when_empty(key: &str) -> bool {
+    key == "beginner" || key.starts_with("collab")
 }
 
 fn banners(game: Game) -> &'static [Banner] {
@@ -26,35 +38,35 @@ fn banners(game: Game) -> &'static [Banner] {
                 label: "Character Event Wish",
                 hard: 90,
                 soft: Some(74),
-                fifty: true,
+                odds: Some(50),
             },
             Banner {
                 key: "weapon",
                 label: "Weapon Event Wish",
                 hard: 80,
                 soft: Some(63),
-                fifty: false,
+                odds: Some(75),
             },
             Banner {
                 key: "standard",
                 label: "Standard Wish",
                 hard: 90,
                 soft: Some(74),
-                fifty: false,
+                odds: None,
             },
             Banner {
                 key: "chronicled",
                 label: "Chronicled Wish",
                 hard: 90,
                 soft: Some(74),
-                fifty: false,
+                odds: None,
             },
             Banner {
                 key: "beginner",
                 label: "Beginners' Wish",
                 hard: 90,
                 soft: None,
-                fifty: false,
+                odds: None,
             },
         ],
         Game::Hkrpg => &[
@@ -63,28 +75,42 @@ fn banners(game: Game) -> &'static [Banner] {
                 label: "Character Event Warp",
                 hard: 90,
                 soft: Some(74),
-                fifty: true,
+                odds: Some(50),
             },
             Banner {
                 key: "weapon",
                 label: "Light Cone Event Warp",
                 hard: 80,
                 soft: Some(66),
-                fifty: false,
+                odds: Some(75),
             },
             Banner {
                 key: "standard",
                 label: "Stellar Warp",
                 hard: 90,
                 soft: Some(74),
-                fifty: false,
+                odds: None,
+            },
+            Banner {
+                key: "collab",
+                label: "Collaboration Warp",
+                hard: 90,
+                soft: None,
+                odds: None,
+            },
+            Banner {
+                key: "collab_weapon",
+                label: "Collaboration Light Cone Warp",
+                hard: 80,
+                soft: None,
+                odds: None,
             },
             Banner {
                 key: "beginner",
                 label: "Departure Warp",
                 hard: 50,
                 soft: None,
-                fifty: false,
+                odds: None,
             },
         ],
         Game::Nap => &[
@@ -93,28 +119,28 @@ fn banners(game: Game) -> &'static [Banner] {
                 label: "Exclusive Channel",
                 hard: 90,
                 soft: Some(74),
-                fifty: true,
+                odds: Some(50),
             },
             Banner {
                 key: "weapon",
                 label: "W-Engine Channel",
                 hard: 80,
                 soft: Some(65),
-                fifty: false,
+                odds: Some(75),
             },
             Banner {
                 key: "standard",
                 label: "Standard Channel",
                 hard: 90,
                 soft: Some(74),
-                fifty: false,
+                odds: None,
             },
             Banner {
                 key: "bangboo",
                 label: "Bangboo Channel",
                 hard: 80,
                 soft: Some(65),
-                fifty: false,
+                odds: None,
             },
         ],
     }
@@ -124,9 +150,10 @@ fn banners(game: Game) -> &'static [Banner] {
 fn standard_fives(game: Game) -> &'static [&'static str] {
     match game {
         // Paimon.moe local exports store character slugs instead of HoYo numeric IDs.
+        // 10000109 is Yumemizuki Mizuki, who joined the permanent pool after Genshin 5.5.
         Game::Hk4e => &[
             "10000003", "10000016", "10000035", "10000041", "10000042", "10000069", "10000079",
-            "diluc", "jean", "keqing", "qiqi", "mona", "tighnari", "dehya",
+            "10000109", "diluc", "jean", "keqing", "qiqi", "mona", "tighnari", "dehya", "mizuki",
         ],
         Game::Hkrpg => &["1003", "1004", "1101", "1104", "1107", "1209", "1211"],
         // Permanent S-rank agents in the Stable Channel. These IDs are returned in ZZZ
@@ -135,12 +162,40 @@ fn standard_fives(game: Game) -> &'static [&'static str] {
     }
 }
 
-/// HoYoverse's live history API frequently omits `item_id`, even when it provides a usable
-/// localized `name`. Older records must still identify standard-pool characters by name.
-fn is_standard_five(game: Game, pull: &Pull) -> bool {
-    let names: &[&str] = match game {
+/// Permanent-pool 5★ weapons, Light Cones and W-Engines (ids from the bundled catalog).
+/// Genshin: the ten Standard Wish weapons. Star Rail: the seven Stellar Warp Light Cones.
+/// Zenless: the six Stable Channel W-Engines (the signatures of the permanent S-rank agents).
+fn standard_weapons(game: Game) -> &'static [&'static str] {
+    match game {
         Game::Hk4e => &[
-            "Diluc", "Jean", "Keqing", "Mona", "Qiqi", "Tighnari", "Dehya",
+            "15502", "11501", "14502", "13505", "14501", "11502", "15501", "12501", "13502",
+            "12502",
+        ],
+        Game::Hkrpg => &[
+            "23003", "23004", "23005", "23000", "23012", "23002", "23013",
+        ],
+        Game::Nap => &["14102", "14104", "14110", "14114", "14118", "14121"],
+    }
+}
+
+/// Lower-case, straight-apostrophe form so `Amos’ Bow` and `Amos' Bow` compare equal.
+fn fold(name: &str) -> String {
+    name.trim().replace('\u{2019}', "'").to_lowercase()
+}
+
+/// English names of the permanent-pool 5★ characters, for records that carry no `item_id`.
+fn standard_five_names(game: Game) -> &'static [&'static str] {
+    match game {
+        Game::Hk4e => &[
+            "Diluc",
+            "Jean",
+            "Keqing",
+            "Mona",
+            "Qiqi",
+            "Tighnari",
+            "Dehya",
+            "Yumemizuki Mizuki",
+            "Mizuki",
         ],
         Game::Hkrpg => &[
             "Himeko", "Welt", "Bronya", "Gepard", "Clara", "Yanqing", "Bailu",
@@ -153,13 +208,61 @@ fn is_standard_five(game: Game, pull: &Pull) -> bool {
             "Rina",
             "Soldier 11",
         ],
+    }
+}
+
+/// English names of the permanent-pool 5★ weapons, Light Cones and W-Engines.
+fn standard_weapon_names(game: Game) -> &'static [&'static str] {
+    match game {
+        Game::Hk4e => &[
+            "Amos' Bow",
+            "Aquila Favonia",
+            "Lost Prayer to the Sacred Winds",
+            "Primordial Jade Winged-Spear",
+            "Skyward Atlas",
+            "Skyward Blade",
+            "Skyward Harp",
+            "Skyward Pride",
+            "Skyward Spine",
+            "Wolf's Gravestone",
+        ],
+        Game::Hkrpg => &[
+            "But the Battle Isn't Over",
+            "In the Name of the World",
+            "Moment of Victory",
+            "Night on the Milky Way",
+            "Sleep Like the Dead",
+            "Something Irreplaceable",
+            "Time Waits for No One",
+        ],
+        Game::Nap => &[
+            "Steel Cushion",
+            "The Brimstone",
+            "Hellfire Gears",
+            "The Restrained",
+            "Fusion Compiler",
+            "Weeping Cradle",
+        ],
+    }
+}
+
+/// HoYoverse's live history API frequently omits `item_id`, even when it provides a usable
+/// localized `name`. Older records must still identify permanent-pool items by name.
+fn is_standard_five(game: Game, banner: &str, pull: &Pull) -> bool {
+    let weapon = banner == "weapon";
+    let ids = if weapon {
+        standard_weapons(game)
+    } else {
+        standard_fives(game)
     };
-    standard_fives(game)
-        .iter()
-        .any(|id| id.eq_ignore_ascii_case(&pull.item_id))
-        || names
-            .iter()
-            .any(|name| name.eq_ignore_ascii_case(pull.name.trim()))
+    let names = if weapon {
+        standard_weapon_names(game)
+    } else {
+        standard_five_names(game)
+    };
+    let name = fold(&pull.name);
+    ids.iter().any(|id| id.eq_ignore_ascii_case(&pull.item_id))
+        || names.iter().any(|n| fold(n) == name)
 }
 
 pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
@@ -172,8 +275,10 @@ pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
         (Game::Hkrpg, "1") => "standard",
         (Game::Hkrpg, "2") => "beginner",
         (Game::Hkrpg, "11") => "character",
-        (Game::Hkrpg, "12" | "22") => "weapon",
-        (Game::Hkrpg, "21") => "character",
+        (Game::Hkrpg, "12") => "weapon",
+        // Collaboration warps keep their own pity, separate from the regular event warps.
+        (Game::Hkrpg, "21") => "collab",
+        (Game::Hkrpg, "22") => "collab_weapon",
         (Game::Nap, "1") => "standard",
         (Game::Nap, "2") => "character",
         (Game::Nap, "3") => "weapon",
@@ -215,6 +320,8 @@ pub struct BannerPity {
     pub hard_pity: u32,
     pub soft_pity: Option<u32>,
     pub guaranteed: Option<bool>,
+    /// Percent chance a non-guaranteed 5★ is featured (50 / 75); `None` when no result is tracked.
+    pub guarantee_odds: Option<u8>,
     pub total: u32,
     pub five_stars: u32,
     pub four_stars: u32,
@@ -264,9 +371,13 @@ pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
                     5 => {
                         fives += 1;
                         sum_five += counter;
-                        let is_standard = is_standard_five(game, p);
-                        let off = if b.fifty { Some(is_standard) } else { None };
-                        let outcome = if !b.fifty {
+                        let is_standard = is_standard_five(game, b.key, p);
+                        let off = if b.odds.is_some() {
+                            Some(is_standard)
+                        } else {
+                            None
+                        };
+                        let outcome = if b.odds.is_none() {
                             None
                         } else if is_standard {
                             guaranteed = Some(true);
@@ -298,7 +409,7 @@ pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
                     _ => {}
                 }
             }
-            if total == 0 && b.key == "beginner" {
+            if total == 0 && hidden_when_empty(b.key) {
                 return None;
             }
             Some(BannerPity {
@@ -308,6 +419,7 @@ pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
                 hard_pity: b.hard,
                 soft_pity: b.soft,
                 guaranteed,
+                guarantee_odds: b.odds,
                 total,
                 five_stars: fives,
                 four_stars: fours,
@@ -508,15 +620,148 @@ mod tests {
     }
 
     #[test]
-    fn star_rail_current_collaboration_event_types_are_recognized() {
-        assert_eq!(banner_key(Game::Hkrpg, "21"), Some("character"));
-        assert_eq!(banner_key(Game::Hkrpg, "22"), Some("weapon"));
+    fn star_rail_collaboration_warps_have_their_own_pity() {
+        assert_eq!(banner_key(Game::Hkrpg, "11"), Some("character"));
+        assert_eq!(banner_key(Game::Hkrpg, "12"), Some("weapon"));
+        assert_eq!(banner_key(Game::Hkrpg, "21"), Some("collab"));
+        assert_eq!(banner_key(Game::Hkrpg, "22"), Some("collab_weapon"));
+
+        let pulls = vec![
+            pull("hkrpg", "11", 1, 3, "a"),
+            pull("hkrpg", "21", 2, 3, "b"),
+            pull("hkrpg", "21", 3, 5, "9001"),
+            pull("hkrpg", "22", 4, 3, "c"),
+            pull("hkrpg", "12", 5, 3, "d"),
+        ];
+        let r = compute(Game::Hkrpg, &pulls);
+        assert_eq!(
+            (find(&r, "character").pity, find(&r, "character").total),
+            (1, 1)
+        );
+        let collab = find(&r, "collab");
+        assert_eq!((collab.pity, collab.total, collab.five_stars), (0, 2, 1));
+        assert_eq!(collab.guaranteed, None);
+        assert_eq!(collab.recent_fives[0].outcome, None);
+        assert_eq!(find(&r, "collab_weapon").total, 1);
+        assert_eq!((find(&r, "weapon").pity, find(&r, "weapon").total), (1, 1));
     }
 
     #[test]
-    fn weapon_banner_has_no_fifty_state() {
-        let r = compute(Game::Hk4e, &[pull("hk4e", "302", 1, 5, "15502")]);
-        assert_eq!(find(&r, "weapon").guaranteed, None);
+    fn collaboration_warps_are_hidden_until_used() {
+        let r = compute(Game::Hkrpg, &[pull("hkrpg", "11", 1, 3, "a")]);
+        assert!(r.iter().all(|b| !b.banner.starts_with("collab")));
+    }
+
+    fn weapon_outcomes(game: Game, gacha_type: &str, fives: &[&str]) -> Vec<Option<String>> {
+        let pulls: Vec<Pull> = fives
+            .iter()
+            .enumerate()
+            .map(|(i, item)| pull(game.as_str(), gacha_type, i as u32 + 1, 5, item))
+            .collect();
+        let r = compute(game, &pulls);
+        find(&r, "weapon")
+            .recent_fives
+            .iter()
+            .map(|f| f.outcome.clone())
+            .collect()
+    }
+
+    #[test]
+    fn genshin_weapon_banner_loses_only_to_the_standard_weapon_pool() {
+        // Unknown first featured pull, standard Skyward Harp (loss), guaranteed featured,
+        // then a featured pull that was not guaranteed. A featured weapon always counts as
+        // a win, even when it is not the one selected on Epitomized Path.
+        let outcomes = weapon_outcomes(Game::Hk4e, "302", &["14515", "15501", "14516", "14515"]);
+        let expected: Vec<Option<String>> = vec![
+            None,
+            Some("loss".into()),
+            Some("guaranteed".into()),
+            Some("win".into()),
+        ];
+        assert_eq!(outcomes, expected);
+
+        let r = compute(Game::Hk4e, &[pull("hk4e", "302", 1, 5, "12502")]);
+        let w = find(&r, "weapon");
+        assert_eq!((w.guaranteed, w.guarantee_odds), (Some(true), Some(75)));
+        assert_eq!(w.recent_fives[0].off_banner, Some(true));
+    }
+
+    #[test]
+    fn star_rail_light_cone_banner_tracks_standard_light_cones() {
+        let outcomes = weapon_outcomes(Game::Hkrpg, "12", &["23013", "23020", "23021"]);
+        let expected: Vec<Option<String>> = vec![
+            Some("loss".into()),
+            Some("guaranteed".into()),
+            Some("win".into()),
+        ];
+        assert_eq!(outcomes, expected);
+        let r = compute(Game::Hkrpg, &[pull("hkrpg", "12", 1, 5, "23013")]);
+        assert_eq!(find(&r, "weapon").guarantee_odds, Some(75));
+    }
+
+    #[test]
+    fn zenless_w_engine_channel_tracks_standard_w_engines() {
+        let outcomes = weapon_outcomes(Game::Nap, "3", &["14102", "14999"]);
+        let expected: Vec<Option<String>> = vec![Some("loss".into()), Some("guaranteed".into())];
+        assert_eq!(outcomes, expected);
+    }
+
+    #[test]
+    fn weapon_losses_are_recognized_by_name_when_item_id_is_missing() {
+        let mut harp = pull("hk4e", "302", 1, 5, "");
+        harp.name = "Amos\u{2019} Bow".into(); // typographic apostrophe
+        let mut lc = pull("hkrpg", "12", 1, 5, "");
+        lc.name = "time waits for no one".into();
+        let mut engine = pull("nap", "3", 1, 4, "");
+        engine.name = "Weeping Cradle".into();
+        for (game, pull) in [(Game::Hk4e, harp), (Game::Hkrpg, lc), (Game::Nap, engine)] {
+            let r = compute(game, &[pull]);
+            assert_eq!(
+                find(&r, "weapon").recent_fives[0].outcome.as_deref(),
+                Some("loss")
+            );
+        }
+    }
+
+    #[test]
+    fn a_standard_weapon_is_not_a_standard_character_loss() {
+        // The permanent character list must not classify weapon ids, and vice versa.
+        let r = compute(Game::Hk4e, &[pull("hk4e", "301", 1, 5, "15502")]);
+        assert_eq!(
+            find(&r, "character").recent_fives[0].outcome,
+            None,
+            "a weapon id on the character banner is not a standard character"
+        );
+        let r = compute(Game::Hk4e, &[pull("hk4e", "302", 1, 5, "10000003")]);
+        assert_eq!(find(&r, "weapon").recent_fives[0].outcome, None);
+    }
+
+    #[test]
+    fn genshin_mizuki_is_a_permanent_pool_loss() {
+        let r = compute(Game::Hk4e, &[p(1, 5, "10000109")]);
+        let c = find(&r, "character");
+        assert_eq!(c.recent_fives[0].outcome.as_deref(), Some("loss"));
+        assert_eq!(c.guaranteed, Some(true));
+    }
+
+    #[test]
+    fn chronicled_and_bangboo_banners_track_no_result() {
+        let r = compute(
+            Game::Hk4e,
+            &[
+                pull("hk4e", "500", 1, 5, "10000003"),
+                pull("hk4e", "500", 2, 5, "x"),
+            ],
+        );
+        let chronicled = find(&r, "chronicled");
+        assert_eq!(chronicled.guaranteed, None);
+        assert_eq!(chronicled.guarantee_odds, None);
+        assert!(chronicled.recent_fives.iter().all(|f| f.outcome.is_none()));
+
+        let r = compute(Game::Nap, &[pull("nap", "5", 1, 4, "14102")]);
+        let bangboo = find(&r, "bangboo");
+        assert_eq!((bangboo.guaranteed, bangboo.guarantee_odds), (None, None));
+        assert_eq!(bangboo.recent_fives[0].outcome, None);
     }
 
     #[test]

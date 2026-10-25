@@ -25,9 +25,9 @@
 
   function rowNote(b: BannerPity): string {
     if (!b.total) return 'No pulls yet';
-    if (b.banner === 'character') {
+    if (b.guarantee_odds !== null) {
       if (b.guaranteed === true) return 'Next 5★ is guaranteed';
-      if (b.guaranteed === false) return 'Not guaranteed: next 5★ is a 50/50';
+      if (b.guaranteed === false) return `Not guaranteed: next 5★ is a ${b.guarantee_odds}/${100 - b.guarantee_odds}`;
     }
     return `${b.total} pulls, ${b.five_stars} five-star${b.five_stars === 1 ? '' : 's'}`;
   }

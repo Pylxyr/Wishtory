@@ -27,7 +27,7 @@ export interface FiveStar { name: string; pity: number; time: string; off_banner
 export interface FourStar { name: string; pity: number; time: string; }
 export interface BannerPity {
   banner: string; label: string; pity: number; hard_pity: number; soft_pity: number | null;
-  guaranteed: boolean | null; total: number; five_stars: number; four_stars: number;
+  guaranteed: boolean | null; guarantee_odds: number | null; total: number; five_stars: number; four_stars: number;
   avg_five_pity: number | null; avg_four_pity: number | null;
   recent_fives: FiveStar[]; recent_fours: FourStar[];
 }
@@ -47,7 +47,8 @@ export const BANNERS: Record<GameId, { key: string; label: string }[]> = {
   ],
   hkrpg: [
     { key: 'character', label: 'Character Warp' }, { key: 'weapon', label: 'Light Cone Warp' },
-    { key: 'standard', label: 'Stellar Warp' }, { key: 'beginner', label: 'Departure Warp' }
+    { key: 'standard', label: 'Stellar Warp' }, { key: 'collab', label: 'Collaboration Warp' },
+    { key: 'collab_weapon', label: 'Collaboration Light Cone Warp' }, { key: 'beginner', label: 'Departure Warp' }
   ],
   nap: [
     { key: 'character', label: 'Exclusive Channel' }, { key: 'weapon', label: 'W-Engine Channel' },
@@ -57,7 +58,7 @@ export const BANNERS: Record<GameId, { key: string; label: string }[]> = {
 
 export const GACHA_LABELS: Record<GameId, Record<string, string>> = {
   hk4e: { '100': "Beginners'", '200': 'Standard', '301': 'Character', '400': 'Character', '302': 'Weapon', '500': 'Chronicled' },
-  hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone', '21': 'Character Event', '22': 'Light Cone Event' },
+  hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone', '21': 'Collab Character', '22': 'Collab Light Cone' },
   nap: { '1': 'Standard', '2': 'Exclusive', '3': 'W-Engine', '5': 'Bangboo' }
 };
 
