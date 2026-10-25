@@ -1,5 +1,58 @@
 <script lang="ts">
-  import { app, setLogging, setTheme } from '../lib/state.svelte';
+  import { app, setLogging, setTheme, toast } from '../lib/state.svelte';
+  import { api, errMsg } from '../lib/api';
+
+  const GAME_NAMES = { hk4e: 'Genshin Impact', hkrpg: 'Honkai: Star Rail', nap: 'Zenless Zone Zero' };
+  const ROW_LIMIT = 300;
+  type Change = 'New' | 'Changed' | 'Removed';
+  interface Row { id: string; change: Change; game: string; name: string; featured: string; ran: string; }
+
+  let checking = $state(false);
+
+  const itemNames = $derived(new Map((app.catalog?.items ?? []).map((i) => [`${i.game}:${i.id}`, i.name])));
+  // What the last installed update did, newest events first. A removed banner is gone from the list,
+  // so only its id is known.
+  const rows = $derived.by((): Row[] => {
+    const update = app.bannerUpdate, set = app.banners;
+    if (!update || !set) return [];
+    const byId = new Map(set.banners.map((b) => [b.id, b]));
+    const row = (id: string, change: Change): Row => {
+      const b = byId.get(id);
+      if (!b) return { id, change, game: '', name: id, featured: '', ran: '' };
+      return {
+        id, change, game: GAME_NAMES[b.game], name: b.name,
+        featured: b.featured_5.map((f) => itemNames.get(`${b.game}:${f}`) ?? f).join(' / '),
+        ran: `${b.start.slice(0, 10)} → ${b.end.slice(0, 10)}`
+      };
+    };
+    return [
+      ...update.added.map((id) => row(id, 'New')),
+      ...update.changed.map((id) => row(id, 'Changed')),
+      ...update.removed.map((id) => row(id, 'Removed'))
+    ].sort((a, b) => b.ran.localeCompare(a.ran));
+  });
+  const installedAt = $derived(app.bannerUpdate && app.bannerUpdate.installed_at ? new Date(app.bannerUpdate.installed_at * 1000).toLocaleString() : '');
+
+  async function updateBanners() {
+    checking = true;
+    try {
+      const update = await api.refreshBanners(true);
+      if (update.status === 'updated') {
+        app.banners = await api.getBanners();
+        app.bannerUpdate = update;
+        app.refreshKey++;
+        toast('ok', `Banner list updated to version ${update.banners_version}: ${update.added.length} new, ${update.changed.length} changed.`);
+      } else if (update.status === 'already-checking') {
+        toast('info', 'A banner check is already running.');
+      } else {
+        toast('ok', 'The banner list is up to date.');
+      }
+    } catch (e) {
+      toast('warn', `Could not check for banner updates: ${errMsg(e)}`);
+    } finally {
+      checking = false;
+    }
+  }
 </script>
 
 <div class="page-head">
@@ -28,3 +81,43 @@
       onclick={() => setLogging(!app.loggingEnabled)}><i></i></button>
   </div>
 </div>
+
+<section class="banner-section" aria-labelledby="banner-heading">
+  <div class="settings-group">
+    <div class="setting-row">
+      <div class="setting-copy">
+        <h2 id="banner-heading">Banner list</h2>
+        <p class="muted">
+          {#if app.banners}
+            Version {app.banners.banners_version} with {app.banners.banners.length.toLocaleString()} banner events. It is checked once a day, and History uses it to show which banner each pull was made on.
+          {:else}
+            The banner list could not be loaded.
+          {/if}
+        </p>
+      </div>
+      <button class="btn primary" disabled={checking} onclick={updateBanners}>{checking ? 'Checking…' : 'Update banners'}</button>
+    </div>
+  </div>
+  {#if app.bannerUpdate && app.bannerUpdate.status === 'updated'}
+    <p class="muted banner-meta">Last update: version {app.bannerUpdate.banners_version}, installed {installedAt}. {app.bannerUpdate.added.length} new, {app.bannerUpdate.changed.length} changed, {app.bannerUpdate.removed.length} removed.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Change</th><th>Game</th><th>Banner</th><th>Featured</th><th>Ran</th></tr></thead>
+        <tbody>
+          {#each rows.slice(0, ROW_LIMIT) as r (r.change + r.id)}
+            <tr>
+              <td><span class="chip" class:ok={r.change === 'New'} class:err={r.change === 'Removed'}>{r.change}</span></td>
+              <td class="muted">{r.game}</td>
+              <td class="item">{r.name}</td>
+              <td class="featured">{r.featured}</td>
+              <td class="muted">{r.ran}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    {#if rows.length > ROW_LIMIT}<p class="muted banner-meta">Showing the newest {ROW_LIMIT} of {rows.length.toLocaleString()} changes.</p>{/if}
+  {:else}
+    <p class="muted banner-meta">No banner update has been installed yet. The list that came with this version is in use.</p>
+  {/if}
+</section>

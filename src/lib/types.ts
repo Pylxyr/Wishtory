@@ -5,6 +5,7 @@ export interface Account { game: GameId; uid: string; nickname: string; timezone
 export interface Pull {
   id: string; game: string; uid: string; gacha_type: string; gacha_id: string; item_id: string;
   name: string; item_type: string; rank_type: number; time: string; lang: string; count: number;
+  banner_name: string | null;
 }
 
 export interface CatalogItem {

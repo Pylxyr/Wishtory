@@ -13,7 +13,10 @@
 //! Star Rail collaboration warps have no tracked result. A Genshin permanent-pool item pulled
 //! while it was itself a rate-up item (`FEATURED_WINDOWS`) counts as featured too.
 
-use crate::models::{Game, Pull};
+use crate::{
+    catalog::BannerEntry,
+    models::{Game, Pull},
+};
 use serde::Serialize;
 
 struct Banner {
@@ -369,6 +372,48 @@ fn was_featured(game: Game, pull: &Pull) -> bool {
     FEATURED_WINDOWS.iter().any(|(id, item, from, to)| {
         (id.eq_ignore_ascii_case(&pull.item_id) || fold(item) == name) && *from <= day && day <= *to
     })
+}
+
+/// The banner event a pull was made on, or `None` when the banner list cannot say for sure.
+/// Star Rail and Zenless report a `gacha_id`; otherwise the pull's server-local time picks the
+/// event window of the same banner type. Concurrent banners (two Genshin character banners) are
+/// told apart only by a pull of a featured 5★; anything still ambiguous stays unresolved.
+pub fn resolve_banner<'a>(
+    banners: &'a [BannerEntry],
+    game: Game,
+    pull: &Pull,
+) -> Option<&'a BannerEntry> {
+    let pool = banner_key(game, &pull.gacha_type)?;
+    let same_pool = |b: &&BannerEntry| b.game == game.as_str() && b.pool == pool;
+    if !pull.gacha_id.is_empty() {
+        if let Some(found) = banners
+            .iter()
+            .filter(same_pool)
+            .find(|b| b.gacha_ids.iter().any(|id| *id == pull.gacha_id))
+        {
+            return Some(found);
+        }
+    }
+    let live: Vec<&BannerEntry> = banners
+        .iter()
+        .filter(same_pool)
+        .filter(|b| b.start.as_str() <= pull.time.as_str() && pull.time.as_str() <= b.end.as_str())
+        .collect();
+    match live.as_slice() {
+        [] => None,
+        [only] => Some(*only),
+        several => {
+            let mut featured = several
+                .iter()
+                .filter(|b| b.featured_5.iter().any(|id| *id == pull.item_id));
+            let first = featured.next()?;
+            if featured.next().is_some() {
+                None
+            } else {
+                Some(*first)
+            }
+        }
+    }
 }
 
 pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
@@ -955,5 +1000,128 @@ mod tests {
         assert_eq!(character.recent_fives.len(), 1);
         assert_eq!(character.recent_fours.len(), 1);
         assert_eq!(character.recent_fours[0].name, "n");
+    }
+
+    fn event(
+        id: &str,
+        game: &str,
+        pool: &str,
+        start: &str,
+        end: &str,
+        featured: &[&str],
+    ) -> BannerEntry {
+        BannerEntry {
+            id: id.into(),
+            game: game.into(),
+            pool: pool.into(),
+            name: id.into(),
+            gacha_ids: vec![],
+            start: start.into(),
+            end: end.into(),
+            featured_5: featured.iter().map(|f| f.to_string()).collect(),
+            featured_4: vec![],
+        }
+    }
+
+    fn at(mut pull: Pull, time: &str) -> Pull {
+        pull.time = time.into();
+        pull
+    }
+
+    #[test]
+    fn banner_is_resolved_from_the_server_local_event_window() {
+        let list = vec![
+            event(
+                "a",
+                "hk4e",
+                "character",
+                "2026-01-01 18:00:00",
+                "2026-01-21 17:59:59",
+                &["1"],
+            ),
+            event(
+                "b",
+                "hk4e",
+                "character",
+                "2026-01-21 18:00:00",
+                "2026-02-10 17:59:59",
+                &["2"],
+            ),
+            event(
+                "w",
+                "hk4e",
+                "weapon",
+                "2026-01-01 18:00:00",
+                "2026-02-10 17:59:59",
+                &["3"],
+            ),
+        ];
+        let id = |pull: Pull| resolve_banner(&list, Game::Hk4e, &pull).map(|b| b.id.clone());
+        assert_eq!(
+            id(at(p(1, 3, "x"), "2026-01-21 17:59:59")),
+            Some("a".into())
+        );
+        assert_eq!(
+            id(at(p(1, 3, "x"), "2026-01-21 18:00:00")),
+            Some("b".into())
+        );
+        assert_eq!(id(at(p(1, 3, "x"), "2025-12-31 23:59:59")), None);
+        assert_eq!(id(at(p(1, 3, "x"), "2026-02-10 18:00:00")), None);
+        // The weapon banner is a separate pool, and standard / chronicled pulls have no event.
+        assert_eq!(
+            id(at(pull("hk4e", "302", 1, 3, "x"), "2026-01-05 12:00:00")),
+            Some("w".into())
+        );
+        assert_eq!(
+            id(at(pull("hk4e", "200", 1, 3, "x"), "2026-01-05 12:00:00")),
+            None
+        );
+        assert_eq!(
+            id(at(pull("hk4e", "500", 1, 3, "x"), "2026-01-05 12:00:00")),
+            None
+        );
+    }
+
+    #[test]
+    fn concurrent_banners_need_a_gacha_id_or_a_featured_five_star() {
+        let mut first = event(
+            "one",
+            "nap",
+            "character",
+            "2026-01-01 12:00:00",
+            "2026-01-21 11:59:59",
+            &["10"],
+        );
+        first.gacha_ids = vec!["2001".into()];
+        let mut second = event(
+            "two",
+            "nap",
+            "character",
+            "2026-01-01 12:00:00",
+            "2026-01-21 11:59:59",
+            &["20"],
+        );
+        second.gacha_ids = vec!["2002".into()];
+        let list = vec![first, second];
+        let id = |pull: Pull| resolve_banner(&list, Game::Nap, &pull).map(|b| b.id.clone());
+        let base = || at(pull("nap", "2", 1, 2, "x"), "2026-01-05 12:00:00");
+        // The pull's own gacha_id decides, even when no featured item is involved.
+        let mut with_id = base();
+        with_id.gacha_id = "2002".into();
+        assert_eq!(id(with_id), Some("two".into()));
+        // Without a gacha_id the two windows overlap: only a featured 5-star can tell them apart.
+        assert_eq!(id(base()), None);
+        assert_eq!(
+            id(at(pull("nap", "2", 1, 4, "10"), "2026-01-05 12:00:00")),
+            Some("one".into())
+        );
+        assert_eq!(
+            id(at(pull("nap", "2", 1, 4, "20"), "2026-01-05 12:00:00")),
+            Some("two".into())
+        );
+        // A gacha_id that no listed banner knows falls back to the time window.
+        let mut unknown = at(pull("nap", "2", 1, 4, "20"), "2026-01-05 12:00:00");
+        unknown.gacha_id = "9999".into();
+        assert_eq!(id(unknown), Some("two".into()));
     }
 }

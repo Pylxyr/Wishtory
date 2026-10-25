@@ -57,7 +57,10 @@ impl Db {
                 item_type TEXT NOT NULL DEFAULT '', rank_type INTEGER NOT NULL, time TEXT NOT NULL,
                 lang TEXT NOT NULL DEFAULT '', count INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (game, uid, id));
-             CREATE INDEX IF NOT EXISTS idx_pulls_acc ON pulls (game, uid, gacha_type);",
+             CREATE INDEX IF NOT EXISTS idx_pulls_acc ON pulls (game, uid, gacha_type);
+             CREATE TABLE IF NOT EXISTS pull_banners (
+                game TEXT NOT NULL, uid TEXT NOT NULL, pull_id TEXT NOT NULL, banner_id TEXT NOT NULL,
+                PRIMARY KEY (game, uid, pull_id));",
         )?;
         let db = Db(Mutex::new(conn));
         if user_version < 2 {
@@ -311,6 +314,10 @@ impl Db {
             params![game, uid],
         )?;
         tx.execute(
+            "DELETE FROM pull_banners WHERE game = ?1 AND uid = ?2",
+            params![game, uid],
+        )?;
+        tx.execute(
             "DELETE FROM accounts WHERE game = ?1 AND uid = ?2",
             params![game, uid],
         )?;
@@ -323,9 +330,82 @@ impl Db {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let deleted = tx.execute("DELETE FROM pulls", [])?;
+        tx.execute("DELETE FROM pull_banners", [])?;
         tx.execute("DELETE FROM accounts", [])?;
         tx.commit()?;
         Ok(deleted)
+    }
+
+    /// Pulls of one account that have no stored banner yet, oldest → newest.
+    pub fn pulls_without_banner(&self, game: &str, uid: &str) -> Result<Vec<Pull>, AppError> {
+        let conn = self.conn();
+        let mut st = conn.prepare(
+            "SELECT p.id, p.game, p.uid, p.gacha_type, p.gacha_id, p.item_id, p.name, p.item_type,
+                    p.rank_type, p.time, p.lang, p.count
+             FROM pulls p
+             WHERE p.game = ?1 AND p.uid = ?2
+               AND NOT EXISTS (SELECT 1 FROM pull_banners b
+                               WHERE b.game = p.game AND b.uid = p.uid AND b.pull_id = p.id)
+             ORDER BY p.time ASC, CAST(p.id AS INTEGER) ASC",
+        )?;
+        let rows = st.query_map(params![game, uid], |r| {
+            Ok(Pull {
+                id: r.get(0)?,
+                game: r.get(1)?,
+                uid: r.get(2)?,
+                gacha_type: r.get(3)?,
+                gacha_id: r.get(4)?,
+                item_id: r.get(5)?,
+                name: r.get(6)?,
+                item_type: r.get(7)?,
+                rank_type: r.get(8)?,
+                time: r.get(9)?,
+                lang: r.get(10)?,
+                count: r.get(11)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Stores `(pull id, banner id)` pairs for one account, replacing any earlier value.
+    pub fn set_pull_banners(
+        &self,
+        game: &str,
+        uid: &str,
+        rows: &[(String, String)],
+    ) -> Result<(), AppError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        {
+            let mut insert = tx.prepare(
+                "INSERT OR REPLACE INTO pull_banners (game, uid, pull_id, banner_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for (pull_id, banner_id) in rows {
+                insert.execute(params![game, uid, pull_id, banner_id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Pull id → banner id for one account.
+    pub fn pull_banners_for(
+        &self,
+        game: &str,
+        uid: &str,
+    ) -> Result<HashMap<String, String>, AppError> {
+        let conn = self.conn();
+        let mut st = conn
+            .prepare("SELECT pull_id, banner_id FROM pull_banners WHERE game = ?1 AND uid = ?2")?;
+        let rows = st.query_map(params![game, uid], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Forget every stored banner so they are resolved again against a newer banner list.
+    pub fn clear_pull_banners(&self) -> Result<(), AppError> {
+        self.conn().execute("DELETE FROM pull_banners", [])?;
+        Ok(())
     }
 
     /// Oldest → newest.
@@ -466,5 +546,41 @@ mod tests {
         assert!(db.pulls_for("hk4e", "1").unwrap().is_empty());
         assert!(db.pulls_for("hkrpg", "2").unwrap().is_empty());
         assert!(db.pulls_for("nap", "3").unwrap().is_empty());
+    }
+
+    #[test]
+    fn pull_banners_are_stored_per_account_and_removed_with_it() {
+        let path =
+            std::env::temp_dir().join(format!("wishtory-db-banners-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        db.merge("hk4e", "1", 8, &[pull("a", "x"), pull("b", "y")])
+            .unwrap();
+        assert_eq!(db.pulls_without_banner("hk4e", "1").unwrap().len(), 2);
+        db.set_pull_banners("hk4e", "1", &[("a".into(), "banner-1".into())])
+            .unwrap();
+        let missing = db.pulls_without_banner("hk4e", "1").unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].id, "b");
+        let stored = db.pull_banners_for("hk4e", "1").unwrap();
+        assert_eq!(stored.get("a").map(String::as_str), Some("banner-1"));
+        // A later value replaces the earlier one.
+        db.set_pull_banners("hk4e", "1", &[("a".into(), "banner-2".into())])
+            .unwrap();
+        assert_eq!(
+            db.pull_banners_for("hk4e", "1")
+                .unwrap()
+                .get("a")
+                .map(String::as_str),
+            Some("banner-2")
+        );
+        db.clear_pull_banners().unwrap();
+        assert_eq!(db.pulls_without_banner("hk4e", "1").unwrap().len(), 2);
+        db.set_pull_banners("hk4e", "1", &[("a".into(), "banner-1".into())])
+            .unwrap();
+        db.delete_account("hk4e", "1").unwrap();
+        assert!(db.pull_banners_for("hk4e", "1").unwrap().is_empty());
+        drop(db);
+        let _ = std::fs::remove_file(&path);
     }
 }

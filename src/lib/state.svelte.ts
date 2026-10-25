@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { api, errMsg } from './api';
-import type { Account, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
+import type { Account, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
 
 export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'logging';
 interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
@@ -12,6 +12,8 @@ export const app = $state({
   accounts: [] as Account[],
   installs: [] as GameInstall[],
   catalog: null as GameCatalog | null,
+  banners: null as BannerSet | null,
+  bannerUpdate: null as BannerUpdate | null, // the last installed banner update, kept across restarts
   busy: false,
   refreshKey: 0, // bump to make pages reload their data
   toasts: [] as Toast[],

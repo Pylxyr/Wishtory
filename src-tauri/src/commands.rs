@@ -2,7 +2,7 @@
 
 use crate::{
     authkey,
-    catalog::{BannerSet, BannerStore, BannerUpdate, Catalog, CatalogStore},
+    catalog::{BannerEntry, BannerSet, BannerStore, BannerUpdate, Catalog, CatalogStore},
     db::Db,
     discover,
     error::AppError,
@@ -14,6 +14,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
+    collections::HashMap,
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -62,8 +63,49 @@ fn progress_to(app: &tauri::AppHandle) -> impl Fn(String) + '_ {
     }
 }
 
-fn store(db: &Db, game: Game, f: fetch::Fetched) -> Result<FetchSummary, AppError> {
+/// Records which banner each saved pull of an account was made on. Only pulls without a stored
+/// banner are resolved, so it is cheap to call after every sync, import and banner update.
+fn assign_banners(db: &Db, banners: &BannerSet, game: Game, uid: &str) -> Result<(), AppError> {
+    let rows: Vec<(String, String)> = db
+        .pulls_without_banner(game.as_str(), uid)?
+        .iter()
+        .filter_map(|p| {
+            pity::resolve_banner(&banners.banners, game, p).map(|b| (p.id.clone(), b.id.clone()))
+        })
+        .collect();
+    if rows.is_empty() {
+        return Ok(());
+    }
+    db.set_pull_banners(game.as_str(), uid, &rows)
+}
+
+fn assign_all_banners(db: &Db, banners: &BannerSet) -> Result<(), AppError> {
+    for account in db.list_accounts()? {
+        if let Some(game) = Game::ALL
+            .iter()
+            .copied()
+            .find(|g| g.as_str() == account.game)
+        {
+            assign_banners(db, banners, game, &account.uid)?;
+        }
+    }
+    Ok(())
+}
+
+fn store(
+    db: &Db,
+    banners: &BannerSet,
+    game: Game,
+    f: fetch::Fetched,
+) -> Result<FetchSummary, AppError> {
     let added = db.merge(game.as_str(), &f.uid, f.timezone, &f.pulls)?;
+    if let Err(e) = assign_banners(db, banners, game, &f.uid) {
+        wlog!(
+            Level::Warn,
+            "{}: banner assignment failed: {e}",
+            game.as_str()
+        );
+    }
     wlog!(
         Level::Info,
         "{}: saved UID {} ({} fetched, {} new)",
@@ -86,6 +128,7 @@ fn store(db: &Db, game: Game, f: fetch::Fetched) -> Result<FetchSummary, AppErro
 pub async fn fetch_history(
     app: tauri::AppHandle,
     db: State<'_, Db>,
+    banners: State<'_, BannerStore>,
     game: Game,
     url: String,
 ) -> Result<FetchSummary, AppError> {
@@ -100,7 +143,7 @@ pub async fn fetch_history(
         .await // network first; never hold the DB lock across await
         .inspect_err(|e| wlog!(Level::Warn, "{}: fetch failed: {e}", game.as_str()))?;
     progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-    store(&db, game, f)
+    store(&db, &banners.current(), game, f)
 }
 
 /// One-click flow: read the cache (read-only), then try the cached links newest first until one
@@ -109,6 +152,7 @@ pub async fn fetch_history(
 pub async fn refresh_from_game(
     app: tauri::AppHandle,
     db: State<'_, Db>,
+    banners: State<'_, BannerStore>,
     game: Game,
 ) -> Result<FetchSummary, AppError> {
     let progress = progress_to(&app);
@@ -145,7 +189,7 @@ pub async fn refresh_from_game(
             Ok(f) => {
                 wlog!(Level::Debug, "{}: link {} accepted", game.as_str(), i + 1);
                 progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-                return store(&db, game, f);
+                return store(&db, &banners.current(), game, f);
             }
             Err(AppError::AuthExpired) => {
                 wlog!(
@@ -223,6 +267,7 @@ pub async fn get_banner_update(
 /// `force` skips the once-a-day gate (the "Update banners" button).
 #[tauri::command]
 pub async fn refresh_banners(
+    db: State<'_, Db>,
     banners: State<'_, BannerStore>,
     force: bool,
 ) -> Result<BannerUpdate, String> {
@@ -231,23 +276,83 @@ pub async fn refresh_banners(
         Ok(update) => wlog!(Level::Debug, "banner refresh: {}", update.status),
         Err(e) => wlog!(Level::Warn, "banner refresh failed: {e}"),
     }
+    // A newer list can move windows, so every saved pull is matched against it again.
+    if matches!(&result, Ok(update) if update.status == "updated") {
+        db.clear_pull_banners().map_err(|e| e.to_string())?;
+        assign_all_banners(&db, &banners.current()).map_err(|e| e.to_string())?;
+    }
     result
+}
+
+#[derive(Serialize)]
+pub struct HistoryPull {
+    #[serde(flatten)]
+    pull: Pull,
+    /// The banner event the pull was made on, e.g. "Ballad in Goblets · Venti"; `None` when the
+    /// banner list cannot place it.
+    banner_name: Option<String>,
+}
+
+/// "Event name · Featured A / Featured B", with item names looked up in the catalog.
+fn banner_label(entry: &BannerEntry, names: &HashMap<(&str, &str), &str>) -> String {
+    let featured: Vec<&str> = entry
+        .featured_5
+        .iter()
+        .map(|id| {
+            names
+                .get(&(entry.game.as_str(), id.as_str()))
+                .copied()
+                .unwrap_or(id.as_str())
+        })
+        .collect();
+    format!("{} · {}", entry.name, featured.join(" / "))
 }
 
 /// Newest first, optionally filtered by banner key ("character", "weapon", ...).
 #[tauri::command]
 pub async fn get_history(
     db: State<'_, Db>,
+    catalog: State<'_, CatalogStore>,
+    banners: State<'_, BannerStore>,
     game: Game,
     uid: String,
     banner: Option<String>,
-) -> Result<Vec<Pull>, AppError> {
+) -> Result<Vec<HistoryPull>, AppError> {
+    let banner_list = banners.current();
+    if let Err(e) = assign_banners(&db, &banner_list, game, &uid) {
+        wlog!(
+            Level::Warn,
+            "{}: banner assignment failed: {e}",
+            game.as_str()
+        );
+    }
+    let assigned = db.pull_banners_for(game.as_str(), &uid)?;
+    let catalog = catalog.current();
+    let names: HashMap<(&str, &str), &str> = catalog
+        .items
+        .iter()
+        .map(|i| ((i.game.as_str(), i.id.as_str()), i.name.as_str()))
+        .collect();
+    let entries: HashMap<&str, &BannerEntry> = banner_list
+        .banners
+        .iter()
+        .map(|b| (b.id.as_str(), b))
+        .collect();
     let mut pulls = db.pulls_for(game.as_str(), &uid)?;
     if let Some(b) = banner.as_deref().filter(|b| !b.is_empty()) {
         pulls.retain(|p| pity::banner_key(game, &p.gacha_type) == Some(b));
     }
     pulls.reverse();
-    Ok(pulls)
+    Ok(pulls
+        .into_iter()
+        .map(|pull| {
+            let banner_name = assigned
+                .get(&pull.id)
+                .and_then(|id| entries.get(id.as_str()))
+                .map(|entry| banner_label(entry, &names));
+            HistoryPull { pull, banner_name }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -305,7 +410,7 @@ pub async fn import_file(
         }
         let text = decode_text(&std::fs::read(&path)?)?;
         let db = app.state::<Db>();
-        uigf::import_with_catalog(&db, &text, &catalog)
+        let summary = uigf::import_with_catalog(&db, &text, &catalog)
             .inspect(|r| {
                 wlog!(
                     Level::Info,
@@ -316,7 +421,12 @@ pub async fn import_file(
                     r.accounts
                 )
             })
-            .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))
+            .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))?;
+        let banners = app.state::<BannerStore>().current();
+        if let Err(e) = assign_all_banners(&db, &banners) {
+            wlog!(Level::Warn, "banner assignment failed: {e}");
+        }
+        Ok(summary)
     })
     .await
     .map_err(join_err)?

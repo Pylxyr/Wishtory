@@ -59,7 +59,7 @@
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Banner</th></tr></thead>
+      <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Pool</th><th>Banner</th></tr></thead>
       <tbody>
         {#each shown as p (p.id)}
           {@const rank = rankOf(p)}
@@ -69,9 +69,10 @@
             <td class="muted">{p.item_type}</td>
             <td><span class="rank r{rank}"><span aria-hidden="true">{'★'.repeat(rank)}</span><span class="sr">{rank} star</span></span></td>
             <td class="muted">{GACHA_LABELS[app.game][p.gacha_type] ?? p.gacha_type}</td>
+            <td class="muted">{p.banner_name ?? '—'}</td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">{loading ? 'Loading…' : 'No matching pulls.'}</td></tr>
+          <tr><td colspan="6" class="muted">{loading ? 'Loading…' : 'No matching pulls.'}</td></tr>
         {/each}
       </tbody>
     </table>
