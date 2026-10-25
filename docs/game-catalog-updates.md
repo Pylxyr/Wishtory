@@ -20,7 +20,7 @@ After merge, **Publish signed game catalog** signs the catalog and the banner li
 
 - `start` and `end` are inclusive **server-local** clock times (`YYYY-MM-DD HH:MM:SS`), the same clock as the `time` of each wish record, so they are compared with it directly. Genshin Impact banners change at 18:00 server time: a phase starts at `18:00:00` and the previous one ends at `17:59:59`.
 - `pool` is the banner key used by the pity rules: `character` or `weapon` for every game, plus `collab` and `collab_weapon` for Honkai: Star Rail.
-- `featured_5` holds the game item IDs of every 5★ featured in that event. A Genshin character event with two concurrent banners lists both characters. `gacha_ids` holds the `gacha_id` values the game reports for the banner (Honkai: Star Rail and Zenless Zone Zero) and may be empty.
+- `featured_5` holds the game item IDs of every 5★ featured in that event. A Genshin character event with two concurrent banners lists both characters. `gacha_ids` holds the `gacha_id` values the game reports for the banner (Honkai: Star Rail and Zenless Zone Zero) and may be empty: the app then learns which `gacha_id` belongs to which banner from the 5★ pulls that a listed banner features. Where several banners run at once, list one event per phase with every featured 5★ of that phase.
 - Add new events in a PR and raise `banners_version` above the published value. Clients ignore lower or equal versions, so a correction is published as a newer version. Every `featured_5` ID must exist in `catalog/catalog.json` with rarity 5; a test checks this.
 
 ## One-time setup

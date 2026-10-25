@@ -14,7 +14,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::Write,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -66,12 +66,22 @@ fn progress_to(app: &tauri::AppHandle) -> impl Fn(String) + '_ {
 /// Records which banner each saved pull of an account was made on. Only pulls without a stored
 /// banner are resolved, so it is cheap to call after every sync, import and banner update.
 fn assign_banners(db: &Db, banners: &BannerSet, game: Game, uid: &str) -> Result<(), AppError> {
-    let rows: Vec<(String, String)> = db
+    let missing: HashSet<String> = db
         .pulls_without_banner(game.as_str(), uid)?
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    // Resolved against the whole history, so a gacha_id seen on one placed pull places the rest.
+    let pulls = db.pulls_for(game.as_str(), uid)?;
+    let placed = pity::resolve_banners(&banners.banners, game, &pulls);
+    let rows: Vec<(String, String)> = pulls
         .iter()
-        .filter_map(|p| {
-            pity::resolve_banner(&banners.banners, game, p).map(|b| (p.id.clone(), b.id.clone()))
-        })
+        .zip(placed)
+        .filter(|(p, _)| missing.contains(&p.id))
+        .filter_map(|(p, b)| b.map(|b| (p.id.clone(), b.id.clone())))
         .collect();
     if rows.is_empty() {
         return Ok(());
@@ -358,10 +368,16 @@ pub async fn get_history(
 #[tauri::command]
 pub async fn get_pity(
     db: State<'_, Db>,
+    banners: State<'_, BannerStore>,
     game: Game,
     uid: String,
 ) -> Result<Vec<BannerPity>, AppError> {
-    Ok(pity::compute(game, &db.pulls_for(game.as_str(), &uid)?))
+    let pulls = db.pulls_for(game.as_str(), &uid)?;
+    Ok(pity::compute_with_banners(
+        game,
+        &pulls,
+        &banners.current().banners,
+    ))
 }
 
 /// Decodes a user-selected file. Windows tools (PowerShell `Out-File`) often write UTF-16.

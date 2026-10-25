@@ -10,14 +10,17 @@
 //! item: character banners (50/50) and weapon / Light Cone / W-Engine banners (75/25). A result
 //! counts as a loss only when the 5-star is in the permanent pool; any other 5-star counts as
 //! featured, including a non-selected weapon under Epitomized Path. Chronicled, Bangboo and the
-//! Star Rail collaboration warps have no tracked result. A Genshin permanent-pool item pulled
-//! while it was itself a rate-up item (`FEATURED_WINDOWS`) counts as featured too.
+//! Star Rail collaboration warps have no tracked result. A permanent-pool item that was itself a
+//! rate-up item counts as featured: either because the signed banner list features it on the
+//! banner the pull was made on, or (Genshin only, as a fallback that needs no banner list)
+//! because of a `FEATURED_WINDOWS` row.
 
 use crate::{
     catalog::BannerEntry,
     models::{Game, Pull},
 };
 use serde::Serialize;
+use std::collections::HashMap;
 
 struct Banner {
     key: &'static str,
@@ -374,6 +377,61 @@ fn was_featured(game: Game, pull: &Pull) -> bool {
     })
 }
 
+/// Zenless records carry `gacha_id` "0" and Genshin records none: neither identifies a banner.
+fn has_gacha_id(pull: &Pull) -> bool {
+    !pull.gacha_id.is_empty() && pull.gacha_id != "0"
+}
+
+/// The banner of every pull, in order. Star Rail and Zenless run concurrent banners under one pool
+/// type, and only a featured 5★ can place a pull on one of them. Every pull that carries a
+/// `gacha_id` shared with a placed pull joins that banner, so 3★ and 4★ pulls are labelled as soon
+/// as any 5★ from the same banner is known. A `gacha_id` claimed by two different banners is
+/// ignored.
+pub fn resolve_banners<'a>(
+    banners: &'a [BannerEntry],
+    game: Game,
+    pulls: &[Pull],
+) -> Vec<Option<&'a BannerEntry>> {
+    let mut placed: Vec<Option<&'a BannerEntry>> = pulls
+        .iter()
+        .map(|p| resolve_banner(banners, game, p))
+        .collect();
+    let mut learned: HashMap<&str, Option<&'a BannerEntry>> = HashMap::new();
+    for (pull, found) in pulls.iter().zip(placed.iter().copied()) {
+        let Some(found) = found else { continue };
+        if !has_gacha_id(pull) {
+            continue;
+        }
+        learned
+            .entry(pull.gacha_id.as_str())
+            .and_modify(|known| {
+                if known.is_some_and(|k| k.id != found.id) {
+                    *known = None;
+                }
+            })
+            .or_insert(Some(found));
+    }
+    for (pull, slot) in pulls.iter().zip(placed.iter_mut()) {
+        if slot.is_some() || !has_gacha_id(pull) {
+            continue;
+        }
+        if let Some(Some(banner)) = learned.get(pull.gacha_id.as_str()) {
+            if banner_key(game, &pull.gacha_type) == Some(banner.pool.as_str()) {
+                *slot = Some(*banner);
+            }
+        }
+    }
+    placed
+}
+
+/// True when the banner list shows this pull's 5★ as featured on the banner it was made on.
+/// Pulls the list cannot place, and records without an `item_id`, never match.
+fn listed_as_featured(banners: &[BannerEntry], game: Game, pull: &Pull) -> bool {
+    !pull.item_id.is_empty()
+        && resolve_banner(banners, game, pull)
+            .is_some_and(|banner| banner.featured_5.iter().any(|id| *id == pull.item_id))
+}
+
 /// The banner event a pull was made on, or `None` when the banner list cannot say for sure.
 /// Star Rail and Zenless report a `gacha_id`; otherwise the pull's server-local time picks the
 /// event window of the same banner type. Concurrent banners (two Genshin character banners) are
@@ -385,7 +443,7 @@ pub fn resolve_banner<'a>(
 ) -> Option<&'a BannerEntry> {
     let pool = banner_key(game, &pull.gacha_type)?;
     let same_pool = |b: &&BannerEntry| b.game == game.as_str() && b.pool == pool;
-    if !pull.gacha_id.is_empty() {
+    if has_gacha_id(pull) {
         if let Some(found) = banners
             .iter()
             .filter(same_pool)
@@ -483,7 +541,18 @@ pub struct BannerPity {
 }
 
 /// `pulls` must be sorted oldest → newest (Db::pulls_for does this).
+#[cfg(test)]
 pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
+    compute_with_banners(game, pulls, &[])
+}
+
+/// Pity counters and win / loss state per banner. `banner_list` lets a permanent-pool item that
+/// the signed list features on its banner count as featured instead of as a loss.
+pub fn compute_with_banners(
+    game: Game,
+    pulls: &[Pull],
+    banner_list: &[BannerEntry],
+) -> Vec<BannerPity> {
     banners(game)
         .iter()
         .filter_map(|b| {
@@ -522,8 +591,9 @@ pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
                     5 => {
                         fives += 1;
                         sum_five += counter;
-                        let is_standard =
-                            is_standard_five(game, b.key, p) && !was_featured(game, p);
+                        let is_standard = is_standard_five(game, b.key, p)
+                            && !was_featured(game, p)
+                            && !listed_as_featured(banner_list, game, p);
                         let off = if b.odds.is_some() {
                             Some(is_standard)
                         } else {
@@ -1123,5 +1193,157 @@ mod tests {
         let mut unknown = at(pull("nap", "2", 1, 4, "20"), "2026-01-05 12:00:00");
         unknown.gacha_id = "9999".into();
         assert_eq!(id(unknown), Some("two".into()));
+    }
+
+    #[test]
+    fn banner_list_makes_a_featured_permanent_pool_item_a_win() {
+        let list = vec![event(
+            "jean-rerun",
+            "hk4e",
+            "character",
+            "2030-01-01 18:00:00",
+            "2030-01-21 17:59:59",
+            &["10000003"],
+        )];
+        let jean = |time: &str| at(p(1, 5, "10000003"), time);
+        let outcome = |banner_list: &[BannerEntry], pull: Pull| {
+            let r = compute_with_banners(Game::Hk4e, &[pull], banner_list);
+            let c = find(&r, "character");
+            (
+                c.recent_fives[0].outcome.clone(),
+                c.recent_fives[0].off_banner,
+            )
+        };
+        // Without the list a permanent-pool character is a loss; inside its listed window it is not.
+        assert_eq!(
+            outcome(&[], jean("2030-01-05 12:00:00")),
+            (Some("loss".to_string()), Some(true))
+        );
+        assert_eq!(
+            outcome(&list, jean("2030-01-05 12:00:00")),
+            (None, Some(false))
+        );
+        // Outside the window, or for a record without an item_id, the usual rule still applies.
+        assert_eq!(
+            outcome(&list, jean("2030-02-05 12:00:00")).0,
+            Some("loss".to_string())
+        );
+        let mut by_name = jean("2030-01-05 12:00:00");
+        by_name.item_id = String::new();
+        by_name.name = "Jean".into();
+        assert_eq!(outcome(&list, by_name).0, Some("loss".to_string()));
+    }
+
+    #[test]
+    fn banner_list_features_apply_to_weapon_banners_too() {
+        let list = vec![event(
+            "atlas-rerun",
+            "hk4e",
+            "weapon",
+            "2030-01-01 18:00:00",
+            "2030-01-21 17:59:59",
+            &["14501"],
+        )];
+        let pulls = [
+            at(pull("hk4e", "302", 1, 5, "14501"), "2030-01-05 12:00:00"),
+            at(pull("hk4e", "302", 2, 5, "14501"), "2030-03-05 12:00:00"),
+        ];
+        let r = compute_with_banners(Game::Hk4e, &pulls, &list);
+        let fives = &find(&r, "weapon").recent_fives;
+        assert_eq!(fives[0].outcome, None);
+        assert_eq!(fives[1].outcome.as_deref(), Some("loss"));
+    }
+
+    #[test]
+    fn a_known_five_star_places_every_pull_sharing_its_gacha_id() {
+        let list = vec![
+            event(
+                "one",
+                "nap",
+                "character",
+                "2026-01-01 12:00:00",
+                "2026-01-21 11:59:59",
+                &["10"],
+            ),
+            event(
+                "two",
+                "nap",
+                "character",
+                "2026-01-01 12:00:00",
+                "2026-01-21 11:59:59",
+                &["20"],
+            ),
+        ];
+        let with = |id: u32, rank: u8, item: &str, gacha_id: &str| {
+            let mut pull = at(pull("nap", "2", id, rank, item), "2026-01-05 12:00:00");
+            pull.gacha_id = gacha_id.into();
+            pull
+        };
+        let pulls = vec![
+            with(1, 2, "x", "2001"),
+            with(2, 2, "x", "2002"),
+            with(3, 2, "x", "3000"),
+            with(4, 4, "10", "2001"),
+            with(5, 4, "20", "2002"),
+        ];
+        let ids: Vec<Option<String>> = resolve_banners(&list, Game::Nap, &pulls)
+            .iter()
+            .map(|b| b.map(|b| b.id.clone()))
+            .collect();
+        let expected: Vec<Option<String>> = vec![
+            Some("one".into()),
+            Some("two".into()),
+            None,
+            Some("one".into()),
+            Some("two".into()),
+        ];
+        assert_eq!(ids, expected);
+        // One gacha_id claimed by two different banners teaches nothing.
+        let clash = vec![
+            with(1, 4, "10", "2001"),
+            with(2, 4, "20", "2001"),
+            with(3, 2, "x", "2001"),
+        ];
+        let ids = resolve_banners(&list, Game::Nap, &clash);
+        assert!(ids[2].is_none());
+    }
+
+    #[test]
+    fn a_gacha_id_of_zero_never_identifies_a_banner() {
+        let list = vec![
+            event(
+                "one",
+                "nap",
+                "character",
+                "2026-01-01 12:00:00",
+                "2026-01-21 11:59:59",
+                &["10"],
+            ),
+            event(
+                "two",
+                "nap",
+                "character",
+                "2026-01-05 12:00:00",
+                "2026-01-21 11:59:59",
+                &["20"],
+            ),
+        ];
+        let zero = |id: u32, item: &str, time: &str| {
+            let mut pull = at(pull("nap", "2", id, 4, item), time);
+            pull.gacha_id = "0".into();
+            pull
+        };
+        // Only the featured 5-star pull is placed; the "0" it shares with the others teaches nothing.
+        let pulls = vec![
+            zero(1, "x", "2026-01-02 12:00:00"),
+            zero(2, "10", "2026-01-06 12:00:00"),
+            zero(3, "x", "2026-01-07 12:00:00"),
+        ];
+        let ids: Vec<Option<String>> = resolve_banners(&list, Game::Nap, &pulls)
+            .iter()
+            .map(|b| b.map(|b| b.id.clone()))
+            .collect();
+        let expected: Vec<Option<String>> = vec![Some("one".into()), Some("one".into()), None];
+        assert_eq!(ids, expected);
     }
 }
