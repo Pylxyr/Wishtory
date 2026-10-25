@@ -10,7 +10,8 @@
 //! item: character banners (50/50) and weapon / Light Cone / W-Engine banners (75/25). A result
 //! counts as a loss only when the 5-star is in the permanent pool; any other 5-star counts as
 //! featured, including a non-selected weapon under Epitomized Path. Chronicled, Bangboo and the
-//! Star Rail collaboration warps have no tracked result.
+//! Star Rail collaboration warps have no tracked result. A Genshin permanent-pool item pulled
+//! while it was itself a rate-up item (`FEATURED_WINDOWS`) counts as featured too.
 
 use crate::models::{Game, Pull};
 use serde::Serialize;
@@ -265,6 +266,63 @@ fn is_standard_five(game: Game, banner: &str, pull: &Pull) -> bool {
         || names.iter().any(|n| fold(n) == name)
 }
 
+/// Genshin permanent-pool 5★ items that were also a rate-up (featured) item on an event banner:
+/// (item id, English name, first day, last day). Days are the banner's server-local dates, both
+/// inclusive, from the community banner history at paimon.moe (up to version 7.1). A pull inside
+/// its window is the featured result, never a lost 50/50 or 75/25: a long history may hold, for
+/// example, Skyward Atlas from its own banner. Add a row whenever such an item is featured again.
+const FEATURED_WINDOWS: &[(&str, &str, &str, &str)] = &[
+    ("15502", "Amos' Bow", "2020-09-28", "2020-10-18"),
+    ("15502", "Amos' Bow", "2021-01-12", "2021-02-02"),
+    ("15502", "Amos' Bow", "2022-01-25", "2022-02-15"),
+    ("15502", "Amos' Bow", "2022-09-09", "2022-09-27"),
+    ("15502", "Amos' Bow", "2023-05-02", "2023-05-23"),
+    ("11501", "Aquila Favonia", "2020-09-28", "2020-10-18"),
+    ("11501", "Aquila Favonia", "2021-05-18", "2021-06-08"),
+    ("14502", "Lost Prayer to the Sacred Winds", "2020-10-20", "2020-11-10"),
+    ("14502", "Lost Prayer to the Sacred Winds", "2021-04-06", "2021-04-27"),
+    ("14502", "Lost Prayer to the Sacred Winds", "2021-06-09", "2021-06-29"),
+    ("14502", "Lost Prayer to the Sacred Winds", "2022-07-13", "2022-08-02"),
+    ("14502", "Lost Prayer to the Sacred Winds", "2023-07-05", "2023-07-25"),
+    ("12502", "Wolf's Gravestone", "2020-10-20", "2020-11-10"),
+    ("12502", "Wolf's Gravestone", "2021-02-23", "2021-03-16"),
+    ("15501", "Skyward Harp", "2020-11-11", "2020-12-01"),
+    ("15501", "Skyward Harp", "2021-04-06", "2021-04-27"),
+    ("15501", "Skyward Harp", "2021-12-14", "2022-01-04"),
+    ("14501", "Skyward Atlas", "2020-12-23", "2021-01-12"),
+    ("14501", "Skyward Atlas", "2021-06-29", "2021-07-20"),
+    ("12501", "Skyward Pride", "2021-01-12", "2021-02-02"),
+    ("12501", "Skyward Pride", "2021-06-09", "2021-06-29"),
+    ("13505", "Primordial Jade Winged-Spear", "2021-02-03", "2021-02-23"),
+    ("13505", "Primordial Jade Winged-Spear", "2022-01-05", "2022-01-25"),
+    ("13505", "Primordial Jade Winged-Spear", "2022-05-31", "2022-06-21"),
+    ("13505", "Primordial Jade Winged-Spear", "2023-01-18", "2023-02-07"),
+    ("13505", "Primordial Jade Winged-Spear", "2024-02-20", "2024-03-12"),
+    ("11502", "Skyward Blade", "2021-03-17", "2021-04-06"),
+    ("11502", "Skyward Blade", "2021-08-10", "2021-08-31"),
+    ("13502", "Skyward Spine", "2021-07-21", "2021-08-10"),
+    ("10000042", "Keqing", "2021-02-17", "2021-03-02"),
+    ("10000069", "Tighnari", "2022-08-24", "2022-09-09"),
+    ("10000079", "Dehya", "2023-03-01", "2023-03-21"),
+    ("10000109", "Yumemizuki Mizuki", "2025-02-12", "2025-03-04"),
+];
+
+/// True when a Genshin pull matches a `FEATURED_WINDOWS` row and was made inside its dates.
+fn was_featured(game: Game, pull: &Pull) -> bool {
+    if game != Game::Hk4e {
+        return false;
+    }
+    let Some(day) = pull.time.get(..10) else {
+        return false;
+    };
+    let name = fold(&pull.name);
+    FEATURED_WINDOWS.iter().any(|(id, item, from, to)| {
+        (id.eq_ignore_ascii_case(&pull.item_id) || fold(item) == name)
+            && *from <= day
+            && day <= *to
+    })
+}
+
 pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
     Some(match (game, gacha_type) {
         (Game::Hk4e, "100") => "beginner",
@@ -371,7 +429,8 @@ pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
                     5 => {
                         fives += 1;
                         sum_five += counter;
-                        let is_standard = is_standard_five(game, b.key, p);
+                        let is_standard =
+                            is_standard_five(game, b.key, p) && !was_featured(game, p);
                         let off = if b.odds.is_some() {
                             Some(is_standard)
                         } else {
@@ -498,6 +557,33 @@ mod tests {
         assert_eq!(c.recent_fives[0].outcome.as_deref(), Some("loss")); // oldest first
         assert_eq!(c.recent_fives[1].outcome.as_deref(), Some("guaranteed"));
         assert_eq!(c.recent_fives[2].outcome.as_deref(), Some("win"));
+    }
+
+    #[test]
+    fn permanent_items_pulled_while_featured_are_not_losses() {
+        let at = |mut x: Pull, time: &str| {
+            x.time = time.into();
+            x
+        };
+        // Skyward Atlas (14501) was a rate-up weapon in version 1.2 (2020-12-23 to 2021-01-12).
+        let weapon = |time: &str| at(pull("hk4e", "302", 1, 5, "14501"), time);
+        let r = compute(Game::Hk4e, &[weapon("2021-01-05 12:00:00")]);
+        let w = find(&r, "weapon");
+        assert_eq!(
+            (w.guaranteed, w.recent_fives[0].outcome.as_deref()),
+            (Some(false), None)
+        );
+        let r = compute(Game::Hk4e, &[weapon("2024-01-05 12:00:00")]);
+        let w = find(&r, "weapon");
+        assert_eq!(w.recent_fives[0].outcome.as_deref(), Some("loss"));
+        // Tighnari (10000069) headlined the 3.0 banner (2022-08-24 to 2022-09-09), before he
+        // joined the permanent pool.
+        let r = compute(Game::Hk4e, &[at(p(1, 5, "10000069"), "2022-09-01 12:00:00")]);
+        let c = find(&r, "character");
+        assert_eq!(
+            (c.guaranteed, c.recent_fives[0].outcome.as_deref()),
+            (Some(false), None)
+        );
     }
 
     #[test]

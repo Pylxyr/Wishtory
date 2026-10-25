@@ -63,5 +63,5 @@
       {/if}
     </div>
   {/if}
-  <div class="busybar" aria-hidden="true"></div>
+  <div class="busytrack" aria-hidden="true"><div class="busybar"></div></div>
 </div>

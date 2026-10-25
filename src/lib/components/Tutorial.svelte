@@ -5,10 +5,10 @@
   import { dur } from '../motion';
 
   const steps = [
-    { title: 'Welcome to Wishtory', body: 'Wishtory keeps all your wish history locally. It only reads files the game already created. It never touches the game itself. No tool can promise zero risk, so please read the notes on the Help page.' },
+    { title: 'Welcome to Wishtory', body: 'Wishtory keeps all your wish history locally. It only reads files the game already created. It never touches the game itself. No tool can promise zero risk, so please read the notes in Help (the ? icon at the top right).' },
     { title: 'Step 1: Open the history page in-game', body: 'Launch the game and open its history page (Wish, then History; Warp, then Records; or Signal Search, then History). Wait until the list loads. This is what makes the game cache your temporary history link.' },
     { title: 'Step 2: Click Refresh', body: 'Come back to Wishtory and press Refresh at the top of the window. Wishtory finds the cached link (read-only) and downloads your history. New pulls are merged; nothing is duplicated.' },
-    { title: 'Import, export, and share', body: 'Use Import / Export to move data in or out via UIGF, the standard used by most trackers. You can replay this tour any time from the Help page.' }
+    { title: 'Import, export, and share', body: 'Use Import / Export to move data in or out via UIGF, the standard used by most trackers. You can replay this tour any time from Help (the ? icon at the top right).' }
   ];
   let i = $state(0);
   let dialog: HTMLDivElement;

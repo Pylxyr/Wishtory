@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
   import { app, initLogging, initProgress, reloadAccounts, setTheme, type Page } from './lib/state.svelte';
   import { api } from './lib/api';
@@ -29,6 +29,18 @@
   ]);
   // Pages that work on one game and account show the game, account and Refresh bar.
   const gamePages: Page[] = ['dashboard', 'history', 'importexport'];
+
+  // A finished refresh report belongs to the page it ran on: leaving the page dismisses it.
+  // A refresh that is still running keeps its status visible.
+  $effect(() => {
+    void app.page;
+    untrack(() => {
+      if (!app.busy) {
+        app.steps = [];
+        app.result = null;
+      }
+    });
+  });
 
   onMount(async () => {
     initProgress();
