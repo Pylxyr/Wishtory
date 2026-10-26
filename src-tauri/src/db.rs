@@ -67,6 +67,11 @@ impl Db {
             db.deduplicate_legacy_paimon_overlaps()?;
             db.conn().execute_batch("PRAGMA user_version = 2;")?;
         }
+        if user_version < 4 {
+            // Genshin version-launch windows moved in banner list 3: resolve stored banners again.
+            db.conn()
+                .execute_batch("DELETE FROM pull_banners; PRAGMA user_version = 4;")?;
+        }
         Ok(db)
     }
 
