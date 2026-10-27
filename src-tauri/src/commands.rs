@@ -252,8 +252,11 @@ pub async fn get_catalog(catalog: State<'_, CatalogStore>) -> Result<Catalog, St
 }
 
 #[tauri::command]
-pub async fn refresh_catalog(catalog: State<'_, CatalogStore>) -> Result<String, String> {
-    let result = catalog.refresh().await;
+pub async fn refresh_catalog(
+    catalog: State<'_, CatalogStore>,
+    force: bool,
+) -> Result<String, String> {
+    let result = catalog.refresh(force).await;
     match &result {
         Ok(status) => wlog!(Level::Debug, "catalog refresh: {status}"),
         Err(e) => wlog!(Level::Warn, "catalog refresh failed: {e}"),
@@ -301,6 +304,8 @@ pub struct HistoryPull {
     /// The banner event the pull was made on, e.g. "Ballad in Goblets · Venti"; `None` when the
     /// banner list cannot place it.
     banner_name: Option<String>,
+    /// Pulls since the last 5★ (5★ rows) or last 4★/5★ (4★ rows) when this pull was made.
+    pity: Option<u32>,
 }
 
 /// "Event name · Featured A / Featured B", with item names looked up in the catalog.
@@ -348,19 +353,26 @@ pub async fn get_history(
         .iter()
         .map(|b| (b.id.as_str(), b))
         .collect();
-    let mut pulls = db.pulls_for(game.as_str(), &uid)?;
+    let pulls = db.pulls_for(game.as_str(), &uid)?;
+    // Pity runs over the whole pool history, so it is counted before any banner filter.
+    let pities = pity::pull_pities(game, &pulls);
+    let mut rows: Vec<(Pull, Option<u32>)> = pulls.into_iter().zip(pities).collect();
     if let Some(b) = banner.as_deref().filter(|b| !b.is_empty()) {
-        pulls.retain(|p| pity::banner_key(game, &p.gacha_type) == Some(b));
+        rows.retain(|(p, _)| pity::banner_key(game, &p.gacha_type) == Some(b));
     }
-    pulls.reverse();
-    Ok(pulls
+    rows.reverse();
+    Ok(rows
         .into_iter()
-        .map(|pull| {
+        .map(|(pull, pity)| {
             let banner_name = assigned
                 .get(&pull.id)
                 .and_then(|id| entries.get(id.as_str()))
                 .map(|entry| banner_label(entry, &names));
-            HistoryPull { pull, banner_name }
+            HistoryPull {
+                pull,
+                banner_name,
+                pity,
+            }
         })
         .collect())
 }

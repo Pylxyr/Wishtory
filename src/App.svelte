@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { app, initLogging, initProgress, reloadAccounts, setTheme, type Page } from './lib/state.svelte';
+  import { app, checkAppUpdate, initLogging, initProgress, reloadAccounts, setTheme, type Page } from './lib/state.svelte';
   import { api } from './lib/api';
   import { dur } from './lib/motion';
   import GameBar from './lib/components/GameBar.svelte';
@@ -14,6 +14,7 @@
   import ImportExport from './pages/ImportExport.svelte';
   import Help from './pages/Help.svelte';
   import Settings from './pages/Settings.svelte';
+  import About from './pages/About.svelte';
   import Logging from './pages/Logging.svelte';
 
   const tabs: { id: Page; label: string; icon: string }[] = [
@@ -25,6 +26,7 @@
   const tools = $derived<{ id: Page; label: string; icon: string }[]>([
     { id: 'help', label: 'Help', icon: 'help' },
     { id: 'settings', label: 'Settings', icon: 'sliders' },
+    { id: 'about', label: 'About', icon: 'info' },
     ...(app.loggingEnabled ? [{ id: 'logging' as Page, label: 'Logging', icon: 'terminal' }] : [])
   ]);
   // Pages that work on one game and account show the game, account and Refresh bar.
@@ -45,9 +47,10 @@
   onMount(async () => {
     initProgress();
     await initLogging();
+    app.about = await api.getAbout().catch(() => null);
     app.catalog = await api.getCatalog().catch(() => null);
     // Best-effort data-only refresh; the bundled catalog remains available offline.
-    void api.refreshCatalog().then(async (status) => {
+    void api.refreshCatalog(false).then(async (status) => {
       if (status === 'updated') app.catalog = await api.getCatalog();
     }).catch(() => {});
     app.banners = await api.getBanners().catch(() => null);
@@ -59,6 +62,7 @@
       app.bannerUpdate = update;
       app.refreshKey++; // saved pulls were matched against the new list: reload what pages show
     }).catch(() => {});
+    void checkAppUpdate(false); // at most once a day; only compares version numbers
     app.installs = await api.discoverGames().catch(() => []);
     await reloadAccounts().catch(() => {});
     if (!localStorage.getItem('wishtory.tutorialDone')) app.tutorial = true;
@@ -81,7 +85,9 @@
     <div class="topbar-tools">
       <span class="chip ok" data-tip="Wishtory only reads files the game already wrote. It never injects, edits game files or uses a proxy."><Icon name="shield" size={12} /> Read-only</span>
       {#each tools as t}
-        <button class="icon-btn" aria-label={t.label} title={t.label} aria-current={app.page === t.id ? 'page' : undefined} onclick={() => (app.page = t.id)}><Icon name={t.icon} size={18} /></button>
+        <button class="icon-btn" aria-label={t.label} title={t.id === 'settings' && app.update?.available ? 'Settings (update available)' : t.label} aria-current={app.page === t.id ? 'page' : undefined} onclick={() => (app.page = t.id)}>
+          <Icon name={t.icon} size={18} />{#if t.id === 'settings' && app.update?.available}<span class="dot" aria-hidden="true"></span>{/if}
+        </button>
       {/each}
       <button class="icon-btn" aria-label={app.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={app.theme === 'dark' ? 'Light theme' : 'Dark theme'} onclick={() => setTheme(app.theme === 'dark' ? 'light' : 'dark')}>
         <Icon name={app.theme === 'dark' ? 'sun' : 'moon'} size={18} />
@@ -97,6 +103,7 @@
         {:else if app.page === 'accounts'}<Accounts />
         {:else if app.page === 'importexport'}<ImportExport />
         {:else if app.page === 'settings'}<Settings />
+        {:else if app.page === 'about'}<About />
         {:else if app.page === 'logging' && app.loggingEnabled}<Logging />
         {:else}<Help />{/if}
       </div>

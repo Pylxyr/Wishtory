@@ -275,12 +275,13 @@ impl CatalogStore {
             .clone()
     }
 
-    pub async fn refresh(&self) -> Result<String, String> {
+    /// `force` skips the once-a-day gate (the update button).
+    pub async fn refresh(&self, force: bool) -> Result<String, String> {
         if self.checking.swap(true, Ordering::AcqRel) {
             return Ok("already-checking".into());
         }
         let _checking = ResetBool(&self.checking);
-        if !self.check_due() {
+        if !force && !self.check_due() {
             return Ok("up-to-date".into());
         }
         // Count a failed download as a check too, so an offline start is not retried on every launch.
@@ -669,8 +670,9 @@ impl BannerStore {
     }
 }
 
-async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
+        .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()

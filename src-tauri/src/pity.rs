@@ -432,6 +432,46 @@ fn listed_as_featured(banners: &[BannerEntry], game: Game, pull: &Pull) -> bool 
             .is_some_and(|banner| banner.featured_5.iter().any(|id| *id == pull.item_id))
 }
 
+/// Zenless Version 3.1 (Custom Search) lets players keep limited agents such as Zhu Yuan, Caesar
+/// and Yanagi, and their signature W-Engines, in the off-banner pool. A little before its launch
+/// day, in server-local time.
+const CUSTOM_SEARCH_FROM: &str = "2026-07-28 00:00:00";
+
+/// The signature W-Engines Custom Search added, each with its agent: Riot Suppressor Mark VI
+/// (Zhu Yuan), Tusks of Fury (Caesar) and Timeweaver (Yanagi).
+const CUSTOM_SEARCH_ENGINES: &[(&str, &str)] =
+    &[("14124", "1241"), ("14107", "1071"), ("14122", "1221")];
+
+/// True for a Zenless Exclusive Channel S-Rank agent, or a W-Engine Channel S-Rank engine, that
+/// no live event features, once Custom Search exists: a lost 50/50 or 75/25, even when it is not
+/// a Stable Channel item. An engine counts as featured while its agent is on a live banner. Needs
+/// an `item_id` and at least one live agent event in the banner list; otherwise it cannot say.
+fn lost_to_custom_search(banners: &[BannerEntry], game: Game, banner: &str, pull: &Pull) -> bool {
+    if game != Game::Nap
+        || !matches!(banner, "character" | "weapon")
+        || pull.item_id.is_empty()
+        || pull.time.as_str() < CUSTOM_SEARCH_FROM
+    {
+        return false;
+    }
+    let live: Vec<&BannerEntry> = banners
+        .iter()
+        .filter(|b| b.game == game.as_str() && b.pool == "character")
+        .filter(|b| b.start.as_str() <= pull.time.as_str() && pull.time.as_str() <= b.end.as_str())
+        .collect();
+    if live.is_empty() {
+        return false;
+    }
+    let featured = |id: &str| live.iter().any(|b| b.featured_5.iter().any(|f| f == id));
+    if banner == "character" {
+        !featured(&pull.item_id)
+    } else {
+        CUSTOM_SEARCH_ENGINES
+            .iter()
+            .any(|(engine, agent)| *engine == pull.item_id && !featured(*agent))
+    }
+}
+
 /// The banner event a pull was made on, or `None` when the banner list cannot say for sure.
 /// Star Rail and Zenless report a `gacha_id`; otherwise the pull's server-local time picks the
 /// event window of the same banner type. Concurrent banners (two Genshin character banners) are
@@ -504,6 +544,36 @@ pub fn display_rank(game: Game, raw_rank: u8) -> u8 {
     } else {
         raw_rank
     }
+}
+
+/// Pity of every pull at the moment it was made, aligned with `pulls` (oldest → newest): pulls
+/// since the last 5★ for a 5★, since the last 4★ or 5★ for a 4★, `None` for anything else.
+/// Counted per pity pool exactly like `compute_with_banners`.
+pub fn pull_pities(game: Game, pulls: &[Pull]) -> Vec<Option<u32>> {
+    let mut counters: HashMap<&'static str, (u32, u32)> = HashMap::new();
+    pulls
+        .iter()
+        .map(|p| {
+            let key = banner_key(game, &p.gacha_type)?;
+            let (five, four) = counters.entry(key).or_insert((0, 0));
+            *five += 1;
+            *four += 1;
+            match display_rank(game, p.rank_type) {
+                5 => {
+                    let n = *five;
+                    *five = 0;
+                    *four = 0;
+                    Some(n)
+                }
+                4 => {
+                    let n = *four;
+                    *four = 0;
+                    Some(n)
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -591,9 +661,10 @@ pub fn compute_with_banners(
                     5 => {
                         fives += 1;
                         sum_five += counter;
-                        let is_standard = is_standard_five(game, b.key, p)
+                        let is_standard = (is_standard_five(game, b.key, p)
                             && !was_featured(game, p)
-                            && !listed_as_featured(banner_list, game, p);
+                            && !listed_as_featured(banner_list, game, p))
+                            || lost_to_custom_search(banner_list, game, b.key, p);
                         let off = if b.odds.is_some() {
                             Some(is_standard)
                         } else {

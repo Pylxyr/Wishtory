@@ -449,3 +449,21 @@ fieldset.options legend { padding: 0; margin-bottom: 8px; font-weight: 600; }
   .clear-history-actions { flex-direction: column-reverse; align-items: stretch; }
 }
 
+/* ---------- Updates and About ---------- */
+.row-actions { display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.icon-btn { position: relative; }
+.icon-btn .dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+button.link { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+button.link:hover { text-decoration: underline; }
+.about-hero { display: grid; gap: 12px; padding: 20px 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.about-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.about-title h2 { margin: 0; font-size: 20px; }
+.about-hero p { max-width: 70ch; margin: 0; }
+.about-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.credits-title { margin: 28px 0 0; font-size: 18px; }
+.credit-group { display: grid; gap: 10px; margin-top: 18px; }
+.credit-group h3 { margin: 0; font-size: 15px; }
+.credit-group p { max-width: 70ch; margin: 0; }
+.credit-group .setting-row { align-items: flex-start; }
+.credit-group .setting-copy h2 { font-size: 14px; }
+.credit-group .chip { flex: none; }

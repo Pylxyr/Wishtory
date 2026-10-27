@@ -1,8 +1,8 @@
 import { listen } from '@tauri-apps/api/event';
 import { api, errMsg } from './api';
-import type { Account, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
+import type { AboutInfo, Account, AppUpdate, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
 
-export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'logging';
+export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'about' | 'logging';
 interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
 
 export const app = $state({
@@ -14,6 +14,9 @@ export const app = $state({
   catalog: null as GameCatalog | null,
   banners: null as BannerSet | null,
   bannerUpdate: null as BannerUpdate | null, // the last installed banner update, kept across restarts
+  about: null as AboutInfo | null,
+  update: null as AppUpdate | null, // the last app update check this session
+  updateChecking: false,
   busy: false,
   refreshKey: 0, // bump to make pages reload their data
   toasts: [] as Toast[],
@@ -31,6 +34,36 @@ export function toast(kind: Toast['kind'], text: string) {
   app.toasts.push({ id, kind, text });
   const ms = kind === 'warn' || kind === 'err' ? 8000 : 4500;
   setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), ms);
+}
+
+const UPDATE_CHECK_KEY = 'wishtory.updateCheckedAt';
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Opens one of the links Wishtory shows in the default browser. The backend refuses any other link. */
+export async function openLink(url: string) {
+  try {
+    await api.openExternal(url);
+  } catch (e) {
+    toast('warn', errMsg(e));
+  }
+}
+
+/** Looks for a newer Wishtory release. Automatic checks run at most once a day; a manual one always runs. */
+export async function checkAppUpdate(manual = false) {
+  if (app.updateChecking) return;
+  if (!manual && Date.now() - Number(localStorage.getItem(UPDATE_CHECK_KEY) ?? 0) < DAY_MS) return;
+  app.updateChecking = true;
+  try {
+    const update = await api.checkAppUpdate();
+    localStorage.setItem(UPDATE_CHECK_KEY, String(Date.now()));
+    app.update = update;
+    if (update.available) toast('info', `Wishtory ${update.latest} is available. Open Settings or About to view the release.`);
+    else if (manual) toast('ok', `Wishtory ${update.current} is up to date.`);
+  } catch (e) {
+    if (manual) toast('warn', `Could not check for app updates: ${errMsg(e)}`);
+  } finally {
+    app.updateChecking = false;
+  }
 }
 
 export function setTheme(t: 'light' | 'dark') {

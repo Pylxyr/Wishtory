@@ -67,6 +67,10 @@ To enable publishing, add a repository Actions secret named `CATALOG_SIGNING_KEY
 
 Run `npm run catalog:test` for source-shape and regression fixtures, `npm run catalog:update` to build a candidate locally, and `npm run catalog:sign` to create a signed envelope when the signing key is available.
 
+## App update check
+
+Wishtory checks this project's GitHub releases at startup, at most once a day, and when you press **Check for updates** in Settings or About. It only compares version numbers: nothing is downloaded or installed, and no account or wish data is sent. The request carries Wishtory's name and version in its User-Agent, as every request to GitHub does. A release build is only offered releases; a pre-release build is also offered newer pre-releases. A newer version shows a dot on Settings and a **View release** button that opens the release page in your browser, where the installer and its SHA256 file are.
+
 ## Credits and references
 
 Wishtory relies on these independent projects and references for compatibility and verification:
@@ -75,6 +79,9 @@ Wishtory relies on these independent projects and references for compatibility a
 - [Paimon.moe](https://paimon.moe/) and its [open-source item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data) inform native Genshin backup import/export. Wishtory uses its exact item keys to match backup records reliably, and its documented read-only cache lookup approach informed history-link discovery.
 - The [UIGF project](https://uigf.org/) defines the interchange format Wishtory supports for moving wish histories between compatible tools.
 - HoYoverse's official announcements help us check updated game terminology and mechanics, including the [Honkai: Star Rail Path of Elation](https://www.hoyolab.com/article/43681649) and [Zenless Zone Zero's new specialties](https://zenless.hoyoverse.com/en-us/news/166000).
+
+- Banner windows, titles and featured items were checked against HoYoverse's notices and the community trackers [Banner History](https://bannerhistory.app/), [GachaTracker](https://gachatracker.app/) and [TimeSaver](https://timesaver.gg/), and the [Genshin Impact Wiki](https://genshin-impact.fandom.com/) and [Zenless Zone Zero Wiki](https://zenless-zone-zero.fandom.com/). They are references only; Wishtory does not use them at run time.
+- The software and fonts Wishtory is built with, and their licences, are listed under **About** in the app.
 
 These links credit the projects and sources that helped make Wishtory's catalog and compatibility features possible. Wishtory is an independent fan project and is not affiliated with or endorsed by these projects or HoYoverse.
 

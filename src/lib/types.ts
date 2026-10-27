@@ -5,7 +5,7 @@ export interface Account { game: GameId; uid: string; nickname: string; timezone
 export interface Pull {
   id: string; game: string; uid: string; gacha_type: string; gacha_id: string; item_id: string;
   name: string; item_type: string; rank_type: number; time: string; lang: string; count: number;
-  banner_name: string | null;
+  banner_name: string | null; pity: number | null;
 }
 
 export interface CatalogItem {
@@ -33,6 +33,13 @@ export interface BannerUpdate {
   status: 'updated' | 'up-to-date' | 'already-checking'; banners_version: number; installed_at: number;
   added: string[]; changed: string[]; removed: string[];
 }
+export interface Credit { name: string; role: string; url: string; license: string; }
+export interface CreditGroup { title: string; note: string; credits: Credit[]; }
+export interface AboutInfo {
+  name: string; version: string; description: string; copyright: string; license: string; disclaimer: string;
+  repository: string; releases: string; issues: string; groups: CreditGroup[];
+}
+export interface AppUpdate { current: string; latest: string; available: boolean; url: string; prerelease: boolean; published_at: string; }
 export interface FiveStar { name: string; pity: number; time: string; off_banner: boolean | null; outcome: 'win' | 'loss' | 'guaranteed' | null; }
 export interface FourStar { name: string; pity: number; time: string; }
 export interface BannerPity {
