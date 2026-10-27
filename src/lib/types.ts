@@ -36,7 +36,7 @@ export interface BannerUpdate {
 export interface Credit { name: string; role: string; url: string; license: string; }
 export interface CreditGroup { title: string; note: string; credits: Credit[]; }
 export interface AboutInfo {
-  name: string; version: string; description: string; copyright: string; license: string; disclaimer: string;
+  name: string; version: string; description: string; copyright: string; license: string; disclaimers: string[];
   repository: string; releases: string; issues: string; groups: CreditGroup[];
 }
 export interface AppUpdate { current: string; latest: string; available: boolean; url: string; prerelease: boolean; published_at: string; }

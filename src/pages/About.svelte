@@ -22,7 +22,7 @@
     </div>
     <p>{app.about.description}</p>
     <p class="muted">{app.about.copyright}. Released under the {app.about.license}.</p>
-    <p class="muted">{app.about.disclaimer}</p>
+    {#each app.about.disclaimers as note}<p class="muted">{note}</p>{/each}
     <div class="about-links">
       {#if app.update?.available}<button class="btn primary" onclick={openRelease}>View release</button>{/if}
       <button class="btn" disabled={app.updateChecking} onclick={() => checkAppUpdate(true)}>{app.updateChecking ? 'Checking…' : 'Check for updates'}</button>
