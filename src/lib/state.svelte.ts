@@ -26,6 +26,7 @@ export const app = $state({
   status: '', // latest refresh progress line, shown while busy
   steps: [] as string[], // one line per refresh step, kept after the run so the outcome stays visible
   result: null as { kind: 'ok' | 'warn' | 'err'; text: string } | null,
+  runView: null as { game: GameId; page: Page } | null, // where the last refresh was started; its progress panel is only shown there
   loggingEnabled: false // off by default; persisted in localStorage next to the theme
 });
 
@@ -125,14 +126,17 @@ export function selectGame(g: GameId) {
 
 async function run(action: () => Promise<FetchSummary>) {
   if (app.busy) return;
+  const game = app.game;
   app.busy = true;
   app.status = 'Starting…';
   app.steps = ['Starting…'];
   app.result = null;
+  app.runView = { game, page: app.page };
   try {
     const r = await action();
     await reloadAccounts();
-    app.uid = r.uid;
+    // Only follow the new account when the user is still on that game; they may have switched meanwhile.
+    if (app.game === game) app.uid = r.uid;
     app.refreshKey++;
     toast('ok', r.added > 0 ? `Added ${r.added} new pulls for UID ${r.uid}.` : `Already up to date for UID ${r.uid}.`);
     if (r.warning) toast('warn', r.warning);

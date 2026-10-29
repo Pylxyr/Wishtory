@@ -6,6 +6,10 @@
   const mine = $derived(app.accounts.filter((a) => a.game === app.game));
   const install = $derived(app.installs.find((i) => i.game === app.game));
   const info = $derived(GAMES[app.game]);
+  // The refresh progress belongs to the game and page it was started on: switching to another game or
+  // page hides it, and coming back shows it again.
+  const here = $derived(app.runView?.game === app.game && app.runView?.page === app.page);
+  const working = $derived(app.busy && here);
   const shownSteps = $derived(app.steps.slice(-6));
   // Screen readers hear the banner or phase name, not every page update.
   const phase = $derived.by(() => {
@@ -15,7 +19,7 @@
   });
 </script>
 
-<div class="context" class:is-busy={app.busy}>
+<div class="context" class:is-busy={working}>
   <div class="seg" role="group" aria-label="Game">
     {#each Object.entries(GAMES) as [id, g]}
       <button data-game={id} aria-pressed={app.game === id} onclick={() => selectGame(id as GameId)}>{g.short}</button>
@@ -29,7 +33,7 @@
     </select>
   {/if}
   <div class="context-end">
-    {#if app.busy}
+    {#if working}
       <span class="sr" role="status">{phase}</span>
       <span class="status-line" aria-hidden="true"><i class="pulse"></i><span class="status-text">{app.status}</span></span>
     {:else if install?.found}
@@ -41,10 +45,10 @@
       Re-sync all
     </button>
     <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads what is new in your history">
-      <span class:spin={app.busy}><Icon name="refresh" size={16} /></span>{app.busy ? 'Working…' : `Refresh ${info.short}`}
+      <span class:spin={working}><Icon name="refresh" size={16} /></span>{working ? 'Working…' : `Refresh ${info.short}`}
     </button>
   </div>
-  {#if app.steps.length}
+  {#if app.steps.length && here}
     <div class="activity">
       <ol aria-label="Refresh progress">
         {#each shownSteps as step, i}
@@ -60,7 +64,7 @@
           <p class="result {app.result.kind}">{app.result.text}</p>
           <div class="row">
             {#if app.result.kind === 'err'}<button class="btn" onclick={() => (app.page = 'help')}>Open Help</button>{/if}
-            <button class="btn" onclick={() => { app.steps = []; app.result = null; }}>Dismiss</button>
+            <button class="btn" onclick={() => { app.steps = []; app.result = null; app.runView = null; }}>Dismiss</button>
           </div>
         </div>
       {/if}
