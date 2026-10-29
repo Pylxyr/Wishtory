@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,21 +37,48 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Build candidate from upstream metadata
-        run: npm run catalog:update
-      - name: Open or update review PR
+        run: |
+          git show origin/main:catalog/catalog.json > "$RUNNER_TEMP/previous-catalog.json"
+          npm run catalog:update
+          npm run banners:track -- --previous "$RUNNER_TEMP/previous-catalog.json" --report "$RUNNER_TEMP/banners-report.md"
+      - name: Open or update the review PR, or the review issue
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if git diff --quiet -- catalog/catalog.json; then
+          report="$RUNNER_TEMP/banners-report.md"
+          issue_title="Banner list needs review"
+          issue="$(gh issue list --state open --search "in:title \"$issue_title\"" --json number --jq '.[0].number // empty')"
+
+          if git diff --quiet -- catalog/catalog.json catalog/banners.json; then
             echo "No catalog changes found."
+            # Nothing to merge, but there may still be something a person should look at.
+            if [ -s "$report" ]; then
+              if [ -n "$issue" ]; then
+                gh issue edit "$issue" --body-file "$report"
+              else
+                gh issue create --title "$issue_title" --body-file "$report"
+              fi
+            elif [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "The weekly check found nothing to review."
+            fi
             exit 0
           fi
-          git add catalog/catalog.json
-          git commit -m "chore: update game metadata catalog"
+
+          {
+            echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published."
+            echo
+            if [ -s "$report" ]; then cat "$report"; fi
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          git add catalog/catalog.json catalog/banners.json
+          git commit -m "chore: update game catalog and banner list"
           git push origin catalog-refresh
           if gh pr view catalog-refresh --json number >/dev/null 2>&1; then
-            gh pr edit catalog-refresh --title "Review updated game metadata catalog" --body "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog. Please review names, rarity, traits, and Paimon keys before merging."
+            gh pr edit catalog-refresh --title "Review updated game catalog and banner list" --body-file "$RUNNER_TEMP/pr-body.md"
           else
-            gh pr create --base main --head catalog-refresh --title "Review updated game metadata catalog" --body "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog. Please review names, rarity, traits, and Paimon keys before merging. This PR does not change wish records or game mechanics."
+            gh pr create --base main --head catalog-refresh --title "Review updated game catalog and banner list" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
+          if [ -n "$issue" ]; then
+            gh issue close "$issue" --comment "The review PR for catalog-refresh now covers this."
           fi

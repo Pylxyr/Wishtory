@@ -1,22 +1,17 @@
 name: Release
 
-# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and publishes a GitHub release.
-#
-# Normally started by "Cut release" (cut-release.yml), which bumps the version, tags it and calls this.
-# Other ways in: Actions -> Release -> Run workflow builds the version already in the project files
-# (package.json, src-tauri/tauri.conf.json and src-tauri/Cargo.toml must all agree); pushing a tag such
-# as v0.2.0 does the same thing, and the tag must match the version.
-# Only the NSIS setup .exe is built and uploaded (no MSI), plus a SHA256 checksum file.
+# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and publishes a GitHub release. You
+# normally never run this by hand: use "Cut release" (cut-release.yml). Other ways in:
+#   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
+#   - Run workflow here                                            -> dry run: builds and uploads the installer as an
+#                                                                    artifact; publishes nothing
+#   - called by cut-release.yml with the tag it just pushed        -> build, publish
+# A release is the setup .exe plus SHA256SUMS.txt, with build provenance attached when the repository allows it.
 
 on:
-  workflow_dispatch:
-    inputs:
-      prerelease:
-        description: "Mark the release as a pre-release"
-        type: boolean
-        default: false
   push:
-    tags: ["v*"]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
   workflow_call:
     inputs:
       tag:
@@ -28,6 +23,15 @@ on:
         required: false
         type: boolean
         default: false
+    # Only these secrets reach this workflow when cut-release.yml calls it (no `secrets: inherit`). Both optional:
+    # an unset one is empty and the release notes are written without AI.
+    secrets:
+      ANTHROPIC_API_KEY:
+        description: "Key for the AI release notes; unset means notes without AI"
+        required: false
+      AI_API_KEY:
+        description: "Key for the AI release notes (other provider); unset means notes without AI"
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -40,11 +44,12 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
+  build:
     runs-on: windows-latest
     timeout-minutes: 60
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       # inputs.tag is empty for a tag push or a manual run, which build the triggering ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,19 +64,38 @@ jobs:
       - name: Rust toolchain
         shell: bash
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version is chosen in rust-toolchain.toml, never "whatever stable is today".
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal
+          rustup default "$channel"
           rustc --version
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
 
+      # The app bundles catalog/*.json and prefers a cached update whose version is not lower, so the
+      # bundled copies must carry the versions CI publishes (a file that kept an old number would lose
+      # to older cached content after an upgrade). A repository without a catalog release yet is fine.
+      - name: Stamp bundled feed versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/fetch-published.sh published
+          for name in catalog banners rules; do
+            if [ -f "published/$name.envelope.json" ]; then
+              node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.json" "published/$name.envelope.json" --stamp
+            fi
+          done
+
       - name: Check versions
         id: ver
         shell: pwsh
         env:
           CALLED_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
@@ -83,8 +107,8 @@ jobs:
           if ($env:CALLED_TAG -and $env:CALLED_TAG -ne $tag) {
             throw "Tag $($env:CALLED_TAG) does not match the project version $tag"
           }
-          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $tag) {
-            throw "Tag ${{ github.ref_name }} does not match the project version $tag"
+          if ($env:REF_TYPE -eq "tag" -and $env:REF_NAME -ne $tag) {
+            throw "Tag $($env:REF_NAME) does not match the project version $tag"
           }
           "version=$pkg" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
@@ -102,7 +126,7 @@ jobs:
       - name: Build the NSIS installer
         shell: pwsh
         run: |
-          npx tauri build --bundles nsis
+          npx tauri build --bundles nsis -- --locked
           if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
 
       - name: Collect release files
@@ -115,42 +139,100 @@ jobs:
           if ($setup.Count -ne 1) { throw "Expected exactly one NSIS setup exe, found $($setup.Count)" }
           if ($setup[0].Name -notlike "*$($env:VERSION)*") { throw "$($setup[0].Name) does not carry version $($env:VERSION)" }
           Copy-Item $setup[0].FullName release/
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup[0].FullName).Hash.ToLower()
-          "$hash *$($setup[0].Name)" | Out-File -Encoding ascii -FilePath "release/$($setup[0].Name).sha256"
           Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
-          Get-Content "release/$($setup[0].Name).sha256"
 
-      - name: Write release notes
-        shell: pwsh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    # A tag push, or a call from cut-release.yml. A manual dry run has neither.
+    # The explicit status check is required: without one GitHub applies an implicit success() over the whole
+    # dependency chain.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      models: read # lets the release-notes step use GitHub Models (free) with the built-in token
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-windows
+          path: release
+      - name: Checksums
         run: |
-          $notes = @(
-            "Wishtory ${{ steps.ver.outputs.version }}",
-            "",
-            "Download the setup file below and run it. The installer is per-user and does not need administrator rights.",
-            "Verify the download with the .sha256 file (PowerShell: Get-FileHash -Algorithm SHA256 <file>).",
-            "",
-            "The installer is not code-signed, so Windows SmartScreen may show a warning.",
-            "",
-            "Wishtory is an unofficial fan project and is not affiliated with HoYoverse or COGNOSPHERE. It only reads files the game already wrote and uses the official history API. No tool can offer a 100% guarantee against future changes by the game publisher. Use at your own risk."
-          )
-          $notes -join "`n" | Out-File -Encoding utf8 -FilePath notes.md
-
-      - name: Publish the GitHub release
-        shell: bash
+          cd release
+          sha256sum -- *-setup.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
+      - name: Attest build provenance
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*.exe
+      - name: Write release notes
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.ver.outputs.tag }}
-          VERSION: ${{ steps.ver.outputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          # AI release notes, tried in this order; with none available the notes come from commit messages and
+          # a read of the code (scripts/release_notes.py).
+          #  1. ANTHROPIC_API_KEY (optional secret)
+          #  2. AI_API_KEY secret + AI_BASE_URL and AI_MODEL variables (any OpenAI-compatible service)
+          #  3. GitHub Models, free, using the built-in token (needs `models: read` above)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          RELEASE_NOTES_MODEL: ${{ vars.RELEASE_NOTES_MODEL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ATTEST_OUTCOME: ${{ steps.attest.outcome }}
+        run: |
+          {
+            cat .github/release-notes-header.md
+            echo
+            python3 scripts/release_notes.py --ai --tag "$TAG" --repo "$GITHUB_REPOSITORY" || {
+              echo "::warning::Could not build the changelog; publishing without it." >&2
+              echo "See the commit history for what changed."
+            }
+            echo
+            echo "## About this build"
+            echo
+            echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it."
+            if [ "$ATTEST_OUTCOME" = "success" ]; then
+              echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
+            fi
+          } > notes.md
+          cat notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      # The release is created as a draft, filled, and only then made public, so nobody ever sees a half-uploaded
+      # release. Safe to re-run: an existing release for the tag is updated instead of failing.
+      - name: Create the GitHub release
         run: |
           flags=()
-          if [ "$PRERELEASE" = "true" ] || [[ "$TAG" == *-* ]]; then flags+=(--prerelease); fi
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber
             gh release edit "$TAG" --title "Wishtory $VERSION" --notes-file notes.md --draft=false "${flags[@]}"
           else
-            # Drafted first and published last, so nobody sees a half-uploaded release.
-            gh release create "$TAG" release/* --target "$GITHUB_SHA" --title "Wishtory $VERSION" --notes-file notes.md --draft "${flags[@]}"
+            gh release create "$TAG" release/* \
+              --title "Wishtory $VERSION" \
+              --notes-file notes.md \
+              --verify-tag \
+              --draft \
+              "${flags[@]}"
             gh release edit "$TAG" --draft=false
           fi
           gh release view "$TAG" --json url --jq .url

@@ -98,10 +98,17 @@ jobs:
     # A called workflow can only use permissions the calling job grants it.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      models: read
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.prepare.outputs.tag }}
       skip_checks: true # CI just passed above
+    # Exactly the secrets release.yml declares under on.workflow_call.secrets, nothing else.
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_API_KEY: ${{ secrets.AI_API_KEY }}
 
   # The last word on whether this worked. A skipped or failed release job must never look like success: this job
   # checks that a published (non-draft) release exists for the tag, and says what to do when it does not.
