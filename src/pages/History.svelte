@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app, toast } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
-  import { BANNERS, GACHA_LABELS, type Pull } from '../lib/types';
+  import type { Pull } from '../lib/types';
   import EmptyState from '../lib/components/EmptyState.svelte';
 
   let pulls = $state<Pull[]>([]);
@@ -11,18 +11,17 @@
   let limit = $state(200);
   let loading = $state(false);
 
-  // Zenless Zone Zero reports ranks 2-4 (B/A/S); show them on the same 3-5 scale as the other games.
-  const rankOf = (p: Pull) => (app.game === 'nap' && p.rank_type >= 2 && p.rank_type <= 4 ? p.rank_type + 1 : p.rank_type);
+  const filters = $derived(app.meta.find((m) => m.game === app.game)?.banners ?? []);
   const rarityLabel = (r: number) => (app.game === 'nap' ? (r === 5 ? 'S rank' : 'A rank') : `${r}★`);
   const matched = $derived(
-    pulls.filter((p) => (!rarity || rankOf(p) === rarity) && (!query || p.name.toLowerCase().includes(query.toLowerCase())))
+    pulls.filter((p) => (!rarity || p.rank === rarity) && (!query || p.name.toLowerCase().includes(query.toLowerCase())))
   );
   const shown = $derived(matched.slice(0, limit));
 
   $effect(() => {
     const game = app.game, uid = app.uid, b = banner;
     void app.refreshKey;
-    if (b && !BANNERS[game].some((x) => x.key === b)) { banner = ''; return; }
+    if (b && filters.length && !filters.some((x) => x.key === b)) { banner = ''; return; }
     limit = 200;
     if (!uid) { pulls = []; return; }
     pulls = [];
@@ -47,7 +46,7 @@
   <div class="toolbar">
     <select bind:value={banner} aria-label="Banner">
       <option value="">All banners</option>
-      {#each BANNERS[app.game] as b}<option value={b.key}>{b.label}</option>{/each}
+      {#each filters as b}<option value={b.key}>{b.label}</option>{/each}
     </select>
     <div class="seg" role="group" aria-label="Rarity">
       <button aria-pressed={rarity === 0} onclick={() => (rarity = 0)}>All</button>
@@ -62,14 +61,14 @@
       <thead><tr><th>Time</th><th>Item</th><th>Type</th><th>Rarity</th><th>Pity</th><th>Pool</th><th>Banner</th></tr></thead>
       <tbody>
         {#each shown as p (p.id)}
-          {@const rank = rankOf(p)}
+          {@const rank = p.rank}
           <tr class="row-r{rank}">
             <td>{p.time}</td>
             <td class="item r{rank}">{p.name}</td>
             <td class="muted">{p.item_type}</td>
             <td><span class="rank r{rank}"><span aria-hidden="true">{'★'.repeat(rank)}</span><span class="sr">{rank} star</span></span></td>
             <td class="pity r{rank}">{p.pity ?? ''}</td>
-            <td class="muted">{GACHA_LABELS[app.game][p.gacha_type] ?? p.gacha_type}</td>
+            <td class="muted">{p.pool}</td>
             <td class="muted">{p.banner_name ?? '—'}</td>
           </tr>
         {:else}

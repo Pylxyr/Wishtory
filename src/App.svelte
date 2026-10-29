@@ -48,6 +48,7 @@
     initProgress();
     await initLogging();
     app.about = await api.getAbout().catch(() => null);
+    app.meta = await api.getGameMeta().catch(() => []);
     app.catalog = await api.getCatalog().catch(() => null);
     // Best-effort data-only refresh; the bundled catalog remains available offline.
     void api.refreshCatalog(false).then(async (status) => {

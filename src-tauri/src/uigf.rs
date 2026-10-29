@@ -3,7 +3,7 @@
 
 use crate::{
     catalog::Catalog,
-    db::Db,
+    db::{AccountPulls, Db},
     error::AppError,
     models::{Account, Game, Pull},
 };
@@ -149,6 +149,9 @@ pub fn import_with_catalog(
         added: 0,
         skipped: 0,
     };
+    // Every account of the file is parsed first and stored in ONE transaction afterwards, so a
+    // file that fails halfway never leaves a partial import behind.
+    let mut blocks = Vec::new();
 
     if let Some(v) = info
         .get("version")
@@ -161,15 +164,15 @@ pub fn import_with_catalog(
                 continue;
             };
             for acc in arr {
-                import_block(db, &mut sum, game.as_str(), acc, acc.get("list"))?;
+                import_block(&mut blocks, &mut sum, game.as_str(), acc, acc.get("list"));
             }
         }
     } else if let Some(v) = info.get("srgf_version").and_then(Value::as_str) {
         sum.format = format!("SRGF {v}");
-        import_block(db, &mut sum, "hkrpg", info, root.get("list"))?;
+        import_block(&mut blocks, &mut sum, "hkrpg", info, root.get("list"));
     } else if let Some(v) = info.get("uigf_version").and_then(Value::as_str) {
         sum.format = format!("UIGF {v}");
-        import_block(db, &mut sum, "hk4e", info, root.get("list"))?;
+        import_block(&mut blocks, &mut sum, "hk4e", info, root.get("list"));
     } else {
         return Err(AppError::Format(
             "unrecognised format (expected UIGF v2-v4 or SRGF v1)".into(),
@@ -178,6 +181,7 @@ pub fn import_with_catalog(
     if sum.accounts == 0 {
         return Err(AppError::Format("the file contains no wish history".into()));
     }
+    sum.added = db.merge_many(&blocks)?;
     Ok(sum)
 }
 
@@ -212,6 +216,7 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
         added: 0,
         skipped: 0,
     };
+    let mut blocks = Vec::new();
     let mut accounts: Vec<(String, String)> = Vec::new();
     let main_uid = get(root, "wish-uid").trim().to_string();
     if !main_uid.is_empty() {
@@ -315,7 +320,13 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
             }
         }
         if found_collection {
-            sum.added += db.merge_guessed_tz("hk4e", &uid, tz_from_uid("hk4e", &uid), &pulls)?;
+            blocks.push(AccountPulls {
+                game: "hk4e".into(),
+                tz: tz_from_uid("hk4e", &uid),
+                uid,
+                tz_known: false,
+                pulls,
+            });
             sum.accounts += 1;
         }
     }
@@ -324,20 +335,21 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
             "the Paimon.moe file contains no wish history".into(),
         ));
     }
+    sum.added = db.merge_many(&blocks)?;
     Ok(sum)
 }
 
 /// `meta` carries uid / lang / timezone (an account entry in v4, the `info` block in legacy files).
 fn import_block(
-    db: &Db,
+    blocks: &mut Vec<AccountPulls>,
     sum: &mut ImportSummary,
     game: &str,
     meta: &Value,
     list: Option<&Value>,
-) -> Result<(), AppError> {
+) {
     let uid = get(meta, "uid");
     if uid.is_empty() {
-        return Ok(());
+        return;
     }
     let uid = uid.trim().to_string();
     let lang = get(meta, "lang");
@@ -350,13 +362,14 @@ fn import_block(
             None => sum.skipped += 1,
         }
     }
-    sum.added += if file_tz.is_some() {
-        db.merge(game, &uid, tz, &pulls)?
-    } else {
-        db.merge_guessed_tz(game, &uid, tz, &pulls)?
-    };
+    blocks.push(AccountPulls {
+        game: game.into(),
+        uid,
+        tz,
+        tz_known: file_tz.is_some(),
+        pulls,
+    });
     sum.accounts += 1;
-    Ok(())
 }
 
 // ---------- export ----------

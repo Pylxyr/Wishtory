@@ -3,8 +3,8 @@
 // * Game files are accessed READ-ONLY, and only from Rust (discover.rs, authkey.rs).
 // * We never attach to / inject into / talk to the game process.
 // * We never write to game folders, never set proxies, never require admin rights.
-// * Network traffic is the official HoYoverse history API (fetch.rs), the signed catalog and banner
-//   list (catalog.rs) and a version check of this project's GitHub releases (update.rs). None of
+// * Network traffic is the official HoYoverse history API (fetch.rs), the signed catalog, banner
+//   list and pity rules (catalog.rs, rules.rs) and a version check of this project's GitHub releases (update.rs). None of
 //   them is sent an account or wish data.
 // -----------------------------------------------------------------------------
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -23,6 +23,7 @@ mod fsutil;
 mod models;
 mod paimon_items;
 mod pity;
+mod rules;
 mod uigf;
 mod update;
 
@@ -38,6 +39,7 @@ fn main() {
             let catalog = catalog::CatalogStore::open(&dir);
             app.manage(catalog);
             app.manage(catalog::BannerStore::open(&dir));
+            app.manage(rules::RulesStore::open(&dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -53,6 +55,7 @@ fn main() {
             commands::get_banners,
             commands::get_banner_update,
             commands::refresh_banners,
+            commands::get_game_meta,
             commands::get_history,
             commands::get_pity,
             about::get_about,

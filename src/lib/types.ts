@@ -6,6 +6,8 @@ export interface Pull {
   id: string; game: string; uid: string; gacha_type: string; gacha_id: string; item_id: string;
   name: string; item_type: string; rank_type: number; time: string; lang: string; count: number;
   banner_name: string | null; pity: number | null;
+  rank: number; // 3 / 4 / 5 for every game; the backend maps Zenless B / A / S
+  pool: string; // short pool name for the table, e.g. "Character"
 }
 
 export interface CatalogItem {
@@ -57,26 +59,7 @@ export const GAMES: Record<GameId, { name: string; short: string; howTo: string 
   nap: { name: 'Zenless Zone Zero', short: 'Zenless Zone Zero', howTo: 'Open Signal Search → History and let the list load.' }
 };
 
-export const BANNERS: Record<GameId, { key: string; label: string }[]> = {
-  hk4e: [
-    { key: 'character', label: 'Character Event' }, { key: 'weapon', label: 'Weapon Event' },
-    { key: 'standard', label: 'Standard' }, { key: 'chronicled', label: 'Chronicled' }, { key: 'beginner', label: "Beginners'" }
-  ],
-  hkrpg: [
-    { key: 'character', label: 'Character Warp' }, { key: 'weapon', label: 'Light Cone Warp' },
-    { key: 'standard', label: 'Stellar Warp' }, { key: 'collab', label: 'Collaboration Warp' },
-    { key: 'collab_weapon', label: 'Collaboration Light Cone Warp' }, { key: 'beginner', label: 'Departure Warp' }
-  ],
-  nap: [
-    { key: 'character', label: 'Exclusive Channel' }, { key: 'weapon', label: 'W-Engine Channel' },
-    { key: 'standard', label: 'Standard Channel' }, { key: 'bangboo', label: 'Bangboo Channel' }
-  ]
-};
-
-export const GACHA_LABELS: Record<GameId, Record<string, string>> = {
-  hk4e: { '100': "Beginners'", '200': 'Standard', '301': 'Character', '400': 'Character', '302': 'Weapon', '500': 'Chronicled' },
-  hkrpg: { '1': 'Stellar', '2': 'Departure', '11': 'Character', '12': 'Light Cone', '21': 'Collab Character', '22': 'Collab Light Cone' },
-  nap: { '1': 'Standard', '2': 'Exclusive', '3': 'W-Engine', '5': 'Bangboo' }
-};
+/** Static per-game UI naming owned by the backend (history-page banner filter). */
+export interface GameMeta { game: GameId; banners: { key: string; label: string }[]; }
 
 export interface LogEntry { seq: number; time: string; level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'; source: string; message: string; }

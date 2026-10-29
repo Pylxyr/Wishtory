@@ -15,6 +15,12 @@ static COPY_SEQ: AtomicU64 = AtomicU64::new(0);
 /// Reads a whole file with maximum sharing flags (so a running game is never blocked),
 /// falling back to a temp-folder copy. Returns the ORIGINAL error if both attempts fail.
 pub fn read_shared(path: &Path) -> std::io::Result<Vec<u8>> {
+    read_shared_head(path, u64::MAX)
+}
+
+/// Like `read_shared`, but reads at most the first `max_bytes` (a huge log whose interesting
+/// lines are all near the start does not have to be loaded whole).
+pub fn read_shared_head(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
     let direct = (|| -> std::io::Result<Vec<u8>> {
         let mut opts = fs::OpenOptions::new();
         opts.read(true); // never write
@@ -24,12 +30,17 @@ pub fn read_shared(path: &Path) -> std::io::Result<Vec<u8>> {
             opts.share_mode(0x1 | 0x2 | 0x4); // FILE_SHARE_READ | WRITE | DELETE
         }
         let mut buf = Vec::new();
-        opts.open(path)?.read_to_end(&mut buf)?;
+        opts.open(path)?.take(max_bytes).read_to_end(&mut buf)?;
         Ok(buf)
     })();
     match direct {
         Ok(b) => Ok(b),
-        Err(first) => read_from_private_copy(path).map_err(|_| first),
+        Err(first) => read_from_private_copy(path)
+            .map(|mut b| {
+                b.truncate(usize::try_from(max_bytes).unwrap_or(usize::MAX));
+                b
+            })
+            .map_err(|_| first),
     }
 }
 
@@ -80,5 +91,15 @@ mod tests {
         let contents = read_from_private_copy(&source).unwrap();
         assert_eq!(contents, b"read-only fallback");
         fs::remove_file(source).unwrap();
+    }
+
+    #[test]
+    fn head_reads_stop_at_the_limit() {
+        let path = std::env::temp_dir().join(format!("wishtory-head-{}.bin", std::process::id()));
+        std::fs::write(&path, b"0123456789").unwrap();
+        assert_eq!(read_shared_head(&path, 4).unwrap(), b"0123");
+        assert_eq!(read_shared_head(&path, 100).unwrap(), b"0123456789");
+        assert_eq!(read_shared(&path).unwrap(), b"0123456789");
+        std::fs::remove_file(&path).unwrap();
     }
 }

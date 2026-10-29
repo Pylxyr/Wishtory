@@ -17,7 +17,7 @@ Windows 10 or 11.
 1. Download **`Wishtory_x.y.z_x64-setup.exe`** from the [latest release](https://github.com/Pylxyr/Wishtory/releases).
 2. Run it. It installs for your user only and never needs administrator rights.
 
-The installer is not code-signed yet, so Windows SmartScreen may warn you the first time. Choose **More info**, then **Run anyway**. To check the download first, compare its SHA-256 with the `.sha256` file in the release (`Get-FileHash <file>` in PowerShell).
+The installer is not code-signed yet, so Windows SmartScreen may warn you the first time. Choose **More info**, then **Run anyway**. To check the download first, compare its SHA-256 with `SHA256SUMS.txt` in the release (`Get-FileHash <file>` in PowerShell).
 
 ## Use it
 

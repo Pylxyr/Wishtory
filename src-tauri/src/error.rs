@@ -23,6 +23,10 @@ pub enum AppError {
     Io(String),
     #[error("Unsupported or invalid file: {0}")]
     Format(String),
+    /// A failure whose message is already written for the user (update checks, the signed
+    /// catalog / banner / rule feeds, links that may not be opened).
+    #[error("{0}")]
+    Message(String),
 }
 
 impl Serialize for AppError {

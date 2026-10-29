@@ -7,6 +7,7 @@ use crate::{
     models::{Game, GameInstall},
 };
 use regex::Regex;
+use std::sync::LazyLock;
 use std::{fs, path::PathBuf, time::SystemTime};
 
 fn locallow() -> Option<PathBuf> {
@@ -74,26 +75,43 @@ fn last_data_dir_in(text: &str, re: &Regex) -> Option<PathBuf> {
         .map(|cap| PathBuf::from(cap[1].replace('/', "\\")))
 }
 
-/// All existing `*_Data` directories mentioned in the game's logs (read-only), newest log
-/// first, without duplicates. Several entries mean several installs (for example global + CN).
-pub fn find_data_dirs(game: Game) -> Vec<PathBuf> {
+/// Unity writes the install path in the first lines of `Player.log`; the rest of a log can be
+/// several MB of gameplay noise that is not worth reading on every discovery or export.
+const LOG_HEAD_BYTES: u64 = 1024 * 1024;
+
+fn data_dir_pattern(game: Game) -> Regex {
     let alternatives = data_dir_names(game)
         .iter()
         .map(|n| regex::escape(n))
         .collect::<Vec<_>>()
         .join("|");
-    let Ok(re) = Regex::new(&format!(
+    Regex::new(&format!(
         r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alternatives}))"
-    )) else {
+    ))
+    .expect("the data folder pattern is valid")
+}
+
+/// One pattern per game, compiled once.
+static DATA_DIR_PATTERNS: LazyLock<Vec<(Game, Regex)>> = LazyLock::new(|| {
+    Game::ALL
+        .iter()
+        .map(|&g| (g, data_dir_pattern(g)))
+        .collect()
+});
+
+/// All existing `*_Data` directories mentioned in the game's logs (read-only), newest log
+/// first, without duplicates. Several entries mean several installs (for example global + CN).
+pub fn find_data_dirs(game: Game) -> Vec<PathBuf> {
+    let Some((_, re)) = DATA_DIR_PATTERNS.iter().find(|(g, _)| *g == game) else {
         return vec![];
     };
     let mut dirs: Vec<PathBuf> = Vec::new();
     for log in log_candidates(game) {
-        let Ok(bytes) = fsutil::read_shared(&log) else {
+        let Ok(bytes) = fsutil::read_shared_head(&log, LOG_HEAD_BYTES) else {
             continue;
         };
         let text = String::from_utf8_lossy(&bytes);
-        if let Some(dir) = last_data_dir_in(&text, &re) {
+        if let Some(dir) = last_data_dir_in(&text, re) {
             if dir.is_dir() && !dirs.contains(&dir) {
                 dirs.push(dir);
             }
@@ -150,8 +168,7 @@ mod tests {
 
     #[test]
     fn picks_the_last_install_path_in_a_log() {
-        let alt = data_dir_names(Game::Hk4e).join("|");
-        let re = Regex::new(&format!(r"(?i)([A-Za-z]:[/\\][^\r\n\x22]*?(?:{alt}))")).unwrap();
+        let re = data_dir_pattern(Game::Hk4e);
         let log = "Loading C:/Old/Genshin Impact Game/GenshinImpact_Data/x\nSubsystems at D:/Games/Genshin Impact Game/GenshinImpact_Data/UnitySubsystems\n";
         assert_eq!(
             last_data_dir_in(log, &re).unwrap(),

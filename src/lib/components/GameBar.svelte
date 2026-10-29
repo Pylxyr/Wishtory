@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, selectGame, refreshFromGame } from '../state.svelte';
+  import { app, selectGame, refreshFromGame, resyncFromGame } from '../state.svelte';
   import { GAMES, type GameId } from '../types';
   import Icon from './Icon.svelte';
 
@@ -37,7 +37,10 @@
     {:else}
       <span class="chip" data-tip="Launch the game once so it creates its log file">{info.name} not detected yet</span>
     {/if}
-    <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads your history">
+    <button class="btn" onclick={resyncFromGame} disabled={app.busy} data-tip="Downloads everything the server still keeps, not only what is new. Use it if pulls look missing">
+      Re-sync all
+    </button>
+    <button class="btn primary" onclick={refreshFromGame} disabled={app.busy} data-tip="Reads the game's cache (read-only), then downloads what is new in your history">
       <span class:spin={app.busy}><Icon name="refresh" size={16} /></span>{app.busy ? 'Working…' : `Refresh ${info.short}`}
     </button>
   </div>

@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "rules_version": 1,
+  "generated_at": "2026-10-28T00:00:00Z",
+  "games": {
+    "hk4e": {
+      "banners": [
+        {"key": "character", "label": "Character Event Wish", "hard": 90, "soft": 74, "odds": 50},
+        {"key": "weapon", "label": "Weapon Event Wish", "hard": 80, "soft": 63, "odds": 75},
+        {"key": "standard", "label": "Standard Wish", "hard": 90, "soft": 74},
+        {"key": "chronicled", "label": "Chronicled Wish", "hard": 90, "soft": 74},
+        {"key": "beginner", "label": "Beginners' Wish", "hard": 90}
+      ],
+      "standard": {
+        "character": {
+          "ids": [
+            "10000003", "10000016", "10000035", "10000041", "10000042", "10000069", "10000079", "10000109",
+            "diluc", "jean", "keqing", "qiqi", "mona", "tighnari", "dehya", "mizuki"
+          ],
+          "names": [
+            "Diluc", "Jean", "Keqing", "Mona", "Qiqi", "Tighnari", "Dehya", "Yumemizuki Mizuki", "Mizuki"
+          ]
+        },
+        "weapon": {
+          "ids": [
+            "15502", "11501", "14502", "13505", "14501", "11502", "15501", "12501", "13502", "12502"
+          ],
+          "names": [
+            "Amos' Bow", "Aquila Favonia", "Lost Prayer to the Sacred Winds",
+            "Primordial Jade Winged-Spear", "Skyward Atlas", "Skyward Blade", "Skyward Harp",
+            "Skyward Pride", "Skyward Spine", "Wolf's Gravestone"
+          ]
+        }
+      },
+      "featured_windows": [
+        {"id": "15502", "name": "Amos' Bow", "from": "2020-09-28", "to": "2020-10-18"},
+        {"id": "15502", "name": "Amos' Bow", "from": "2021-01-12", "to": "2021-02-02"},
+        {"id": "15502", "name": "Amos' Bow", "from": "2022-01-25", "to": "2022-02-15"},
+        {"id": "15502", "name": "Amos' Bow", "from": "2022-09-09", "to": "2022-09-27"},
+        {"id": "15502", "name": "Amos' Bow", "from": "2023-05-02", "to": "2023-05-23"},
+        {"id": "11501", "name": "Aquila Favonia", "from": "2020-09-28", "to": "2020-10-18"},
+        {"id": "11501", "name": "Aquila Favonia", "from": "2021-05-18", "to": "2021-06-08"},
+        {"id": "14502", "name": "Lost Prayer to the Sacred Winds", "from": "2020-10-20", "to": "2020-11-10"},
+        {"id": "14502", "name": "Lost Prayer to the Sacred Winds", "from": "2021-04-06", "to": "2021-04-27"},
+        {"id": "14502", "name": "Lost Prayer to the Sacred Winds", "from": "2021-06-09", "to": "2021-06-29"},
+        {"id": "14502", "name": "Lost Prayer to the Sacred Winds", "from": "2022-07-13", "to": "2022-08-02"},
+        {"id": "14502", "name": "Lost Prayer to the Sacred Winds", "from": "2023-07-05", "to": "2023-07-25"},
+        {"id": "12502", "name": "Wolf's Gravestone", "from": "2020-10-20", "to": "2020-11-10"},
+        {"id": "12502", "name": "Wolf's Gravestone", "from": "2021-02-23", "to": "2021-03-16"},
+        {"id": "15501", "name": "Skyward Harp", "from": "2020-11-11", "to": "2020-12-01"},
+        {"id": "15501", "name": "Skyward Harp", "from": "2021-04-06", "to": "2021-04-27"},
+        {"id": "15501", "name": "Skyward Harp", "from": "2021-12-14", "to": "2022-01-04"},
+        {"id": "14501", "name": "Skyward Atlas", "from": "2020-12-23", "to": "2021-01-12"},
+        {"id": "14501", "name": "Skyward Atlas", "from": "2021-06-29", "to": "2021-07-20"},
+        {"id": "12501", "name": "Skyward Pride", "from": "2021-01-12", "to": "2021-02-02"},
+        {"id": "12501", "name": "Skyward Pride", "from": "2021-06-09", "to": "2021-06-29"},
+        {"id": "13505", "name": "Primordial Jade Winged-Spear", "from": "2021-02-03", "to": "2021-02-23"},
+        {"id": "13505", "name": "Primordial Jade Winged-Spear", "from": "2022-01-05", "to": "2022-01-25"},
+        {"id": "13505", "name": "Primordial Jade Winged-Spear", "from": "2022-05-31", "to": "2022-06-21"},
+        {"id": "13505", "name": "Primordial Jade Winged-Spear", "from": "2023-01-18", "to": "2023-02-07"},
+        {"id": "13505", "name": "Primordial Jade Winged-Spear", "from": "2024-02-20", "to": "2024-03-12"},
+        {"id": "11502", "name": "Skyward Blade", "from": "2021-03-17", "to": "2021-04-06"},
+        {"id": "11502", "name": "Skyward Blade", "from": "2021-08-10", "to": "2021-08-31"},
+        {"id": "13502", "name": "Skyward Spine", "from": "2021-07-21", "to": "2021-08-10"},
+        {"id": "10000042", "name": "Keqing", "from": "2021-02-17", "to": "2021-03-02"},
+        {"id": "10000069", "name": "Tighnari", "from": "2022-08-24", "to": "2022-09-09"},
+        {"id": "10000079", "name": "Dehya", "from": "2023-03-01", "to": "2023-03-21"},
+        {"id": "10000109", "name": "Yumemizuki Mizuki", "from": "2025-02-12", "to": "2025-03-04"}
+      ]
+    },
+    "hkrpg": {
+      "banners": [
+        {"key": "character", "label": "Character Event Warp", "hard": 90, "soft": 74, "odds": 50},
+        {"key": "weapon", "label": "Light Cone Event Warp", "hard": 80, "soft": 66, "odds": 75},
+        {"key": "standard", "label": "Stellar Warp", "hard": 90, "soft": 74},
+        {"key": "collab", "label": "Collaboration Warp", "hard": 90},
+        {"key": "collab_weapon", "label": "Collaboration Light Cone Warp", "hard": 80},
+        {"key": "beginner", "label": "Departure Warp", "hard": 50}
+      ],
+      "standard": {
+        "character": {
+          "ids": ["1003", "1004", "1101", "1104", "1107", "1209", "1211"],
+          "names": ["Himeko", "Welt", "Bronya", "Gepard", "Clara", "Yanqing", "Bailu"]
+        },
+        "weapon": {
+          "ids": ["23003", "23004", "23005", "23000", "23012", "23002", "23013"],
+          "names": [
+            "But the Battle Isn't Over", "In the Name of the World", "Moment of Victory",
+            "Night on the Milky Way", "Sleep Like the Dead", "Something Irreplaceable",
+            "Time Waits for No One"
+          ]
+        }
+      },
+      "featured_windows": []
+    },
+    "nap": {
+      "banners": [
+        {"key": "character", "label": "Exclusive Channel", "hard": 90, "soft": 74, "odds": 50},
+        {"key": "weapon", "label": "W-Engine Channel", "hard": 80, "soft": 65, "odds": 75},
+        {"key": "standard", "label": "Standard Channel", "hard": 90, "soft": 74},
+        {"key": "bangboo", "label": "Bangboo Channel", "hard": 80, "soft": 65}
+      ],
+      "standard": {
+        "character": {
+          "ids": ["1021", "1041", "1101", "1141", "1181", "1211"],
+          "names": ["Grace", "Koleda", "Lycaon", "Nekomata", "Rina", "Soldier 11"]
+        },
+        "weapon": {
+          "ids": ["14102", "14104", "14110", "14114", "14118", "14121"],
+          "names": [
+            "Steel Cushion", "The Brimstone", "Hellfire Gears", "The Restrained", "Fusion Compiler",
+            "Weeping Cradle"
+          ]
+        }
+      },
+      "featured_windows": [],
+      "custom_search": {
+        "from": "2026-07-28 00:00:00",
+        "engines": [
+          {"engine": "14124", "agent": "1241"},
+          {"engine": "14107", "agent": "1071"},
+          {"engine": "14122", "agent": "1221"}
+        ]
+      }
+    }
+  }
+}

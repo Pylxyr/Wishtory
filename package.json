@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "catalog:update": "node scripts/update-catalog.mjs",
-    "catalog:test": "node --test scripts/update-catalog.test.mjs",
+    "catalog:test": "node --test scripts/update-catalog.test.mjs scripts/prepare-catalog.test.mjs scripts/track-banners.test.mjs",
+    "banners:track": "node scripts/track-banners.mjs",
+    "scripts:test": "python3 -m unittest discover -s scripts -p \"test_*.py\"",
     "catalog:sign": "node scripts/sign-catalog.mjs",
     "tauri": "tauri"
   },

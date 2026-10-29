@@ -1,10 +1,8 @@
 //! Pity counters, 50/50 state and basic statistics, computed from stored pulls.
 //!
-//! The tables below (hard/soft pity, standard-pool item ids) are game data that changes over
-//! time. Soft pity values are community estimates (the games do not publish them); hard pity
-//! values are the in-game guarantees. Re-check both whenever a game changes its banner rules.
-//! The Chronicled Wish values follow secondary sources (hard 90, soft near 74) and are the least
-//! certain entry in the table.
+//! Everything that changes with the games (hard and soft pity, the permanent pool, items that
+//! were also featured, Zenless Custom Search) is data in `rules.rs`, not code here, so a rule
+//! change ships as a signed update instead of an app release.
 //!
 //! Win/loss tracking ("odds") exists for the banners whose off-banner result is a permanent-pool
 //! item: character banners (50/50) and weapon / Light Cone / W-Engine banners (75/25). A result
@@ -12,177 +10,20 @@
 //! featured, including a non-selected weapon under Epitomized Path. Chronicled, Bangboo and the
 //! Star Rail collaboration warps have no tracked result. A permanent-pool item that was itself a
 //! rate-up item counts as featured: either because the signed banner list features it on the
-//! banner the pull was made on, or (Genshin only, as a fallback that needs no banner list)
-//! because of a `FEATURED_WINDOWS` row.
+//! banner the pull was made on, or (as a fallback that needs no banner list) because the rules
+//! list a featured window for it.
 
 use crate::{
     catalog::BannerEntry,
     models::{Game, Pull},
+    rules::{GameRules, RuleSet},
 };
 use serde::Serialize;
 use std::collections::HashMap;
 
-struct Banner {
-    key: &'static str,
-    label: &'static str,
-    hard: u32,
-    soft: Option<u32>,
-    /// Percent chance that a non-guaranteed 5★ is featured (50 for characters, 75 for weapons).
-    /// `Some` tracks the win / loss / guarantee state against the permanent-pool tables below.
-    odds: Option<u8>,
-}
-
 /// Banners that only exist for part of the game's life stay hidden until they have a pull.
 fn hidden_when_empty(key: &str) -> bool {
     key == "beginner" || key.starts_with("collab")
-}
-
-fn banners(game: Game) -> &'static [Banner] {
-    match game {
-        Game::Hk4e => &[
-            Banner {
-                key: "character",
-                label: "Character Event Wish",
-                hard: 90,
-                soft: Some(74),
-                odds: Some(50),
-            },
-            Banner {
-                key: "weapon",
-                label: "Weapon Event Wish",
-                hard: 80,
-                soft: Some(63),
-                odds: Some(75),
-            },
-            Banner {
-                key: "standard",
-                label: "Standard Wish",
-                hard: 90,
-                soft: Some(74),
-                odds: None,
-            },
-            Banner {
-                key: "chronicled",
-                label: "Chronicled Wish",
-                hard: 90,
-                soft: Some(74),
-                odds: None,
-            },
-            Banner {
-                key: "beginner",
-                label: "Beginners' Wish",
-                hard: 90,
-                soft: None,
-                odds: None,
-            },
-        ],
-        Game::Hkrpg => &[
-            Banner {
-                key: "character",
-                label: "Character Event Warp",
-                hard: 90,
-                soft: Some(74),
-                odds: Some(50),
-            },
-            Banner {
-                key: "weapon",
-                label: "Light Cone Event Warp",
-                hard: 80,
-                soft: Some(66),
-                odds: Some(75),
-            },
-            Banner {
-                key: "standard",
-                label: "Stellar Warp",
-                hard: 90,
-                soft: Some(74),
-                odds: None,
-            },
-            Banner {
-                key: "collab",
-                label: "Collaboration Warp",
-                hard: 90,
-                soft: None,
-                odds: None,
-            },
-            Banner {
-                key: "collab_weapon",
-                label: "Collaboration Light Cone Warp",
-                hard: 80,
-                soft: None,
-                odds: None,
-            },
-            Banner {
-                key: "beginner",
-                label: "Departure Warp",
-                hard: 50,
-                soft: None,
-                odds: None,
-            },
-        ],
-        Game::Nap => &[
-            Banner {
-                key: "character",
-                label: "Exclusive Channel",
-                hard: 90,
-                soft: Some(74),
-                odds: Some(50),
-            },
-            Banner {
-                key: "weapon",
-                label: "W-Engine Channel",
-                hard: 80,
-                soft: Some(65),
-                odds: Some(75),
-            },
-            Banner {
-                key: "standard",
-                label: "Standard Channel",
-                hard: 90,
-                soft: Some(74),
-                odds: None,
-            },
-            Banner {
-                key: "bangboo",
-                label: "Bangboo Channel",
-                hard: 80,
-                soft: Some(65),
-                odds: None,
-            },
-        ],
-    }
-}
-
-/// Language-independent item ids and Paimon.moe slugs for permanent-pool 5★ characters.
-fn standard_fives(game: Game) -> &'static [&'static str] {
-    match game {
-        // Paimon.moe local exports store character slugs instead of HoYo numeric IDs.
-        // 10000109 is Yumemizuki Mizuki, who joined the permanent pool after Genshin 5.5.
-        Game::Hk4e => &[
-            "10000003", "10000016", "10000035", "10000041", "10000042", "10000069", "10000079",
-            "10000109", "diluc", "jean", "keqing", "qiqi", "mona", "tighnari", "dehya", "mizuki",
-        ],
-        Game::Hkrpg => &["1003", "1004", "1101", "1104", "1107", "1209", "1211"],
-        // Permanent S-rank agents in the Stable Channel. These IDs are returned in ZZZ
-        // wish records and are language-independent, like the item IDs for the other games.
-        Game::Nap => &["1021", "1041", "1101", "1141", "1181", "1211"],
-    }
-}
-
-/// Permanent-pool 5★ weapons, Light Cones and W-Engines (ids from the bundled catalog).
-/// Genshin: the ten Standard Wish weapons. Star Rail: the seven Stellar Warp Light Cones.
-/// Zenless: the six Stable Channel W-Engines (the signatures of the permanent S-rank agents).
-fn standard_weapons(game: Game) -> &'static [&'static str] {
-    match game {
-        Game::Hk4e => &[
-            "15502", "11501", "14502", "13505", "14501", "11502", "15501", "12501", "13502",
-            "12502",
-        ],
-        Game::Hkrpg => &[
-            "23003", "23004", "23005", "23000", "23012", "23002", "23013",
-        ],
-        Game::Nap => &["14102", "14104", "14110", "14114", "14118", "14121"],
-    }
 }
 
 /// Lower-case, straight-apostrophe form so `Amos’ Bow` and `Amos' Bow` compare equal.
@@ -190,190 +31,31 @@ fn fold(name: &str) -> String {
     name.trim().replace('\u{2019}', "'").to_lowercase()
 }
 
-/// English names of the permanent-pool 5★ characters, for records that carry no `item_id`.
-fn standard_five_names(game: Game) -> &'static [&'static str] {
-    match game {
-        Game::Hk4e => &[
-            "Diluc",
-            "Jean",
-            "Keqing",
-            "Mona",
-            "Qiqi",
-            "Tighnari",
-            "Dehya",
-            "Yumemizuki Mizuki",
-            "Mizuki",
-        ],
-        Game::Hkrpg => &[
-            "Himeko", "Welt", "Bronya", "Gepard", "Clara", "Yanqing", "Bailu",
-        ],
-        Game::Nap => &[
-            "Grace",
-            "Koleda",
-            "Lycaon",
-            "Nekomata",
-            "Rina",
-            "Soldier 11",
-        ],
-    }
-}
-
-/// English names of the permanent-pool 5★ weapons, Light Cones and W-Engines.
-fn standard_weapon_names(game: Game) -> &'static [&'static str] {
-    match game {
-        Game::Hk4e => &[
-            "Amos' Bow",
-            "Aquila Favonia",
-            "Lost Prayer to the Sacred Winds",
-            "Primordial Jade Winged-Spear",
-            "Skyward Atlas",
-            "Skyward Blade",
-            "Skyward Harp",
-            "Skyward Pride",
-            "Skyward Spine",
-            "Wolf's Gravestone",
-        ],
-        Game::Hkrpg => &[
-            "But the Battle Isn't Over",
-            "In the Name of the World",
-            "Moment of Victory",
-            "Night on the Milky Way",
-            "Sleep Like the Dead",
-            "Something Irreplaceable",
-            "Time Waits for No One",
-        ],
-        Game::Nap => &[
-            "Steel Cushion",
-            "The Brimstone",
-            "Hellfire Gears",
-            "The Restrained",
-            "Fusion Compiler",
-            "Weeping Cradle",
-        ],
-    }
-}
-
 /// HoYoverse's live history API frequently omits `item_id`, even when it provides a usable
 /// localized `name`. Older records must still identify permanent-pool items by name.
-fn is_standard_five(game: Game, banner: &str, pull: &Pull) -> bool {
-    let weapon = banner == "weapon";
-    let ids = if weapon {
-        standard_weapons(game)
+fn is_standard_five(rules: &GameRules, banner: &str, pull: &Pull) -> bool {
+    let pool = if banner == "weapon" {
+        &rules.standard.weapon
     } else {
-        standard_fives(game)
-    };
-    let names = if weapon {
-        standard_weapon_names(game)
-    } else {
-        standard_five_names(game)
+        &rules.standard.character
     };
     let name = fold(&pull.name);
-    ids.iter().any(|id| id.eq_ignore_ascii_case(&pull.item_id))
-        || names.iter().any(|n| fold(n) == name)
+    pool.ids
+        .iter()
+        .any(|id| id.eq_ignore_ascii_case(&pull.item_id))
+        || pool.names.iter().any(|n| fold(n) == name)
 }
 
-/// Genshin permanent-pool 5★ items that were also a rate-up (featured) item on an event banner:
-/// (item id, English name, first day, last day). Days are the banner's server-local dates, both
-/// inclusive, from the community banner history at paimon.moe (up to version 7.1). A pull inside
-/// its window is the featured result, never a lost 50/50 or 75/25: a long history may hold, for
-/// example, Skyward Atlas from its own banner. Add a row whenever such an item is featured again.
-const FEATURED_WINDOWS: &[(&str, &str, &str, &str)] = &[
-    ("15502", "Amos' Bow", "2020-09-28", "2020-10-18"),
-    ("15502", "Amos' Bow", "2021-01-12", "2021-02-02"),
-    ("15502", "Amos' Bow", "2022-01-25", "2022-02-15"),
-    ("15502", "Amos' Bow", "2022-09-09", "2022-09-27"),
-    ("15502", "Amos' Bow", "2023-05-02", "2023-05-23"),
-    ("11501", "Aquila Favonia", "2020-09-28", "2020-10-18"),
-    ("11501", "Aquila Favonia", "2021-05-18", "2021-06-08"),
-    (
-        "14502",
-        "Lost Prayer to the Sacred Winds",
-        "2020-10-20",
-        "2020-11-10",
-    ),
-    (
-        "14502",
-        "Lost Prayer to the Sacred Winds",
-        "2021-04-06",
-        "2021-04-27",
-    ),
-    (
-        "14502",
-        "Lost Prayer to the Sacred Winds",
-        "2021-06-09",
-        "2021-06-29",
-    ),
-    (
-        "14502",
-        "Lost Prayer to the Sacred Winds",
-        "2022-07-13",
-        "2022-08-02",
-    ),
-    (
-        "14502",
-        "Lost Prayer to the Sacred Winds",
-        "2023-07-05",
-        "2023-07-25",
-    ),
-    ("12502", "Wolf's Gravestone", "2020-10-20", "2020-11-10"),
-    ("12502", "Wolf's Gravestone", "2021-02-23", "2021-03-16"),
-    ("15501", "Skyward Harp", "2020-11-11", "2020-12-01"),
-    ("15501", "Skyward Harp", "2021-04-06", "2021-04-27"),
-    ("15501", "Skyward Harp", "2021-12-14", "2022-01-04"),
-    ("14501", "Skyward Atlas", "2020-12-23", "2021-01-12"),
-    ("14501", "Skyward Atlas", "2021-06-29", "2021-07-20"),
-    ("12501", "Skyward Pride", "2021-01-12", "2021-02-02"),
-    ("12501", "Skyward Pride", "2021-06-09", "2021-06-29"),
-    (
-        "13505",
-        "Primordial Jade Winged-Spear",
-        "2021-02-03",
-        "2021-02-23",
-    ),
-    (
-        "13505",
-        "Primordial Jade Winged-Spear",
-        "2022-01-05",
-        "2022-01-25",
-    ),
-    (
-        "13505",
-        "Primordial Jade Winged-Spear",
-        "2022-05-31",
-        "2022-06-21",
-    ),
-    (
-        "13505",
-        "Primordial Jade Winged-Spear",
-        "2023-01-18",
-        "2023-02-07",
-    ),
-    (
-        "13505",
-        "Primordial Jade Winged-Spear",
-        "2024-02-20",
-        "2024-03-12",
-    ),
-    ("11502", "Skyward Blade", "2021-03-17", "2021-04-06"),
-    ("11502", "Skyward Blade", "2021-08-10", "2021-08-31"),
-    ("13502", "Skyward Spine", "2021-07-21", "2021-08-10"),
-    ("10000042", "Keqing", "2021-02-17", "2021-03-02"),
-    ("10000069", "Tighnari", "2022-08-24", "2022-09-09"),
-    ("10000079", "Dehya", "2023-03-01", "2023-03-21"),
-    ("10000109", "Yumemizuki Mizuki", "2025-02-12", "2025-03-04"),
-];
-
-/// True when a Genshin pull matches a `FEATURED_WINDOWS` row and was made inside its dates.
-fn was_featured(game: Game, pull: &Pull) -> bool {
-    if game != Game::Hk4e {
-        return false;
-    }
+/// True when a pull matches a featured window of the rules and was made inside its dates.
+fn was_featured(rules: &GameRules, pull: &Pull) -> bool {
     let Some(day) = pull.time.get(..10) else {
         return false;
     };
     let name = fold(&pull.name);
-    FEATURED_WINDOWS.iter().any(|(id, item, from, to)| {
-        (id.eq_ignore_ascii_case(&pull.item_id) || fold(item) == name) && *from <= day && day <= *to
+    rules.featured_windows.iter().any(|w| {
+        (w.id.eq_ignore_ascii_case(&pull.item_id) || fold(&w.name) == name)
+            && w.from.as_str() <= day
+            && day <= w.to.as_str()
     })
 }
 
@@ -429,28 +111,26 @@ pub fn resolve_banners<'a>(
 fn listed_as_featured(banners: &[BannerEntry], game: Game, pull: &Pull) -> bool {
     !pull.item_id.is_empty()
         && resolve_banner(banners, game, pull)
-            .is_some_and(|banner| banner.featured_5.iter().any(|id| *id == pull.item_id))
+            .is_some_and(|banner| banner.featured_5.contains(&pull.item_id))
 }
-
-/// Zenless Version 3.1 (Custom Search) lets players keep limited agents such as Zhu Yuan, Caesar
-/// and Yanagi, and their signature W-Engines, in the off-banner pool. A little before its launch
-/// day, in server-local time.
-const CUSTOM_SEARCH_FROM: &str = "2026-07-28 00:00:00";
-
-/// The signature W-Engines Custom Search added, each with its agent: Riot Suppressor Mark VI
-/// (Zhu Yuan), Tusks of Fury (Caesar) and Timeweaver (Yanagi).
-const CUSTOM_SEARCH_ENGINES: &[(&str, &str)] =
-    &[("14124", "1241"), ("14107", "1071"), ("14122", "1221")];
 
 /// True for a Zenless Exclusive Channel S-Rank agent, or a W-Engine Channel S-Rank engine, that
 /// no live event features, once Custom Search exists: a lost 50/50 or 75/25, even when it is not
 /// a Stable Channel item. An engine counts as featured while its agent is on a live banner. Needs
 /// an `item_id` and at least one live agent event in the banner list; otherwise it cannot say.
-fn lost_to_custom_search(banners: &[BannerEntry], game: Game, banner: &str, pull: &Pull) -> bool {
-    if game != Game::Nap
-        || !matches!(banner, "character" | "weapon")
+fn lost_to_custom_search(
+    rules: &GameRules,
+    banners: &[BannerEntry],
+    game: Game,
+    banner: &str,
+    pull: &Pull,
+) -> bool {
+    let Some(search) = &rules.custom_search else {
+        return false;
+    };
+    if !matches!(banner, "character" | "weapon")
         || pull.item_id.is_empty()
-        || pull.time.as_str() < CUSTOM_SEARCH_FROM
+        || pull.time.as_str() < search.from.as_str()
     {
         return false;
     }
@@ -466,10 +146,60 @@ fn lost_to_custom_search(banners: &[BannerEntry], game: Game, banner: &str, pull
     if banner == "character" {
         !featured(&pull.item_id)
     } else {
-        CUSTOM_SEARCH_ENGINES
+        search
+            .engines
             .iter()
-            .any(|(engine, agent)| *engine == pull.item_id && !featured(*agent))
+            .any(|e| e.engine == pull.item_id && !featured(&e.agent))
     }
+}
+
+/// History-page banner filter for one game: `(banner key, label)` in display order.
+pub fn history_filters(game: Game) -> &'static [(&'static str, &'static str)] {
+    match game {
+        Game::Hk4e => &[
+            ("character", "Character Event"),
+            ("weapon", "Weapon Event"),
+            ("standard", "Standard"),
+            ("chronicled", "Chronicled"),
+            ("beginner", "Beginners'"),
+        ],
+        Game::Hkrpg => &[
+            ("character", "Character Warp"),
+            ("weapon", "Light Cone Warp"),
+            ("standard", "Stellar Warp"),
+            ("collab", "Collaboration Warp"),
+            ("collab_weapon", "Collaboration Light Cone Warp"),
+            ("beginner", "Departure Warp"),
+        ],
+        Game::Nap => &[
+            ("character", "Exclusive Channel"),
+            ("weapon", "W-Engine Channel"),
+            ("standard", "Standard Channel"),
+            ("bangboo", "Bangboo Channel"),
+        ],
+    }
+}
+
+/// Short pool name for the history table's "Wish" column.
+pub fn pool_label(game: Game, gacha_type: &str) -> Option<&'static str> {
+    Some(match (game, gacha_type) {
+        (Game::Hk4e, "100") => "Beginners'",
+        (Game::Hk4e, "200") => "Standard",
+        (Game::Hk4e, "301" | "400") => "Character",
+        (Game::Hk4e, "302") => "Weapon",
+        (Game::Hk4e, "500") => "Chronicled",
+        (Game::Hkrpg, "1") => "Stellar",
+        (Game::Hkrpg, "2") => "Departure",
+        (Game::Hkrpg, "11") => "Character",
+        (Game::Hkrpg, "12") => "Light Cone",
+        (Game::Hkrpg, "21") => "Collab Character",
+        (Game::Hkrpg, "22") => "Collab Light Cone",
+        (Game::Nap, "1") => "Standard",
+        (Game::Nap, "2") => "Exclusive",
+        (Game::Nap, "3") => "W-Engine",
+        (Game::Nap, "5") => "Bangboo",
+        _ => return None,
+    })
 }
 
 /// The banner event a pull was made on, or `None` when the banner list cannot say for sure.
@@ -487,7 +217,7 @@ pub fn resolve_banner<'a>(
         if let Some(found) = banners
             .iter()
             .filter(same_pool)
-            .find(|b| b.gacha_ids.iter().any(|id| *id == pull.gacha_id))
+            .find(|b| b.gacha_ids.contains(&pull.gacha_id))
         {
             return Some(found);
         }
@@ -503,7 +233,7 @@ pub fn resolve_banner<'a>(
         several => {
             let mut featured = several
                 .iter()
-                .filter(|b| b.featured_5.iter().any(|id| *id == pull.item_id));
+                .filter(|b| b.featured_5.contains(&pull.item_id));
             let first = featured.next()?;
             if featured.next().is_some() {
                 None
@@ -546,30 +276,66 @@ pub fn display_rank(game: Game, raw_rank: u8) -> u8 {
     }
 }
 
-/// Pity of every pull at the moment it was made, aligned with `pulls` (oldest → newest): pulls
-/// since the last 5★ for a 5★, since the last 4★ or 5★ for a 4★, `None` for anything else.
-/// Counted per pity pool exactly like `compute_with_banners`.
-pub fn pull_pities(game: Game, pulls: &[Pull]) -> Vec<Option<u32>> {
-    let mut counters: HashMap<&'static str, (u32, u32)> = HashMap::new();
-    pulls
+/// Where one pull sits in its pity pool: the counters INCLUDING this pull, before a reset.
+struct Step {
+    key: &'static str,
+    /// Display rank (3 / 4 / 5 for every game).
+    rank: u8,
+    five: u32,
+    four: u32,
+}
+
+/// One pass over the history that every pity figure is derived from.
+struct Walk {
+    /// Aligned with the pulls; `None` for a gacha type that belongs to no known pool.
+    steps: Vec<Option<Step>>,
+    /// Pulls since the last 5★ and since the last 4★/5★ after the final pull of every pool.
+    open: HashMap<&'static str, (u32, u32)>,
+}
+
+/// Counts per pity pool. A 5★ resets both counters, a 4★ only the 4★ one. `pulls` must be
+/// sorted oldest → newest (`Db::pulls_for` does this).
+fn walk(game: Game, pulls: &[Pull]) -> Walk {
+    let mut open: HashMap<&'static str, (u32, u32)> = HashMap::new();
+    let steps = pulls
         .iter()
         .map(|p| {
             let key = banner_key(game, &p.gacha_type)?;
-            let (five, four) = counters.entry(key).or_insert((0, 0));
+            let (five, four) = open.entry(key).or_insert((0, 0));
             *five += 1;
             *four += 1;
-            match display_rank(game, p.rank_type) {
+            let rank = display_rank(game, p.rank_type);
+            let step = Step {
+                key,
+                rank,
+                five: *five,
+                four: *four,
+            };
+            match rank {
                 5 => {
-                    let n = *five;
                     *five = 0;
                     *four = 0;
-                    Some(n)
                 }
-                4 => {
-                    let n = *four;
-                    *four = 0;
-                    Some(n)
-                }
+                4 => *four = 0,
+                _ => {}
+            }
+            Some(step)
+        })
+        .collect();
+    Walk { steps, open }
+}
+
+/// Pity of every pull at the moment it was made, aligned with `pulls` (oldest → newest): pulls
+/// since the last 5★ for a 5★, since the last 4★ or 5★ for a 4★, `None` for anything else.
+pub fn pull_pities(game: Game, pulls: &[Pull]) -> Vec<Option<u32>> {
+    walk(game, pulls)
+        .steps
+        .into_iter()
+        .map(|step| {
+            let step = step?;
+            match step.rank {
+                5 => Some(step.five),
+                4 => Some(step.four),
                 _ => None,
             }
         })
@@ -613,7 +379,7 @@ pub struct BannerPity {
 /// `pulls` must be sorted oldest → newest (Db::pulls_for does this).
 #[cfg(test)]
 pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
-    compute_with_banners(game, pulls, &[])
+    compute_with_banners(game, pulls, &[], &RuleSet::bundled())
 }
 
 /// Pity counters and win / loss state per banner. `banner_list` lets a permanent-pool item that
@@ -622,54 +388,44 @@ pub fn compute_with_banners(
     game: Game,
     pulls: &[Pull],
     banner_list: &[BannerEntry],
+    rule_set: &RuleSet,
 ) -> Vec<BannerPity> {
-    banners(game)
+    let rules = rule_set.game(game);
+    let Walk { steps, open } = walk(game, pulls);
+    rules
+        .banners
         .iter()
         .filter_map(|b| {
-            let (
-                mut counter,
-                mut four_counter,
-                mut total,
-                mut fives,
-                mut fours,
-                mut sum_five,
-                mut sum_four,
-            ) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
+            let (mut total, mut fives, mut fours, mut sum_five, mut sum_four) =
+                (0u32, 0u32, 0u32, 0u32, 0u32);
             // Only infer guarantee state after observing a loss in the imported history.
             // A history may begin mid-stream, so the first featured pull is ambiguous.
             let mut guaranteed: Option<bool> = None;
             let mut recent_fives = Vec::new();
             let mut recent_fours = Vec::new();
-            for p in pulls
-                .iter()
-                .filter(|p| banner_key(game, &p.gacha_type) == Some(b.key))
-            {
-                counter += 1;
-                four_counter += 1;
+            for (p, step) in pulls.iter().zip(&steps) {
+                let Some(step) = step.as_ref().filter(|s| s.key == b.key) else {
+                    continue;
+                };
                 total += 1;
-                match display_rank(game, p.rank_type) {
+                match step.rank {
                     4 => {
                         fours += 1;
-                        sum_four += four_counter;
+                        sum_four += step.four;
                         recent_fours.push(FourStar {
                             name: p.name.clone(),
-                            pity: four_counter,
+                            pity: step.four,
                             time: p.time.clone(),
                         });
-                        four_counter = 0;
                     }
                     5 => {
                         fives += 1;
-                        sum_five += counter;
-                        let is_standard = (is_standard_five(game, b.key, p)
-                            && !was_featured(game, p)
+                        sum_five += step.five;
+                        let is_standard = (is_standard_five(rules, &b.key, p)
+                            && !was_featured(rules, p)
                             && !listed_as_featured(banner_list, game, p))
-                            || lost_to_custom_search(banner_list, game, b.key, p);
-                        let off = if b.odds.is_some() {
-                            Some(is_standard)
-                        } else {
-                            None
-                        };
+                            || lost_to_custom_search(rules, banner_list, game, &b.key, p);
+                        let off = b.odds.map(|_| is_standard);
                         let outcome = if b.odds.is_none() {
                             None
                         } else if is_standard {
@@ -691,24 +447,22 @@ pub fn compute_with_banners(
                         };
                         recent_fives.push(FiveStar {
                             name: p.name.clone(),
-                            pity: counter,
+                            pity: step.five,
                             time: p.time.clone(),
                             off_banner: off,
                             outcome,
                         });
-                        counter = 0;
-                        four_counter = 0;
                     }
                     _ => {}
                 }
             }
-            if total == 0 && hidden_when_empty(b.key) {
+            if total == 0 && hidden_when_empty(&b.key) {
                 return None;
             }
             Some(BannerPity {
-                banner: b.key.into(),
-                label: b.label.into(),
-                pity: counter,
+                banner: b.key.clone(),
+                label: b.label.clone(),
+                pity: open.get(b.key.as_str()).map_or(0, |(five, _)| *five),
                 hard_pity: b.hard,
                 soft_pity: b.soft,
                 guaranteed,
@@ -716,16 +470,8 @@ pub fn compute_with_banners(
                 total,
                 five_stars: fives,
                 four_stars: fours,
-                avg_five_pity: if fives > 0 {
-                    Some(sum_five as f32 / fives as f32)
-                } else {
-                    None
-                },
-                avg_four_pity: if fours > 0 {
-                    Some(sum_four as f32 / fours as f32)
-                } else {
-                    None
-                },
+                avg_five_pity: (fives > 0).then(|| sum_five as f32 / fives as f32),
+                avg_four_pity: (fours > 0).then(|| sum_four as f32 / fours as f32),
                 recent_fives,
                 recent_fours,
             })
@@ -1278,7 +1024,7 @@ mod tests {
         )];
         let jean = |time: &str| at(p(1, 5, "10000003"), time);
         let outcome = |banner_list: &[BannerEntry], pull: Pull| {
-            let r = compute_with_banners(Game::Hk4e, &[pull], banner_list);
+            let r = compute_with_banners(Game::Hk4e, &[pull], banner_list, &RuleSet::bundled());
             let c = find(&r, "character");
             (
                 c.recent_fives[0].outcome.clone(),
@@ -1319,7 +1065,7 @@ mod tests {
             at(pull("hk4e", "302", 1, 5, "14501"), "2030-01-05 12:00:00"),
             at(pull("hk4e", "302", 2, 5, "14501"), "2030-03-05 12:00:00"),
         ];
-        let r = compute_with_banners(Game::Hk4e, &pulls, &list);
+        let r = compute_with_banners(Game::Hk4e, &pulls, &list, &RuleSet::bundled());
         let fives = &find(&r, "weapon").recent_fives;
         assert_eq!(fives[0].outcome, None);
         assert_eq!(fives[1].outcome.as_deref(), Some("loss"));
@@ -1416,5 +1162,70 @@ mod tests {
             .collect();
         let expected: Vec<Option<String>> = vec![Some("one".into()), Some("one".into()), None];
         assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn outcomes_and_limits_follow_the_rules_data_not_code() {
+        let pulls = [p(1, 5, "diluc"), p(2, 5, "hu_tao")];
+        let r = compute_with_banners(Game::Hk4e, &pulls, &[], &RuleSet::bundled());
+        let fives = &find(&r, "character").recent_fives;
+        assert_eq!(fives[0].outcome.as_deref(), Some("loss"));
+        assert_eq!(fives[1].outcome.as_deref(), Some("guaranteed"));
+        assert_eq!(find(&r, "character").hard_pity, 90);
+
+        // A rules update changes the result with no code change: here Diluc leaves the
+        // permanent pool and the character banner's hard pity moves.
+        let mut rules = RuleSet::bundled();
+        rules.game_mut(Game::Hk4e).standard.character = crate::rules::ItemSet::default();
+        rules.game_mut(Game::Hk4e).banners[0].hard = 50;
+        let r = compute_with_banners(Game::Hk4e, &pulls, &[], &rules);
+        assert_eq!(find(&r, "character").recent_fives[0].outcome, None);
+        assert_eq!(find(&r, "character").hard_pity, 50);
+    }
+
+    #[test]
+    fn per_pull_pity_and_the_banner_summary_come_from_one_walk() {
+        let pulls: Vec<Pull> = (1..=25)
+            .map(|i| {
+                p(
+                    i,
+                    if i == 7 {
+                        4
+                    } else if i == 20 {
+                        5
+                    } else {
+                        3
+                    },
+                    "x",
+                )
+            })
+            .collect();
+        let per_pull = pull_pities(Game::Hk4e, &pulls);
+        assert_eq!(per_pull[6], Some(7), "4★ at pull 7");
+        assert_eq!(per_pull[19], Some(20), "a 4★ does not reset the 5★ counter");
+        assert_eq!(per_pull[0], None);
+        let r = compute(Game::Hk4e, &pulls);
+        let banner = find(&r, "character");
+        assert_eq!(banner.recent_fours[0].pity, 7);
+        assert_eq!(banner.recent_fives[0].pity, 20);
+        assert_eq!(banner.pity, 5, "pulls since the 5★");
+        // Unknown pools are skipped by both.
+        let odd = [pull("hk4e", "999", 1, 5, "x")];
+        assert_eq!(pull_pities(Game::Hk4e, &odd), vec![None]);
+    }
+
+    #[test]
+    fn ui_names_exist_for_every_pool_the_api_reports() {
+        for game in Game::ALL {
+            for gacha_type in game.gacha_types() {
+                assert!(pool_label(game, gacha_type).is_some(), "{gacha_type}");
+                if let Some(key) = banner_key(game, gacha_type) {
+                    assert!(
+                        history_filters(game).iter().any(|(k, _)| *k == key),
+                        "{key} has no history filter"
+                    );
+                }
+            }
+        }
     }
 }

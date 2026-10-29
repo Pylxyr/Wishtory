@@ -6,18 +6,277 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        RwLock,
+        Arc, OnceLock, RwLock,
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 pub const MAX_CATALOG_BYTES: usize = 8 * 1024 * 1024;
-const MAX_ENVELOPE_BYTES: usize = MAX_CATALOG_BYTES * 4 / 3 + 2048;
 const MAX_ITEMS: usize = 20_000;
+const MAX_BANNER_BYTES: usize = 2 * 1024 * 1024;
+const MAX_BANNERS: usize = 5_000;
 const UPDATE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
-const CATALOG_URL: &str =
-    "https://github.com/Pylxyr/Wishtory/releases/download/catalog-v1/catalog.json";
+/// Every signed feed is published on this rolling release as `<asset>.envelope.json` (see
+/// `.github/workflows/catalog-release.yml`). Copies named `catalog.json` and `banners.json` are
+/// published too for app versions up to 0.0.2, which asked for those names.
+const FEED_BASE_URL: &str = "https://github.com/Pylxyr/Wishtory/releases/download/catalog-v1";
 const PINNED_PUBLIC_KEY: &str = include_str!("../../catalog/catalog-public-key.txt");
+
+// ---------------------------------------------------------------------------------------------
+// Signed feeds: one implementation of "bundled copy + signed, versioned, cached updates"
+// ---------------------------------------------------------------------------------------------
+
+/// A JSON document the app ships with and can update at runtime from a signed envelope.
+pub trait Feed: Clone + PartialEq + Send + Sync + 'static {
+    /// Name used in error messages.
+    const LABEL: &'static str;
+    /// Release asset (`<ASSET>.envelope.json`), cache folder (`<ASSET>-cache`) and check file
+    /// (`<ASSET>-last-check`) prefix.
+    const ASSET: &'static str;
+    /// Largest accepted document; the envelope limit is derived from it.
+    const MAX_BYTES: usize;
+    fn bundled() -> Self;
+    fn parse_and_validate(bytes: &[u8]) -> Result<Self, String>;
+    /// Monotonic; an update is only installed when this is higher than the current one.
+    fn version(&self) -> u64;
+}
+
+fn max_envelope_bytes<F: Feed>() -> usize {
+    F::MAX_BYTES * 4 / 3 + 2048
+}
+
+fn feed_url<F: Feed>() -> String {
+    format!("{FEED_BASE_URL}/{}.envelope.json", F::ASSET)
+}
+
+/// Checks the signature against the pinned key and returns the validated document together
+/// with the signed payload bytes.
+pub fn verify_envelope<F: Feed>(envelope: &[u8]) -> Result<(F, Vec<u8>), String> {
+    let public_key = BASE64
+        .decode(PINNED_PUBLIC_KEY.trim())
+        .map_err(|_| "invalid pinned catalog key".to_string())?;
+    verify_envelope_with_key(envelope, &public_key)
+}
+
+fn verify_envelope_with_key<F: Feed>(
+    envelope: &[u8],
+    public_key: &[u8],
+) -> Result<(F, Vec<u8>), String> {
+    let label = F::LABEL;
+    if envelope.is_empty() || envelope.len() > max_envelope_bytes::<F>() {
+        return Err(format!(
+            "{label} envelope is empty or exceeds the size limit"
+        ));
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct SignedEnvelope {
+        payload: String,
+        signature: String,
+    }
+    let envelope: SignedEnvelope =
+        serde_json::from_slice(envelope).map_err(|e| format!("invalid {label} envelope: {e}"))?;
+    let payload = BASE64
+        .decode(envelope.payload)
+        .map_err(|_| format!("invalid {label} payload encoding"))?;
+    let signature = BASE64
+        .decode(envelope.signature.trim())
+        .map_err(|_| format!("invalid {label} signature encoding"))?;
+    if !verify_signature_with_key(&payload, &signature, public_key) {
+        return Err(format!("{label} signature verification failed"));
+    }
+    let document = F::parse_and_validate(&payload)?;
+    Ok((document, payload))
+}
+
+fn verify_signature_with_key(bytes: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
+    UnparsedPublicKey::new(&ED25519, public_key)
+        .verify(bytes, signature)
+        .is_ok()
+}
+
+/// What a refresh did.
+pub enum Refresh<F> {
+    /// Another refresh was already running.
+    Busy,
+    /// The once-a-day gate said it is too early to ask the server.
+    NotDue,
+    /// The server's copy is not newer than ours.
+    Current,
+    /// A newer copy was verified, cached and is now current; `previous` is what it replaced.
+    Installed { previous: Arc<F> },
+}
+
+impl<F> Refresh<F> {
+    /// The status string the UI knows: "updated", "up-to-date" or "already-checking".
+    pub fn status(&self) -> &'static str {
+        match self {
+            Refresh::Busy => "already-checking",
+            Refresh::NotDue | Refresh::Current => "up-to-date",
+            Refresh::Installed { .. } => "updated",
+        }
+    }
+}
+
+/// The current copy of one feed plus its on-disk cache of verified envelopes.
+pub struct FeedStore<F: Feed> {
+    current: RwLock<Arc<F>>,
+    cache_dir: PathBuf,
+    check_file: PathBuf,
+    checking: AtomicBool,
+}
+
+impl<F: Feed> FeedStore<F> {
+    /// The newest verified cached copy, unless the copy bundled in this app is newer.
+    pub fn open(app_data: &Path) -> Self {
+        let cache_dir = app_data.join(format!("{}-cache", F::ASSET));
+        let cached = std::fs::read_dir(&cache_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .filter_map(|entry| {
+                let path = entry.path();
+                let metadata = std::fs::metadata(&path).ok()?;
+                if !metadata.is_file() || metadata.len() > max_envelope_bytes::<F>() as u64 {
+                    return None;
+                }
+                std::fs::read(path).ok()
+            })
+            .filter_map(|bytes| verify_envelope::<F>(&bytes).ok().map(|(doc, _)| doc))
+            .max_by_key(F::version);
+        let embedded = F::bundled();
+        let current = cached
+            .filter(|doc| doc.version() >= embedded.version())
+            .unwrap_or(embedded);
+        Self::new(app_data, current)
+    }
+
+    fn new(app_data: &Path, current: F) -> Self {
+        Self {
+            current: RwLock::new(Arc::new(current)),
+            cache_dir: app_data.join(format!("{}-cache", F::ASSET)),
+            check_file: app_data.join(format!("{}-last-check", F::ASSET)),
+            checking: AtomicBool::new(false),
+        }
+    }
+
+    /// Cheap: callers share one immutable copy.
+    pub fn current(&self) -> Arc<F> {
+        self.current
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Downloads and installs a newer signed copy. `force` skips the once-a-day gate.
+    pub async fn refresh(&self, force: bool) -> Result<Refresh<F>, String> {
+        if self.checking.swap(true, Ordering::AcqRel) {
+            return Ok(Refresh::Busy);
+        }
+        let _checking = ResetBool(&self.checking);
+        if !force && !self.check_due() {
+            return Ok(Refresh::NotDue);
+        }
+        // Count a failed download as a check too, so an offline start is not retried on every launch.
+        self.mark_checked();
+        let envelope = download_limited(&feed_url::<F>(), max_envelope_bytes::<F>()).await?;
+        self.install_envelope(&envelope)
+    }
+
+    fn install_envelope(&self, envelope_bytes: &[u8]) -> Result<Refresh<F>, String> {
+        let (incoming, _) = verify_envelope::<F>(envelope_bytes)?;
+        self.install_verified(incoming, envelope_bytes)
+    }
+
+    fn install_verified(&self, incoming: F, envelope_bytes: &[u8]) -> Result<Refresh<F>, String> {
+        let previous = self.current();
+        self.mark_checked();
+        if incoming.version() <= previous.version() {
+            return Ok(Refresh::Current);
+        }
+        write_versioned::<F>(&self.cache_dir, incoming.version(), envelope_bytes)?;
+        *self.current.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(incoming);
+        Ok(Refresh::Installed { previous })
+    }
+
+    fn mark_checked(&self) {
+        let _ = std::fs::write(&self.check_file, unix_now().to_string());
+    }
+
+    fn check_due(&self) -> bool {
+        let last = std::fs::read_to_string(&self.check_file)
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+        last.is_none_or(|v| unix_now().saturating_sub(v) >= UPDATE_INTERVAL.as_secs())
+    }
+}
+
+struct ResetBool<'a>(&'a AtomicBool);
+impl Drop for ResetBool<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn write_versioned<F: Feed>(dir: &Path, version: u64, bytes: &[u8]) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let target = dir.join(format!("{version}.json"));
+    if target.exists() {
+        if verify_envelope::<F>(&std::fs::read(&target).map_err(|e| e.to_string())?).is_ok() {
+            return Ok(());
+        }
+        std::fs::remove_file(&target).map_err(|e| e.to_string())?;
+    }
+    let temp = dir.join(format!(".{version}-{}.tmp", std::process::id()));
+    std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    if let Err(error) = std::fs::rename(&temp, &target) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("download returned {}", response.status()));
+    }
+    if response
+        .content_length()
+        .is_some_and(|len| len > max_bytes as u64)
+    {
+        return Err("download exceeds the size limit".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > max_bytes {
+            return Err("download exceeds the size limit".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Game catalog
+// ---------------------------------------------------------------------------------------------
+
+pub type CatalogStore = FeedStore<Catalog>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -42,6 +301,38 @@ pub struct Catalog {
     pub catalog_version: u64,
     pub generated_at: String,
     pub items: Vec<CatalogItem>,
+    #[serde(skip)]
+    lookup: Lookup,
+}
+
+/// Hash indexes over `items`, built on first use (a catalog can hold thousands of items and is
+/// searched once per imported or exported pull).
+#[derive(Debug)]
+struct CatalogIndex {
+    by_paimon_key: HashMap<String, usize>,
+    /// game -> normalized name or alias -> position of the first item that carries it.
+    by_name: HashMap<String, HashMap<String, usize>>,
+}
+
+#[derive(Default)]
+struct Lookup(OnceLock<CatalogIndex>);
+
+impl Clone for Lookup {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+/// The index is derived data, so it never makes two otherwise equal catalogs differ.
+impl PartialEq for Lookup {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+impl Eq for Lookup {}
+impl std::fmt::Debug for Lookup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Lookup")
+    }
 }
 
 impl Catalog {
@@ -159,54 +450,50 @@ impl Catalog {
         Ok(catalog)
     }
 
-    pub fn verify_envelope(envelope: &[u8]) -> Result<(Self, Vec<u8>), String> {
-        let public_key = BASE64
-            .decode(PINNED_PUBLIC_KEY.trim())
-            .map_err(|_| "invalid pinned catalog key".to_string())?;
-        Self::verify_envelope_with_key(envelope, &public_key)
-    }
-
-    fn verify_envelope_with_key(
-        envelope: &[u8],
-        public_key: &[u8],
-    ) -> Result<(Self, Vec<u8>), String> {
-        if envelope.is_empty() || envelope.len() > MAX_ENVELOPE_BYTES {
-            return Err("catalog envelope is empty or exceeds the size limit".into());
-        }
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct SignedEnvelope {
-            payload: String,
-            signature: String,
-        }
-        let envelope: SignedEnvelope = serde_json::from_slice(envelope)
-            .map_err(|e| format!("invalid catalog envelope: {e}"))?;
-        let payload = BASE64
-            .decode(envelope.payload)
-            .map_err(|_| "invalid catalog payload encoding".to_string())?;
-        let signature = BASE64
-            .decode(envelope.signature.trim())
-            .map_err(|_| "invalid catalog signature encoding".to_string())?;
-        if !verify_signature_with_key(&payload, &signature, public_key) {
-            return Err("catalog signature verification failed".into());
-        }
-        let catalog = Self::parse_and_validate(&payload)?;
-        Ok((catalog, payload))
+    fn index(&self) -> &CatalogIndex {
+        self.lookup.0.get_or_init(|| {
+            let mut by_paimon_key = HashMap::new();
+            let mut by_name = HashMap::<String, HashMap<String, usize>>::new();
+            for (position, item) in self.items.iter().enumerate() {
+                if item.game == "hk4e" {
+                    if let Some(key) = &item.paimon_key {
+                        by_paimon_key.entry(key.clone()).or_insert(position);
+                    }
+                }
+                let names = by_name.entry(item.game.clone()).or_default();
+                for name in std::iter::once(&item.name).chain(&item.aliases) {
+                    names.entry(normalize_name(name)).or_insert(position);
+                }
+            }
+            CatalogIndex {
+                by_paimon_key,
+                by_name,
+            }
+        })
     }
 
     pub fn item_by_paimon_key(&self, key: &str) -> Option<&CatalogItem> {
-        self.items
-            .iter()
-            .find(|item| item.game == "hk4e" && item.paimon_key.as_deref() == Some(key))
+        self.items.get(*self.index().by_paimon_key.get(key)?)
     }
 
     pub fn item_by_english_name(&self, game: &str, name: &str) -> Option<&CatalogItem> {
-        let normalized = normalize_name(name);
-        self.items.iter().find(|item| {
-            item.game == game
-                && (normalize_name(&item.name) == normalized
-                    || item.aliases.iter().any(|a| normalize_name(a) == normalized))
-        })
+        let position = *self.index().by_name.get(game)?.get(&normalize_name(name))?;
+        self.items.get(position)
+    }
+}
+
+impl Feed for Catalog {
+    const LABEL: &'static str = "catalog";
+    const ASSET: &'static str = "catalog";
+    const MAX_BYTES: usize = MAX_CATALOG_BYTES;
+    fn bundled() -> Self {
+        Catalog::bundled()
+    }
+    fn parse_and_validate(bytes: &[u8]) -> Result<Self, String> {
+        Catalog::parse_and_validate(bytes)
+    }
+    fn version(&self) -> u64 {
+        self.catalog_version
     }
 }
 
@@ -220,163 +507,9 @@ fn normalize_name(name: &str) -> String {
         .join(" ")
 }
 
-fn verify_signature_with_key(bytes: &[u8], signature: &[u8], public_key: &[u8]) -> bool {
-    UnparsedPublicKey::new(&ED25519, public_key)
-        .verify(bytes, signature)
-        .is_ok()
-}
-
-pub struct CatalogStore {
-    catalog: RwLock<Catalog>,
-    cache_dir: PathBuf,
-    check_file: PathBuf,
-    checking: AtomicBool,
-}
-
-impl CatalogStore {
-    pub fn open(app_data: &Path) -> Self {
-        let cache_dir = app_data.join("catalog-cache");
-        let cached = std::fs::read_dir(&cache_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-            .filter_map(|entry| {
-                let path = entry.path();
-                let metadata = std::fs::metadata(&path).ok()?;
-                if !metadata.is_file() || metadata.len() > MAX_ENVELOPE_BYTES as u64 {
-                    return None;
-                }
-                std::fs::read(path).ok()
-            })
-            .filter_map(|bytes| {
-                Catalog::verify_envelope(&bytes)
-                    .ok()
-                    .map(|(catalog, _)| catalog)
-            })
-            .max_by_key(|catalog| catalog.catalog_version);
-        let embedded = Catalog::bundled();
-        let current = cached
-            .filter(|c| c.catalog_version >= embedded.catalog_version)
-            .unwrap_or(embedded);
-        Self {
-            catalog: RwLock::new(current),
-            cache_dir,
-            check_file: app_data.join("catalog-last-check"),
-            checking: AtomicBool::new(false),
-        }
-    }
-
-    pub fn current(&self) -> Catalog {
-        self.catalog
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-    }
-
-    /// `force` skips the once-a-day gate (the update button).
-    pub async fn refresh(&self, force: bool) -> Result<String, String> {
-        if self.checking.swap(true, Ordering::AcqRel) {
-            return Ok("already-checking".into());
-        }
-        let _checking = ResetBool(&self.checking);
-        if !force && !self.check_due() {
-            return Ok("up-to-date".into());
-        }
-        // Count a failed download as a check too, so an offline start is not retried on every launch.
-        let _ = std::fs::write(&self.check_file, unix_now().to_string());
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()
-            .map_err(|e| e.to_string())?;
-        let mut response = client
-            .get(CATALOG_URL)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !response.status().is_success() {
-            return Err(format!("catalog download returned {}", response.status()));
-        }
-        if response
-            .content_length()
-            .is_some_and(|len| len > MAX_ENVELOPE_BYTES as u64)
-        {
-            return Err("catalog download exceeds the size limit".into());
-        }
-        let mut envelope_bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-            if envelope_bytes.len() + chunk.len() > MAX_ENVELOPE_BYTES {
-                return Err("catalog download exceeds the size limit".into());
-            }
-            envelope_bytes.extend_from_slice(&chunk);
-        }
-        self.install_envelope(&envelope_bytes)
-    }
-
-    fn install_envelope(&self, envelope_bytes: &[u8]) -> Result<String, String> {
-        let (incoming, _) = Catalog::verify_envelope(envelope_bytes)?;
-        let current_version = self
-            .catalog
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .catalog_version;
-        if incoming.catalog_version <= current_version {
-            let _ = std::fs::write(&self.check_file, unix_now().to_string());
-            return Ok("up-to-date".into());
-        }
-        write_versioned(&self.cache_dir, incoming.catalog_version, envelope_bytes)?;
-        *self.catalog.write().unwrap_or_else(|e| e.into_inner()) = incoming;
-        let _ = std::fs::write(&self.check_file, unix_now().to_string());
-        Ok("updated".into())
-    }
-
-    fn check_due(&self) -> bool {
-        let last = std::fs::read_to_string(&self.check_file)
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok());
-        last.is_none_or(|v| unix_now().saturating_sub(v) >= UPDATE_INTERVAL.as_secs())
-    }
-}
-
-struct ResetBool<'a>(&'a AtomicBool);
-impl Drop for ResetBool<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
-fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-fn write_versioned(dir: &Path, version: u64, bytes: &[u8]) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let target = dir.join(format!("{version}.json"));
-    if target.exists() {
-        if Catalog::verify_envelope(&std::fs::read(&target).map_err(|e| e.to_string())?).is_ok() {
-            return Ok(());
-        }
-        std::fs::remove_file(&target).map_err(|e| e.to_string())?;
-    }
-    let temp = dir.join(format!(".{version}-{}.tmp", std::process::id()));
-    std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
-    if let Err(error) = std::fs::rename(&temp, &target) {
-        let _ = std::fs::remove_file(&temp);
-        return Err(error.to_string());
-    }
-    Ok(())
-}
-
-const MAX_BANNER_BYTES: usize = 2 * 1024 * 1024;
-const MAX_BANNER_ENVELOPE_BYTES: usize = MAX_BANNER_BYTES * 4 / 3 + 2048;
-const MAX_BANNERS: usize = 5_000;
-const BANNERS_URL: &str =
-    "https://github.com/Pylxyr/Wishtory/releases/download/catalog-v1/banners.json";
+// ---------------------------------------------------------------------------------------------
+// Banner list
+// ---------------------------------------------------------------------------------------------
 
 /// One banner event window. `start` and `end` are inclusive server-local clock times
 /// (`YYYY-MM-DD HH:MM:SS`), the same clock the game uses for the `time` of each wish record, so
@@ -422,7 +555,7 @@ pub struct BannerUpdate {
     pub removed: Vec<String>,
 }
 
-fn is_clock(value: &str) -> bool {
+pub(crate) fn is_clock(value: &str) -> bool {
     let b = value.as_bytes();
     if b.len() != 19 {
         return false;
@@ -499,38 +632,6 @@ impl BannerSet {
         }
         Ok(set)
     }
-
-    pub fn verify_envelope(envelope: &[u8]) -> Result<Self, String> {
-        let public_key = BASE64
-            .decode(PINNED_PUBLIC_KEY.trim())
-            .map_err(|_| "invalid pinned catalog key".to_string())?;
-        Self::verify_envelope_with_key(envelope, &public_key)
-    }
-
-    fn verify_envelope_with_key(envelope: &[u8], public_key: &[u8]) -> Result<Self, String> {
-        if envelope.is_empty() || envelope.len() > MAX_BANNER_ENVELOPE_BYTES {
-            return Err("banner envelope is empty or exceeds the size limit".into());
-        }
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct SignedEnvelope {
-            payload: String,
-            signature: String,
-        }
-        let envelope: SignedEnvelope = serde_json::from_slice(envelope)
-            .map_err(|e| format!("invalid banner envelope: {e}"))?;
-        let payload = BASE64
-            .decode(envelope.payload)
-            .map_err(|_| "invalid banner payload encoding".to_string())?;
-        let signature = BASE64
-            .decode(envelope.signature.trim())
-            .map_err(|_| "invalid banner signature encoding".to_string())?;
-        if !verify_signature_with_key(&payload, &signature, public_key) {
-            return Err("banner signature verification failed".into());
-        }
-        Self::parse_and_validate(&payload)
-    }
-
     /// Banner ids that were added, changed (any field differs) or removed going from `self`
     /// to `newer`.
     fn diff(&self, newer: &BannerSet) -> (Vec<String>, Vec<String>, Vec<String>) {
@@ -557,48 +658,37 @@ impl BannerSet {
     }
 }
 
+impl Feed for BannerSet {
+    const LABEL: &'static str = "banner list";
+    const ASSET: &'static str = "banners";
+    const MAX_BYTES: usize = MAX_BANNER_BYTES;
+    fn bundled() -> Self {
+        BannerSet::bundled()
+    }
+    fn parse_and_validate(bytes: &[u8]) -> Result<Self, String> {
+        BannerSet::parse_and_validate(bytes)
+    }
+    fn version(&self) -> u64 {
+        self.banners_version
+    }
+}
+
+/// The banner list plus a saved note of what its last update changed (shown after a restart).
 pub struct BannerStore {
-    set: RwLock<BannerSet>,
-    cache_dir: PathBuf,
-    check_file: PathBuf,
+    feed: FeedStore<BannerSet>,
     update_file: PathBuf,
-    checking: AtomicBool,
 }
 
 impl BannerStore {
     pub fn open(app_data: &Path) -> Self {
-        let cache_dir = app_data.join("banners-cache");
-        let cached = std::fs::read_dir(&cache_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-            .filter_map(|entry| {
-                let path = entry.path();
-                let metadata = std::fs::metadata(&path).ok()?;
-                if !metadata.is_file() || metadata.len() > MAX_BANNER_ENVELOPE_BYTES as u64 {
-                    return None;
-                }
-                std::fs::read(path).ok()
-            })
-            .filter_map(|bytes| BannerSet::verify_envelope(&bytes).ok())
-            .max_by_key(|set| set.banners_version);
-        let embedded = BannerSet::bundled();
-        let current = cached
-            .filter(|set| set.banners_version >= embedded.banners_version)
-            .unwrap_or(embedded);
         Self {
-            set: RwLock::new(current),
-            cache_dir,
-            check_file: app_data.join("banners-last-check"),
+            feed: FeedStore::open(app_data),
             update_file: app_data.join("banners-last-update.json"),
-            checking: AtomicBool::new(false),
         }
     }
 
-    pub fn current(&self) -> BannerSet {
-        self.set.read().unwrap_or_else(|e| e.into_inner()).clone()
+    pub fn current(&self) -> Arc<BannerSet> {
+        self.feed.current()
     }
 
     /// The most recent installed update, if any (kept across restarts).
@@ -608,93 +698,43 @@ impl BannerStore {
 
     /// Downloads the signed banner list. `force` skips the once-a-day gate (the update button).
     pub async fn refresh(&self, force: bool) -> Result<BannerUpdate, String> {
-        let status_only = |status: &str, store: &Self| BannerUpdate {
-            status: status.into(),
-            banners_version: store.current().banners_version,
-            ..BannerUpdate::default()
-        };
-        if self.checking.swap(true, Ordering::AcqRel) {
-            return Ok(status_only("already-checking", self));
-        }
-        let _checking = ResetBool(&self.checking);
-        if !force && !self.check_due() {
-            return Ok(status_only("up-to-date", self));
-        }
-        // Count a failed download as a check too, so an offline start is not retried on every launch.
-        let _ = std::fs::write(&self.check_file, unix_now().to_string());
-        let envelope = download_limited(BANNERS_URL, MAX_BANNER_ENVELOPE_BYTES).await?;
-        self.install_envelope(&envelope)
+        let outcome = self.feed.refresh(force).await?;
+        Ok(self.record(outcome))
     }
 
-    fn install_envelope(&self, envelope_bytes: &[u8]) -> Result<BannerUpdate, String> {
-        let incoming = BannerSet::verify_envelope(envelope_bytes)?;
-        self.install_verified(incoming, envelope_bytes)
-    }
-
-    fn install_verified(
-        &self,
-        incoming: BannerSet,
-        envelope_bytes: &[u8],
-    ) -> Result<BannerUpdate, String> {
-        let current = self.current();
-        let _ = std::fs::write(&self.check_file, unix_now().to_string());
-        if incoming.banners_version <= current.banners_version {
-            return Ok(BannerUpdate {
-                status: "up-to-date".into(),
-                banners_version: current.banners_version,
+    fn record(&self, outcome: Refresh<BannerSet>) -> BannerUpdate {
+        let now = self.feed.current();
+        let Refresh::Installed { previous } = &outcome else {
+            return BannerUpdate {
+                status: outcome.status().into(),
+                banners_version: now.banners_version,
                 ..BannerUpdate::default()
-            });
-        }
-        write_versioned(&self.cache_dir, incoming.banners_version, envelope_bytes)?;
-        let (added, changed, removed) = current.diff(&incoming);
+            };
+        };
+        let (added, changed, removed) = previous.diff(&now);
         let update = BannerUpdate {
-            status: "updated".into(),
-            banners_version: incoming.banners_version,
+            status: outcome.status().into(),
+            banners_version: now.banners_version,
             installed_at: unix_now(),
             added,
             changed,
             removed,
         };
-        *self.set.write().unwrap_or_else(|e| e.into_inner()) = incoming;
         if let Ok(json) = serde_json::to_vec(&update) {
             let _ = std::fs::write(&self.update_file, json);
         }
-        Ok(update)
+        update
     }
 
-    fn check_due(&self) -> bool {
-        let last = std::fs::read_to_string(&self.check_file)
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok());
-        last.is_none_or(|v| unix_now().saturating_sub(v) >= UPDATE_INTERVAL.as_secs())
+    #[cfg(test)]
+    fn install_verified(
+        &self,
+        incoming: BannerSet,
+        envelope_bytes: &[u8],
+    ) -> Result<BannerUpdate, String> {
+        let outcome = self.feed.install_verified(incoming, envelope_bytes)?;
+        Ok(self.record(outcome))
     }
-}
-
-pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("download returned {}", response.status()));
-    }
-    if response
-        .content_length()
-        .is_some_and(|len| len > max_bytes as u64)
-    {
-        return Err("download exceeds the size limit".into());
-    }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-        if bytes.len() + chunk.len() > max_bytes {
-            return Err("download exceeds the size limit".into());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -785,7 +825,7 @@ mod tests {
             serde_json::json!({"payload": BASE64.encode(SAMPLE), "signature": signature})
                 .to_string();
         let (catalog, payload) =
-            Catalog::verify_envelope_with_key(envelope.as_bytes(), key.public_key().as_ref())
+            verify_envelope_with_key::<Catalog>(envelope.as_bytes(), key.public_key().as_ref())
                 .unwrap();
         assert_eq!(catalog.catalog_version, 1);
         assert_eq!(payload, SAMPLE);
@@ -793,7 +833,7 @@ mod tests {
         let mut changed_payload = SAMPLE.to_vec();
         changed_payload[10] ^= 1;
         tampered["payload"] = serde_json::Value::from(BASE64.encode(changed_payload));
-        assert!(Catalog::verify_envelope_with_key(
+        assert!(verify_envelope_with_key::<Catalog>(
             tampered.to_string().as_bytes(),
             key.public_key().as_ref()
         )
@@ -808,7 +848,7 @@ mod tests {
         let target = dir.join("7.json");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&target, b"partial").unwrap();
-        write_versioned(&dir, 7, b"complete signed envelope bytes").unwrap();
+        write_versioned::<Catalog>(&dir, 7, b"complete signed envelope bytes").unwrap();
         assert_eq!(
             std::fs::read(&target).unwrap(),
             b"complete signed envelope bytes"
@@ -818,12 +858,7 @@ mod tests {
     }
 
     fn test_store(app_data: &Path) -> CatalogStore {
-        CatalogStore {
-            catalog: RwLock::new(Catalog::bundled()),
-            cache_dir: app_data.join("catalog-cache"),
-            check_file: app_data.join("catalog-last-check"),
-            checking: AtomicBool::new(false),
-        }
+        CatalogStore::new(app_data, Catalog::bundled())
     }
 
     #[test]
@@ -879,9 +914,15 @@ mod tests {
         std::fs::create_dir_all(&app_data).unwrap();
         let store = test_store(&app_data);
         // Model an older app bundle so the version-2 fixture is a genuinely new feed.
-        store.catalog.write().unwrap().catalog_version = 1;
+        *store.current.write().unwrap() = Arc::new(Catalog {
+            catalog_version: 1,
+            ..Catalog::bundled()
+        });
         let envelope = include_bytes!("../../catalog/catalog-test-envelope.json");
-        assert_eq!(store.install_envelope(envelope).unwrap(), "updated");
+        assert_eq!(
+            store.install_envelope(envelope).unwrap().status(),
+            "updated"
+        );
         assert_eq!(store.current().catalog_version, 2);
         assert!(store.cache_dir.join("2.json").is_file());
         let _ = std::fs::remove_dir_all(app_data);
@@ -952,21 +993,21 @@ mod tests {
         let envelope =
             serde_json::json!({"payload": BASE64.encode(BANNER_SAMPLE), "signature": signature})
                 .to_string();
-        let set =
-            BannerSet::verify_envelope_with_key(envelope.as_bytes(), key.public_key().as_ref())
+        let (set, _) =
+            verify_envelope_with_key::<BannerSet>(envelope.as_bytes(), key.public_key().as_ref())
                 .unwrap();
         assert_eq!(set.banners_version, 1);
         let mut changed_payload = BANNER_SAMPLE.to_vec();
         changed_payload[10] ^= 1;
         let mut tampered: serde_json::Value = serde_json::from_str(&envelope).unwrap();
         tampered["payload"] = serde_json::Value::from(BASE64.encode(changed_payload));
-        assert!(BannerSet::verify_envelope_with_key(
+        assert!(verify_envelope_with_key::<BannerSet>(
             tampered.to_string().as_bytes(),
             key.public_key().as_ref()
         )
         .is_err());
         let other = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[8u8; 32]).unwrap();
-        assert!(BannerSet::verify_envelope_with_key(
+        assert!(verify_envelope_with_key::<BannerSet>(
             envelope.as_bytes(),
             other.public_key().as_ref()
         )
@@ -980,7 +1021,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&app_data);
         std::fs::create_dir_all(&app_data).unwrap();
         let store = BannerStore::open(&app_data);
-        *store.set.write().unwrap() = BannerSet::parse_and_validate(BANNER_SAMPLE).unwrap();
+        *store.feed.current.write().unwrap() =
+            Arc::new(BannerSet::parse_and_validate(BANNER_SAMPLE).unwrap());
         let newer = String::from_utf8(BANNER_SAMPLE.to_vec())
             .unwrap()
             .replace("\"banners_version\":1", "\"banners_version\":2")
@@ -995,13 +1037,64 @@ mod tests {
         assert_eq!(update.added, vec!["nap-character-c".to_string()]);
         assert_eq!(update.changed, vec!["hk4e-character-a".to_string()]);
         assert_eq!(update.removed, vec!["nap-character-b".to_string()]);
-        assert_eq!(store.current(), incoming);
+        assert_eq!(*store.current(), incoming);
         assert_eq!(store.last_update(), Some(update));
-        assert!(store.cache_dir.join("2.json").is_file());
+        assert!(store.feed.cache_dir.join("2.json").is_file());
         // The same version is not installed twice and leaves the saved update untouched.
         let again = store.install_verified(incoming, b"signed bytes").unwrap();
         assert_eq!(again.status, "up-to-date");
         assert_eq!(store.last_update().unwrap().status, "updated");
         let _ = std::fs::remove_dir_all(app_data);
+    }
+
+    #[test]
+    fn feeds_are_requested_by_the_names_the_release_publishes() {
+        // Regression: the app asked for catalog.json / banners.json while the workflow only
+        // uploads <name>.envelope.json, so every update check ended in a 404.
+        assert!(feed_url::<Catalog>().ends_with("/catalog-v1/catalog.envelope.json"));
+        assert!(feed_url::<BannerSet>().ends_with("/catalog-v1/banners.envelope.json"));
+    }
+
+    #[test]
+    fn lookups_use_the_first_matching_item_like_the_old_linear_scan() {
+        let catalog = Catalog::parse_and_validate(SAMPLE).unwrap();
+        assert_eq!(
+            catalog
+                .item_by_paimon_key("kamisato_ayaka")
+                .map(|i| i.id.as_str()),
+            Some("10000002")
+        );
+        assert!(catalog.item_by_paimon_key("nobody").is_none());
+        for name in ["Kamisato Ayaka", "ayaka", "  KAMISATO   ayaka "] {
+            assert_eq!(
+                catalog
+                    .item_by_english_name("hk4e", name)
+                    .map(|i| i.id.as_str()),
+                Some("10000002"),
+                "{name}"
+            );
+        }
+        assert!(catalog.item_by_english_name("hkrpg", "Ayaka").is_none());
+        assert_eq!(
+            catalog
+                .item_by_english_name("hkrpg", "march 7th")
+                .map(|i| i.id.as_str()),
+            Some("1001")
+        );
+        // The derived index never affects equality or cloning.
+        let copy = catalog.clone();
+        assert_eq!(copy, catalog);
+        assert!(copy.item_by_english_name("nap", "Anby").is_some());
+    }
+
+    #[test]
+    fn refresh_status_strings_match_what_the_ui_expects() {
+        assert_eq!(Refresh::<Catalog>::Busy.status(), "already-checking");
+        assert_eq!(Refresh::<Catalog>::NotDue.status(), "up-to-date");
+        assert_eq!(Refresh::<Catalog>::Current.status(), "up-to-date");
+        let installed = Refresh::Installed {
+            previous: Arc::new(Catalog::bundled()),
+        };
+        assert_eq!(installed.status(), "updated");
     }
 }

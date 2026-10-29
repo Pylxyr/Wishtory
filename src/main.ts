@@ -1,5 +1,4 @@
-import '@fontsource-variable/google-sans/wght.css';
-import '@fontsource-variable/jetbrains-mono/wght.css';
+import './fonts.css';
 import './app.css';
 import { mount } from 'svelte';
 import App from './App.svelte';

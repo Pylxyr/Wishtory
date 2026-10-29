@@ -1,0 +1,7 @@
+# The one place the Rust version is chosen. CI and release workflows read the channel from here and
+# install exactly it, so a new stable release never changes what ships until this line is bumped.
+# Cargo.toml's `rust-version` is the oldest version the code is written for.
+[toolchain]
+channel = "1.91"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

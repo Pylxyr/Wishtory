@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { api, errMsg } from './api';
-import type { AboutInfo, Account, AppUpdate, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall } from './types';
+import type { AboutInfo, Account, AppUpdate, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall, GameMeta } from './types';
 
 export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'about' | 'logging';
 interface Toast { id: number; kind: 'ok' | 'err' | 'info' | 'warn'; text: string; }
@@ -12,6 +12,7 @@ export const app = $state({
   accounts: [] as Account[],
   installs: [] as GameInstall[],
   catalog: null as GameCatalog | null,
+  meta: [] as GameMeta[], // static per-game UI naming from the backend
   banners: null as BannerSet | null,
   bannerUpdate: null as BannerUpdate | null, // the last installed banner update, kept across restarts
   about: null as AboutInfo | null,
@@ -149,7 +150,7 @@ async function run(action: () => Promise<FetchSummary>) {
 }
 
 /** Read-only: finds the link the game already cached, then fetches. */
-export const refreshFromGame = () => {
-  return run(() => api.refreshFromGame(app.game));
-};
+export const refreshFromGame = () => run(() => api.refreshFromGame(app.game));
+/** Same, but downloads everything the server still keeps instead of stopping at what is already saved. */
+export const resyncFromGame = () => run(() => api.refreshFromGame(app.game, true));
 export const fetchFromUrl = (url: string) => run(() => api.fetchHistory(app.game, url));

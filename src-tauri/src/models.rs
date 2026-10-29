@@ -54,6 +54,29 @@ pub struct Pull {
     pub count: u32,
 }
 
+impl Pull {
+    /// Column list matching `from_row`, for `SELECT {COLUMNS} FROM pulls`.
+    pub const COLUMNS: &'static str =
+        "id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count";
+
+    pub fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Pull> {
+        Ok(Pull {
+            id: r.get(0)?,
+            game: r.get(1)?,
+            uid: r.get(2)?,
+            gacha_type: r.get(3)?,
+            gacha_id: r.get(4)?,
+            item_id: r.get(5)?,
+            name: r.get(6)?,
+            item_type: r.get(7)?,
+            rank_type: r.get(8)?,
+            time: r.get(9)?,
+            lang: r.get(10)?,
+            count: r.get(11)?,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Account {
     pub game: String,

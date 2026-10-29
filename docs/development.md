@@ -4,7 +4,7 @@ For installing and using Wishtory, see the [README](../README.md).
 
 ## Build
 
-Prerequisites: Windows 10/11, [Node.js 20+](https://nodejs.org), [Rust stable (MSVC)](https://rustup.rs), Visual Studio Build Tools (C++ workload), and WebView2 (preinstalled on Win 10/11).
+Prerequisites: Windows 10/11, [Node.js 20+](https://nodejs.org), [Rust (MSVC)](https://rustup.rs), version 1.91 as pinned in `rust-toolchain.toml` (rustup installs it on first use), Visual Studio Build Tools (C++ workload), and WebView2 (preinstalled on Win 10/11).
 
 ```powershell
 npm install
@@ -13,16 +13,16 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Checks that CI also runs: `npm run catalog:test`, `npm run check`, `npm run build`, and `cargo test --locked --manifest-path src-tauri/Cargo.toml`.
+Checks that CI also runs: `npm run catalog:test`, `npm run check`, `npm run build`, `cargo fmt --check` and `cargo test --locked` (both with `--manifest-path src-tauri/Cargo.toml`), plus `python3 -m unittest discover -s scripts -p "test_*.py"` and `actionlint` for the release automation.
 
 ## Project layout
 
 ```
 src/            Svelte 5 frontend (pages, components, runes-based store)
 src-tauri/src/  Rust: discover, authkey (read-only cache parsing), fsutil, fetch, db, pity, uigf,
-                catalog, update, about, commands
-catalog/        Banner list and signing public key (the item catalog is generated and signed in CI)
-scripts/        Catalog tooling and the version bump script
+                catalog (signed feeds), rules (pity rules), update, about, commands
+catalog/        Banner list, pity rules and signing public key (the item catalog is generated and signed in CI)
+scripts/        Catalog tooling (update, banner tracking, versioning, signing), release notes and the version bump script
 docs/           This guide, releasing, catalog updates
 .github/        CI, release and catalog workflows
 ```
@@ -40,7 +40,7 @@ Wishtory is designed to be as safe as the well-known community tools: it uses a 
   - the newest `webCaches/<version>/Cache/Cache_Data/data_2` (to find the history link the game already created). If the file is locked, it is copied to your temp folder first.
 - The history link (authkey) is only ever sent to the official HoYoverse history API for the matching game. Redirects are disabled, so it cannot be forwarded elsewhere.
 
-This is the same approach used by Paimon.moe's PowerShell scripts and other community tools. The other network traffic is the signed catalog and banner list and the release check, all from this repository's GitHub releases (`catalog.rs`, `update.rs`). None of it carries an account or wish data. Links the app opens in the browser are limited to a fixed list (`about.rs`).
+This is the same approach used by Paimon.moe's PowerShell scripts and other community tools. The other network traffic is the signed catalog, banner list and pity rules and the release check, all from this repository's GitHub releases (`catalog.rs`, `update.rs`). None of it carries an account or wish data. Links the app opens in the browser are limited to a fixed list (`about.rs`).
 
 ## Game metadata updates
 
@@ -52,7 +52,7 @@ See [Game catalog updates](game-catalog-updates.md) for source details, secret s
 
 To enable publishing, add a repository Actions secret named `CATALOG_SIGNING_KEY` with the PEM contents of the locally generated `catalog/catalog-signing-key.pem`. The matching public key is pinned in `catalog/catalog-public-key.txt`; the private key is ignored by Git. Until the secret is configured and the first catalog PR is merged, the app continues using its bundled catalog and existing offline item mappings.
 
-Run `npm run catalog:test` for source-shape and regression fixtures, `npm run catalog:update` to build a candidate locally, and `npm run catalog:sign` to create a signed envelope when the signing key is available.
+Run `npm run catalog:test` for source-shape and regression fixtures, `npm run catalog:update` to build a candidate locally, `npm run banners:track` to draft banner events from Paimon.moe's schedule, and `npm run catalog:sign` to create a signed envelope when the signing key is available. Catalog, banner list and rules versions are set automatically when they are published.
 
 ## Import and export details
 

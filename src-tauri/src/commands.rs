@@ -10,6 +10,7 @@ use crate::{
     logging::Level,
     models::{Account, Game, GameInstall, Pull},
     pity::{self, BannerPity},
+    rules::RulesStore,
     uigf::{self, ImportSummary},
 };
 use serde::Serialize;
@@ -17,9 +18,12 @@ use std::{
     collections::{HashMap, HashSet},
     io::Write,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
 };
-use tauri::{async_runtime::spawn_blocking, Emitter, Manager, State};
+use tauri::{async_runtime::spawn_blocking, Emitter, State};
 
 /// Import files above this size are refused (a full multi-game UIGF file is a few MB at most).
 const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
@@ -102,35 +106,52 @@ fn assign_all_banners(db: &Db, banners: &BannerSet) -> Result<(), AppError> {
     Ok(())
 }
 
-fn store(
+async fn store(
     db: &Db,
-    banners: &BannerSet,
+    banners: Arc<BannerSet>,
     game: Game,
     f: fetch::Fetched,
 ) -> Result<FetchSummary, AppError> {
-    let added = db.merge(game.as_str(), &f.uid, f.timezone, &f.pulls)?;
-    if let Err(e) = assign_banners(db, banners, game, &f.uid) {
+    db.run(move |db| {
+        let added = db.merge(game.as_str(), &f.uid, f.timezone, &f.pulls)?;
+        if let Err(e) = assign_banners(db, &banners, game, &f.uid) {
+            wlog!(
+                Level::Warn,
+                "{}: banner assignment failed: {e}",
+                game.as_str()
+            );
+        }
         wlog!(
-            Level::Warn,
-            "{}: banner assignment failed: {e}",
-            game.as_str()
+            Level::Info,
+            "{}: saved UID {} ({} fetched, {} new)",
+            game.as_str(),
+            f.uid,
+            f.pulls.len(),
+            added
         );
-    }
-    wlog!(
-        Level::Info,
-        "{}: saved UID {} ({} fetched, {} new)",
-        game.as_str(),
-        f.uid,
-        f.pulls.len(),
-        added
-    );
-    Ok(FetchSummary {
-        game: game.as_str().into(),
-        uid: f.uid,
-        fetched: f.pulls.len(),
-        added,
-        warning: f.incomplete,
+        Ok(FetchSummary {
+            game: game.as_str().into(),
+            uid: f.uid,
+            fetched: f.pulls.len(),
+            added,
+            warning: f.incomplete,
+        })
     })
+    .await
+}
+
+/// Ids already stored for the account behind a history link, so a fetch can stop at the first
+/// page it already has. `full` disables that and downloads everything the server still keeps.
+/// (One small id query; it runs while the first page is being processed.)
+fn known_ids(db: &Db, game: Game, full: bool) -> impl Fn(&str) -> HashSet<String> + '_ {
+    move |uid| {
+        if full {
+            HashSet::new()
+        } else {
+            db.complete_pull_ids_for(game.as_str(), uid)
+                .unwrap_or_default()
+        }
+    }
 }
 
 /// Fetch with a pasted history link.
@@ -141,6 +162,7 @@ pub async fn fetch_history(
     banners: State<'_, BannerStore>,
     game: Game,
     url: String,
+    full: Option<bool>,
 ) -> Result<FetchSummary, AppError> {
     let progress = progress_to(&app);
     progress("Checking your link…".into());
@@ -149,11 +171,12 @@ pub async fn fetch_history(
         "{}: fetching with a pasted link",
         game.as_str()
     );
-    let f = fetch::fetch_all(game, &url, &progress)
+    let known = known_ids(&db, game, full.unwrap_or(false));
+    let f = fetch::fetch_all(game, &url, &progress, &known)
         .await // network first; never hold the DB lock across await
         .inspect_err(|e| wlog!(Level::Warn, "{}: fetch failed: {e}", game.as_str()))?;
     progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-    store(&db, &banners.current(), game, f)
+    store(&db, banners.current(), game, f).await
 }
 
 /// One-click flow: read the cache (read-only), then try the cached links newest first until one
@@ -164,8 +187,10 @@ pub async fn refresh_from_game(
     db: State<'_, Db>,
     banners: State<'_, BannerStore>,
     game: Game,
+    full: Option<bool>,
 ) -> Result<FetchSummary, AppError> {
     let progress = progress_to(&app);
+    let known = known_ids(&db, game, full.unwrap_or(false));
     progress("Looking for your game's cache…".into());
     wlog!(
         Level::Debug,
@@ -195,11 +220,11 @@ pub async fn refresh_from_game(
                 i + 1
             ));
         }
-        match fetch::fetch_all(game, &url, &progress).await {
+        match fetch::fetch_all(game, &url, &progress, &known).await {
             Ok(f) => {
                 wlog!(Level::Debug, "{}: link {} accepted", game.as_str(), i + 1);
                 progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-                return store(&db, &banners.current(), game, f);
+                return store(&db, banners.current(), game, f).await;
             }
             Err(AppError::AuthExpired) => {
                 wlog!(
@@ -226,46 +251,73 @@ pub async fn refresh_from_game(
 
 #[tauri::command]
 pub async fn list_accounts(db: State<'_, Db>) -> Result<Vec<Account>, AppError> {
-    db.list_accounts()
+    db.run(|db| db.list_accounts()).await
 }
 
 #[tauri::command]
 pub async fn delete_account(db: State<'_, Db>, game: Game, uid: String) -> Result<(), AppError> {
-    db.delete_account(game.as_str(), &uid).inspect(|_| {
-        wlog!(
-            Level::Info,
-            "{}: removed UID {uid} from Wishtory",
-            game.as_str()
-        )
+    db.run(move |db| {
+        db.delete_account(game.as_str(), &uid).inspect(|_| {
+            wlog!(
+                Level::Info,
+                "{}: removed UID {uid} from Wishtory",
+                game.as_str()
+            )
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn clear_all_history(db: State<'_, Db>) -> Result<usize, AppError> {
-    db.clear_all_history()
-        .inspect(|n| wlog!(Level::Info, "cleared all saved history ({n} pulls)"))
+    db.run(|db| {
+        db.clear_all_history()
+            .inspect(|n| wlog!(Level::Info, "cleared all saved history ({n} pulls)"))
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn get_catalog(catalog: State<'_, CatalogStore>) -> Result<Catalog, String> {
+pub async fn get_catalog(catalog: State<'_, CatalogStore>) -> Result<Arc<Catalog>, AppError> {
     Ok(catalog.current())
 }
 
+/// Updates the signed game catalog and the signed pity rules (two independent feeds). The status
+/// is "updated" when either changed; a failure is only reported when nothing could be updated.
 #[tauri::command]
 pub async fn refresh_catalog(
     catalog: State<'_, CatalogStore>,
+    rules: State<'_, RulesStore>,
     force: bool,
-) -> Result<String, String> {
-    let result = catalog.refresh(force).await;
-    match &result {
-        Ok(status) => wlog!(Level::Debug, "catalog refresh: {status}"),
-        Err(e) => wlog!(Level::Warn, "catalog refresh failed: {e}"),
+) -> Result<String, AppError> {
+    let outcomes = [
+        ("catalog", catalog.refresh(force).await.map(|r| r.status())),
+        ("rules", rules.refresh(force).await.map(|r| r.status())),
+    ];
+    let mut status = "up-to-date";
+    let mut failure = None;
+    for (name, outcome) in outcomes {
+        match outcome {
+            Ok(s) => {
+                wlog!(Level::Debug, "{name} refresh: {s}");
+                if s == "updated" || (s == "already-checking" && status != "updated") {
+                    status = s;
+                }
+            }
+            Err(e) => {
+                wlog!(Level::Warn, "{name} refresh failed: {e}");
+                failure.get_or_insert(e);
+            }
+        }
     }
-    result
+    match failure {
+        Some(e) if status != "updated" => Err(AppError::Message(e)),
+        _ => Ok(status.into()),
+    }
 }
 
 #[tauri::command]
-pub async fn get_banners(banners: State<'_, BannerStore>) -> Result<BannerSet, String> {
+pub async fn get_banners(banners: State<'_, BannerStore>) -> Result<Arc<BannerSet>, AppError> {
     Ok(banners.current())
 }
 
@@ -273,7 +325,7 @@ pub async fn get_banners(banners: State<'_, BannerStore>) -> Result<BannerSet, S
 #[tauri::command]
 pub async fn get_banner_update(
     banners: State<'_, BannerStore>,
-) -> Result<Option<BannerUpdate>, String> {
+) -> Result<Option<BannerUpdate>, AppError> {
     Ok(banners.last_update())
 }
 
@@ -283,18 +335,51 @@ pub async fn refresh_banners(
     db: State<'_, Db>,
     banners: State<'_, BannerStore>,
     force: bool,
-) -> Result<BannerUpdate, String> {
-    let result = banners.refresh(force).await;
-    match &result {
-        Ok(update) => wlog!(Level::Debug, "banner refresh: {}", update.status),
-        Err(e) => wlog!(Level::Warn, "banner refresh failed: {e}"),
-    }
+) -> Result<BannerUpdate, AppError> {
+    let update = banners
+        .refresh(force)
+        .await
+        .inspect_err(|e| wlog!(Level::Warn, "banner refresh failed: {e}"))
+        .map_err(AppError::Message)?;
+    wlog!(Level::Debug, "banner refresh: {}", update.status);
     // A newer list can move windows, so every saved pull is matched against it again.
-    if matches!(&result, Ok(update) if update.status == "updated") {
-        db.clear_pull_banners().map_err(|e| e.to_string())?;
-        assign_all_banners(&db, &banners.current()).map_err(|e| e.to_string())?;
+    if update.status == "updated" {
+        let list = banners.current();
+        db.run(move |db| {
+            db.clear_pull_banners()?;
+            assign_all_banners(db, &list)
+        })
+        .await?;
     }
-    result
+    Ok(update)
+}
+
+/// Static, per-game UI naming that the backend already owns (so the frontend keeps no copy).
+#[derive(Serialize)]
+pub struct GameMeta {
+    game: &'static str,
+    /// History-page banner filter: `(key, label)` in display order.
+    banners: Vec<BannerOption>,
+}
+
+#[derive(Serialize)]
+pub struct BannerOption {
+    key: &'static str,
+    label: &'static str,
+}
+
+#[tauri::command]
+pub fn get_game_meta() -> Vec<GameMeta> {
+    Game::ALL
+        .iter()
+        .map(|&game| GameMeta {
+            game: game.as_str(),
+            banners: pity::history_filters(game)
+                .iter()
+                .map(|&(key, label)| BannerOption { key, label })
+                .collect(),
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -306,6 +391,10 @@ pub struct HistoryPull {
     banner_name: Option<String>,
     /// Pulls since the last 5★ (5★ rows) or last 4★/5★ (4★ rows) when this pull was made.
     pity: Option<u32>,
+    /// 3 / 4 / 5 for every game (Zenless reports B / A / S as 2 / 3 / 4 in `rank_type`).
+    rank: u8,
+    /// Short pool name for the table, e.g. "Character" or "W-Engine".
+    pool: String,
 }
 
 /// "Event name · Featured A / Featured B", with item names looked up in the catalog.
@@ -333,16 +422,27 @@ pub async fn get_history(
     uid: String,
     banner: Option<String>,
 ) -> Result<Vec<HistoryPull>, AppError> {
-    let banner_list = banners.current();
-    if let Err(e) = assign_banners(&db, &banner_list, game, &uid) {
+    let (catalog, banner_list) = (catalog.current(), banners.current());
+    db.run(move |db| history(db, &catalog, &banner_list, game, &uid, banner.as_deref()))
+        .await
+}
+
+fn history(
+    db: &Db,
+    catalog: &Catalog,
+    banner_list: &BannerSet,
+    game: Game,
+    uid: &str,
+    banner: Option<&str>,
+) -> Result<Vec<HistoryPull>, AppError> {
+    if let Err(e) = assign_banners(db, banner_list, game, uid) {
         wlog!(
             Level::Warn,
             "{}: banner assignment failed: {e}",
             game.as_str()
         );
     }
-    let assigned = db.pull_banners_for(game.as_str(), &uid)?;
-    let catalog = catalog.current();
+    let assigned = db.pull_banners_for(game.as_str(), uid)?;
     let names: HashMap<(&str, &str), &str> = catalog
         .items
         .iter()
@@ -353,11 +453,11 @@ pub async fn get_history(
         .iter()
         .map(|b| (b.id.as_str(), b))
         .collect();
-    let pulls = db.pulls_for(game.as_str(), &uid)?;
+    let pulls = db.pulls_for(game.as_str(), uid)?;
     // Pity runs over the whole pool history, so it is counted before any banner filter.
     let pities = pity::pull_pities(game, &pulls);
     let mut rows: Vec<(Pull, Option<u32>)> = pulls.into_iter().zip(pities).collect();
-    if let Some(b) = banner.as_deref().filter(|b| !b.is_empty()) {
+    if let Some(b) = banner.filter(|b| !b.is_empty()) {
         rows.retain(|(p, _)| pity::banner_key(game, &p.gacha_type) == Some(b));
     }
     rows.reverse();
@@ -369,6 +469,9 @@ pub async fn get_history(
                 .and_then(|id| entries.get(id.as_str()))
                 .map(|entry| banner_label(entry, &names));
             HistoryPull {
+                rank: pity::display_rank(game, pull.rank_type),
+                pool: pity::pool_label(game, &pull.gacha_type)
+                    .map_or_else(|| pull.gacha_type.clone(), str::to_string),
                 pull,
                 banner_name,
                 pity,
@@ -381,15 +484,21 @@ pub async fn get_history(
 pub async fn get_pity(
     db: State<'_, Db>,
     banners: State<'_, BannerStore>,
+    rules: State<'_, RulesStore>,
     game: Game,
     uid: String,
 ) -> Result<Vec<BannerPity>, AppError> {
-    let pulls = db.pulls_for(game.as_str(), &uid)?;
-    Ok(pity::compute_with_banners(
-        game,
-        &pulls,
-        &banners.current().banners,
-    ))
+    let (banners, rules) = (banners.current(), rules.current());
+    db.run(move |db| {
+        let pulls = db.pulls_for(game.as_str(), &uid)?;
+        Ok(pity::compute_with_banners(
+            game,
+            &pulls,
+            &banners.banners,
+            &rules,
+        ))
+    })
+    .await
 }
 
 /// Decodes a user-selected file. Windows tools (PowerShell `Out-File`) often write UTF-16.
@@ -422,13 +531,14 @@ fn decode_text(bytes: &[u8]) -> Result<String, AppError> {
 /// Reads a user-selected UIGF / SRGF file.
 #[tauri::command]
 pub async fn import_file(
-    app: tauri::AppHandle,
+    db: State<'_, Db>,
     catalog: State<'_, CatalogStore>,
+    banners: State<'_, BannerStore>,
     path: String,
 ) -> Result<ImportSummary, AppError> {
-    let catalog = catalog.current();
+    let (catalog, banners) = (catalog.current(), banners.current());
     // File read, JSON parse and database merge can take a while: keep them off the async runtime.
-    spawn_blocking(move || -> Result<ImportSummary, AppError> {
+    db.run(move |db| {
         let size = std::fs::metadata(&path)?.len();
         wlog!(Level::Debug, "import: reading a {size}-byte file");
         if size > MAX_IMPORT_BYTES {
@@ -437,8 +547,7 @@ pub async fn import_file(
             ));
         }
         let text = decode_text(&std::fs::read(&path)?)?;
-        let db = app.state::<Db>();
-        let summary = uigf::import_with_catalog(&db, &text, &catalog)
+        let summary = uigf::import_with_catalog(db, &text, &catalog)
             .inspect(|r| {
                 wlog!(
                     Level::Info,
@@ -450,14 +559,12 @@ pub async fn import_file(
                 )
             })
             .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))?;
-        let banners = app.state::<BannerStore>().current();
-        if let Err(e) = assign_all_banners(&db, &banners) {
+        if let Err(e) = assign_all_banners(db, &banners) {
             wlog!(Level::Warn, "banner assignment failed: {e}");
         }
         Ok(summary)
     })
     .await
-    .map_err(join_err)?
 }
 
 #[tauri::command]
@@ -469,30 +576,31 @@ pub async fn export_file(
     game: Option<Game>,
     uid: Option<String>,
 ) -> Result<(), AppError> {
-    let roots: Vec<String> = spawn_blocking(|| {
-        discover::known_game_roots()
+    let catalog = catalog.current();
+    // Discovery, the database read, serialization and the fsync'd write are all blocking.
+    db.run(move |db| {
+        let roots: Vec<String> = discover::known_game_roots()
             .into_iter()
             .map(|p| p.to_string_lossy().into_owned())
-            .collect()
+            .collect();
+        wlog!(
+            Level::Debug,
+            "export: format {format}, {}",
+            if uid.is_some() {
+                "selected account"
+            } else {
+                "all accounts"
+            }
+        );
+        ensure_not_game_dir(&path, &roots)
+            .inspect_err(|e| wlog!(Level::Warn, "export refused: {e}"))?;
+        let json = uigf::export_with_catalog(db, &format, game, uid.as_deref(), &catalog)
+            .inspect_err(|e| wlog!(Level::Warn, "export failed: {e}"))?;
+        write_export(Path::new(&path), json.as_bytes())
+            .inspect(|_| wlog!(Level::Info, "export written ({} bytes)", json.len()))
+            .inspect_err(|e| wlog!(Level::Error, "export could not be saved: {e}"))
     })
     .await
-    .map_err(join_err)?;
-    wlog!(
-        Level::Debug,
-        "export: format {format}, {}",
-        if uid.is_some() {
-            "selected account"
-        } else {
-            "all accounts"
-        }
-    );
-    ensure_not_game_dir(&path, &roots)
-        .inspect_err(|e| wlog!(Level::Warn, "export refused: {e}"))?;
-    let json = uigf::export_with_catalog(&db, &format, game, uid.as_deref(), &catalog.current())
-        .inspect_err(|e| wlog!(Level::Warn, "export failed: {e}"))?;
-    write_export(Path::new(&path), json.as_bytes())
-        .inspect(|_| wlog!(Level::Info, "export written ({} bytes)", json.len()))
-        .inspect_err(|e| wlog!(Level::Error, "export could not be saved: {e}"))
 }
 
 fn write_export(target: &Path, contents: &[u8]) -> Result<(), AppError> {
@@ -566,32 +674,30 @@ fn replace_file(source: &Path, target: &Path) -> Result<(), AppError> {
     std::fs::rename(source, target).map_err(Into::into)
 }
 
+/// Backslash-separated, lower-case and with `.` / `..` resolved, so the comparison behaves the same
+/// on every platform (the paths come from a Windows app and from log files).
 fn norm(p: &str) -> String {
-    p.replace('/', "\\").trim_end_matches('\\').to_lowercase()
+    let mut parts: Vec<&str> = Vec::new();
+    for part in p.split(['/', '\\']) {
+        match part {
+            "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    parts.join("\\").trim_end_matches('\\').to_lowercase()
 }
 
+/// Resolves junctions and symlinks of the (existing) parent folder before comparing.
 fn resolved_path(path: &Path) -> PathBuf {
-    let lexical = || {
-        let mut out = PathBuf::new();
-        for part in path.components() {
-            match part {
-                std::path::Component::CurDir => {}
-                std::path::Component::ParentDir => {
-                    out.pop();
-                }
-                _ => out.push(part.as_os_str()),
-            }
-        }
-        out
-    };
-    // Save dialogs normally return an existing parent. Canonicalizing it also resolves
-    // junctions/symlinks before comparing it with discovered game roots.
     match (path.parent(), path.file_name()) {
         (Some(parent), Some(name)) => parent
             .canonicalize()
             .map(|p| p.join(name))
-            .unwrap_or_else(|_| lexical()),
-        _ => lexical(),
+            .unwrap_or_else(|_| path.to_path_buf()),
+        _ => path.to_path_buf(),
     }
 }
 
@@ -599,11 +705,8 @@ fn resolved_path(path: &Path) -> PathBuf {
 /// Blocks (a) any path with a component named like a game data folder and (b) anything inside a
 /// discovered install folder. Works on plain strings so it behaves the same everywhere.
 fn ensure_not_game_dir(path: &str, game_roots: &[String]) -> Result<(), AppError> {
-    let target_path = resolved_path(Path::new(path));
-    let target = norm(&target_path.to_string_lossy());
-    let by_name = target_path.components().any(|c| {
-        matches!(c, std::path::Component::Normal(name) if discover::is_game_data_dir_name(&name.to_string_lossy()))
-    });
+    let target = norm(&resolved_path(Path::new(path)).to_string_lossy());
+    let by_name = target.split('\\').any(discover::is_game_data_dir_name);
     let by_root = game_roots
         .iter()
         .map(|r| norm(&resolved_path(Path::new(r)).to_string_lossy()))

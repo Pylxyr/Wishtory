@@ -8,7 +8,11 @@ use crate::{
     models::{Game, Pull},
 };
 use serde::Deserialize;
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+    time::Duration,
+};
 use tokio::time::sleep;
 use url::Url;
 
@@ -178,11 +182,16 @@ fn banner_name(game: Game, gacha_type: &str) -> String {
     name.to_string()
 }
 
+/// Ids already stored for an account (given its uid), used to stop at the first page that holds
+/// nothing new. Return an empty set to download everything the server still keeps.
+pub type KnownIds<'a> = &'a (dyn Fn(&str) -> HashSet<String> + Sync);
+
 /// `progress` receives short, link-free status lines for the UI ("Downloading banner 2 of 5…").
 pub async fn fetch_all(
     game: Game,
     history_url: &str,
     progress: &impl Fn(String),
+    known: KnownIds<'_>,
 ) -> Result<Fetched, AppError> {
     let parsed = Url::parse(history_url.trim()).map_err(|_| AppError::InvalidUrl)?;
     if parsed.scheme() != "https" || !parsed.host_str().map(is_hoyo_host).unwrap_or(false) {
@@ -233,9 +242,13 @@ pub async fn fetch_all(
         .redirect(reqwest::redirect::Policy::none()) // the authkey must never follow a redirect
         .build()?;
 
-    // Always a full fetch: ~6 months of data is quick, and merging by id is idempotent.
-    // A banner is only kept once it has been read to the end, so pity counters never start
-    // in the middle of a half-downloaded banner.
+    // History arrives newest first, so once a whole page is already stored everything older is
+    // too and the banner is complete: a refresh then costs one request per banner instead of
+    // the whole history. (The caller's `known` set only holds fully described rows and is empty
+    // for a full re-sync.) A banner is only kept once it is complete, so pity counters never
+    // start in the middle of a half-downloaded banner. Merging by id is idempotent.
+    let stored = OnceLock::<HashSet<String>>::new();
+    let is_known = |uid: &str, id: &str| stored.get_or_init(|| known(uid)).contains(id);
     let mut pulls = Vec::new();
     let mut tz: Option<i32> = None;
     let mut failure: Option<(AppError, usize)> = None;
@@ -247,7 +260,7 @@ pub async fn fetch_all(
             done + 1,
             pulls.len()
         ));
-        match fetch_banner(&client, game, base, &common, gt, &name, progress).await {
+        match fetch_banner(&client, game, base, &common, gt, &name, progress, &is_known).await {
             Ok((items, rtz)) => {
                 progress(format!("{name}: done, {} pulls", items.len()));
                 wlog!(
@@ -295,6 +308,7 @@ pub async fn fetch_all(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_banner(
     client: &reqwest::Client,
     game: Game,
@@ -303,9 +317,11 @@ async fn fetch_banner(
     gacha_type: &str,
     name: &str,
     progress: &impl Fn(String),
+    is_known: &(impl Fn(&str, &str) -> bool + Sync),
 ) -> Result<(Vec<Pull>, Option<i32>), AppError> {
     let say = |message: &str| progress(format!("{name}: {message}"));
     let mut out = Vec::new();
+    let mut skipped = 0usize;
     let mut tz = None;
     let mut end_id = "0".to_string();
     for page in 1..=MAX_PAGES {
@@ -322,11 +338,14 @@ async fn fetch_banner(
         tz = tz.or(rtz);
         let n = list.len();
         let last_id = list.last().map(|i| i.id.clone());
+        let nothing_new = page_has_nothing_new(&list, is_known);
         for it in list {
             let Ok(rank_type) = it.rank_type.parse() else {
-                continue; // an unreadable rarity must not be stored as 3-star
+                skipped += 1; // an unreadable rarity must not be stored as 3-star
+                continue;
             };
             if it.id.is_empty() || it.time.is_empty() {
+                skipped += 1;
                 continue;
             }
             out.push(Pull {
@@ -345,6 +364,10 @@ async fn fetch_banner(
             });
         }
         say(&format!("{} pulls read", out.len()));
+        if nothing_new {
+            say("everything older is already saved");
+            break;
+        }
         match next_cursor(n, last_id, &end_id)? {
             Some(id) if page < MAX_PAGES => end_id = id,
             Some(_) => {
@@ -357,7 +380,23 @@ async fn fetch_banner(
         }
         sleep(Duration::from_millis(400)).await; // be polite to the API
     }
+    if skipped > 0 {
+        wlog!(
+            Level::Warn,
+            "{}: {skipped} pull(s) of banner {gacha_type} were skipped (unreadable rarity, id or time)",
+            game.as_str()
+        );
+    }
     Ok((out, tz))
+}
+
+/// A page whose every record is stored already: history comes newest first, so everything older
+/// is stored too. An empty page (or a record without a uid) never counts.
+fn page_has_nothing_new(list: &[Item], is_known: &impl Fn(&str, &str) -> bool) -> bool {
+    !list.is_empty()
+        && list
+            .iter()
+            .all(|i| !i.uid.is_empty() && is_known(&i.uid, &i.id))
 }
 
 async fn request_page(
@@ -394,6 +433,15 @@ async fn request_page(
                     r.status().as_u16()
                 )));
             }
+            Ok(r) if r.status().as_u16() == 429 && rate_attempts < 2 => {
+                rate_attempts += 1;
+                say(&format!(
+                    "the server asked Wishtory to slow down, waiting to retry ({rate_attempts} of 2)…"
+                ));
+                sleep(Duration::from_millis(2500)).await;
+                continue;
+            }
+            Ok(r) if r.status().as_u16() == 429 => return Err(AppError::RateLimited),
             Ok(r) => r,
             Err(e) if (e.is_timeout() || e.is_connect()) && net_attempts < 2 => {
                 net_attempts += 1;
@@ -529,5 +577,33 @@ mod tests {
         );
         assert!(next_cursor(20, Some("20".into()), "20").is_err());
         assert!(next_cursor(20, None, "0").is_err());
+    }
+
+    fn item(uid: &str, id: &str) -> Item {
+        serde_json::from_value(serde_json::json!({ "uid": uid, "id": id })).unwrap()
+    }
+
+    #[test]
+    fn stops_only_at_a_page_that_is_entirely_stored() {
+        let stored: HashSet<&str> = ["3", "2", "1"].into();
+        let known = |_: &str, id: &str| stored.contains(id);
+        assert!(page_has_nothing_new(
+            &[item("9", "3"), item("9", "2")],
+            &known
+        ));
+        assert!(!page_has_nothing_new(
+            &[item("9", "4"), item("9", "3")],
+            &known
+        ));
+        assert!(
+            !page_has_nothing_new(&[], &known),
+            "an empty page proves nothing"
+        );
+        assert!(!page_has_nothing_new(&[item("", "3")], &known));
+        // A full re-sync passes an empty set, so nothing is ever "known".
+        assert!(!page_has_nothing_new(
+            &[item("9", "3")],
+            &|_: &str, _: &str| false
+        ));
     }
 }

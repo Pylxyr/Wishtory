@@ -3,6 +3,7 @@
 //! The credits live here so the About page, the list of links the app may open and the README
 //! stay in step: only URLs listed below, and release pages of this project, can be opened.
 
+use crate::error::AppError;
 use serde::Serialize;
 
 pub const REPOSITORY: &str = "https://github.com/Pylxyr/Wishtory";
@@ -171,11 +172,13 @@ fn is_allowed(url: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn open_external(url: String) -> Result<(), String> {
+pub fn open_external(url: String) -> Result<(), AppError> {
     if !is_allowed(&url) {
-        return Err("Wishtory only opens the links it shows.".into());
+        return Err(AppError::Message(
+            "Wishtory only opens the links it shows.".into(),
+        ));
     }
-    open_in_browser(&url)
+    open_in_browser(&url).map_err(AppError::Message)
 }
 
 #[cfg(windows)]
