@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { prepare, readEnvelope, versionKey } from './prepare-catalog.mjs';
 
 const banners = (version, name = 'A') => ({ schema_version: 1, banners_version: version, generated_at: 'old', banners: [{ id: 'x', name }] });
@@ -70,7 +71,7 @@ function cli(args, files) {
     paths[name] = join(dir, name);
     writeFileSync(paths[name], content);
   }
-  const run = spawnSync(process.execPath, [new URL('./prepare-catalog.mjs', import.meta.url).pathname, ...args(paths)], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL('./prepare-catalog.mjs', import.meta.url)), ...args(paths)], { encoding: 'utf8' });
   return { run, read: (name) => readFileSync(join(dir, name), 'utf8') };
 }
 
