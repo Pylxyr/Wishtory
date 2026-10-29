@@ -1,0 +1,238 @@
+name: Release
+
+# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and publishes a GitHub release. You
+# normally never run this by hand: use "Cut release" (cut-release.yml). Other ways in:
+#   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
+#   - Run workflow here                                            -> dry run: builds and uploads the installer as an
+#                                                                    artifact; publishes nothing
+#   - called by cut-release.yml with the tag it just pushed        -> build, publish
+# A release is the setup .exe plus SHA256SUMS.txt, with build provenance attached when the repository allows it.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish, e.g. v0.2.0"
+        required: true
+        type: string
+      skip_checks:
+        description: "The caller already ran CI on this code"
+        required: false
+        type: boolean
+        default: false
+    # Only these secrets reach this workflow when cut-release.yml calls it (no `secrets: inherit`). Both optional:
+    # an unset one is empty and the release notes are written without AI.
+    secrets:
+      ANTHROPIC_API_KEY:
+        description: "Key for the AI release notes; unset means notes without AI"
+        required: false
+      AI_API_KEY:
+        description: "Key for the AI release notes (other provider); unset means notes without AI"
+        required: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      # inputs.tag is empty for a tag push or a manual run, which build the triggering ref.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Rust toolchain
+        shell: bash
+        run: |
+          # The version is chosen in rust-toolchain.toml, never "whatever stable is today".
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal
+          rustup default "$channel"
+          rustc --version
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+
+      # The app bundles catalog/*.json and prefers a cached update whose version is not lower, so the
+      # bundled copies must carry the versions CI publishes (a file that kept an old number would lose
+      # to older cached content after an upgrade). A repository without a catalog release yet is fine.
+      - name: Stamp bundled feed versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/fetch-published.sh published
+          for name in catalog banners rules; do
+            if [ -f "published/$name.envelope.json" ]; then
+              node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.json" "published/$name.envelope.json" --stamp
+            fi
+          done
+
+      - name: Check versions
+        id: ver
+        shell: pwsh
+        env:
+          CALLED_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          if ($pkg -ne $tauri -or $pkg -ne $cargo) {
+            throw "Version mismatch: package.json=$pkg, tauri.conf.json=$tauri, Cargo.toml=$cargo"
+          }
+          $tag = "v$pkg"
+          if ($env:CALLED_TAG -and $env:CALLED_TAG -ne $tag) {
+            throw "Tag $($env:CALLED_TAG) does not match the project version $tag"
+          }
+          if ($env:REF_TYPE -eq "tag" -and $env:REF_NAME -ne $tag) {
+            throw "Tag $($env:REF_NAME) does not match the project version $tag"
+          }
+          "version=$pkg" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - run: npm ci
+
+      - name: Frontend checks
+        if: ${{ !inputs.skip_checks }}
+        run: npm run check
+
+      - name: Rust tests
+        if: ${{ !inputs.skip_checks }}
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Build the NSIS installer
+        shell: pwsh
+        run: |
+          npx tauri build --bundles nsis -- --locked
+          if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
+
+      - name: Collect release files
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $setup = @(Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe")
+          if ($setup.Count -ne 1) { throw "Expected exactly one NSIS setup exe, found $($setup.Count)" }
+          if ($setup[0].Name -notlike "*$($env:VERSION)*") { throw "$($setup[0].Name) does not carry version $($env:VERSION)" }
+          Copy-Item $setup[0].FullName release/
+          Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    # A tag push, or a call from cut-release.yml. A manual dry run has neither.
+    # The explicit status check is required: without one GitHub applies an implicit success() over the whole
+    # dependency chain.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      models: read # lets the release-notes step use GitHub Models (free) with the built-in token
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-windows
+          path: release
+      - name: Checksums
+        run: |
+          cd release
+          sha256sum -- *-setup.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
+      - name: Attest build provenance
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release/*.exe
+      - name: Write release notes
+        env:
+          # AI release notes, tried in this order; with none available the notes come from commit messages and
+          # a read of the code (scripts/release_notes.py).
+          #  1. ANTHROPIC_API_KEY (optional secret)
+          #  2. AI_API_KEY secret + AI_BASE_URL and AI_MODEL variables (any OpenAI-compatible service)
+          #  3. GitHub Models, free, using the built-in token (needs `models: read` above)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ vars.AI_BASE_URL }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          RELEASE_NOTES_MODEL: ${{ vars.RELEASE_NOTES_MODEL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ATTEST_OUTCOME: ${{ steps.attest.outcome }}
+        run: |
+          {
+            cat .github/release-notes-header.md
+            echo
+            python3 scripts/release_notes.py --ai --tag "$TAG" --repo "$GITHUB_REPOSITORY" || {
+              echo "::warning::Could not build the changelog; publishing without it." >&2
+              echo "See the commit history for what changed."
+            }
+            echo
+            echo "## About this build"
+            echo
+            echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it."
+            if [ "$ATTEST_OUTCOME" = "success" ]; then
+              echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
+            fi
+          } > notes.md
+          cat notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      # The release is created as a draft, filled, and only then made public, so nobody ever sees a half-uploaded
+      # release. Safe to re-run: an existing release for the tag is updated instead of failing.
+      - name: Create the GitHub release
+        run: |
+          flags=()
+          case "$TAG" in *-*) flags+=(--prerelease) ;; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+            gh release edit "$TAG" --title "Wishtory $VERSION" --notes-file notes.md --draft=false "${flags[@]}"
+          else
+            gh release create "$TAG" release/* \
+              --title "Wishtory $VERSION" \
+              --notes-file notes.md \
+              --verify-tag \
+              --draft \
+              "${flags[@]}"
+            gh release edit "$TAG" --draft=false
+          fi
+          gh release view "$TAG" --json url --jq .url

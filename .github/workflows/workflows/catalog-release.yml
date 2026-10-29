@@ -1,0 +1,85 @@
+name: Publish signed game catalog
+
+on:
+  push:
+    branches: [main]
+    paths: [catalog/catalog.json, catalog/banners.json, catalog/rules.json]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish again even when the content is unchanged (version goes up by one)"
+        type: boolean
+        default: false
+
+# Three signed feeds live on one rolling release: the item catalog, the banner list and the pity
+# rules. Versions are set here, not by hand: a changed file is published one version above what is
+# published now, and an unchanged one is not published at all (scripts/prepare-catalog.mjs).
+concurrency:
+  group: catalog-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Stops the job when the release exists but cannot be read, instead of mistaking that for
+      # "first publish" and publishing a version number that may be lower than the live one.
+      - name: Fetch what is published now
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/fetch-published.sh published
+      - name: Set versions and sign
+        id: sign
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          force_flag=""
+          if [ "$FORCE" = "true" ]; then force_flag="--force"; fi
+          mkdir -p out
+          for name in catalog banners rules; do
+            published=""
+            if [ -f "published/$name.envelope.json" ]; then published="published/$name.envelope.json"; fi
+            # shellcheck disable=SC2086
+            status="$(node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.prepared.json" $published $force_flag)"
+            echo "$name: $status"
+            if [ "$status" = "publish" ]; then
+              node scripts/sign-catalog.mjs "catalog/$name.prepared.json" "out/$name.envelope.json"
+            fi
+          done
+          # Apps up to 0.0.2 ask for catalog.json and banners.json, names this workflow never
+          # uploaded (it has always published <name>.envelope.json), so their update checks
+          # ended in a 404. Keep a copy under the old names, from the newest envelope, and add it
+          # once even when nothing else changed.
+          for name in catalog banners; do
+            if [ -f "out/$name.envelope.json" ]; then
+              cp "out/$name.envelope.json" "out/$name.json"
+            elif [ -f "published/$name.envelope.json" ] && ! grep -qx "$name.json" published/assets.txt; then
+              cp "published/$name.envelope.json" "out/$name.json"
+            fi
+          done
+          echo "files=$(find out -type f | sort | paste -sd' ' -)" >> "$GITHUB_OUTPUT"
+      - name: Publish rolling catalog release
+        if: steps.sign.outputs.files != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILES: ${{ steps.sign.outputs.files }}
+        run: |
+          # FILES is a space-separated list of fixed paths under out/, so word splitting is intended.
+          # shellcheck disable=SC2086
+          if gh release view catalog-v1 >/dev/null 2>&1; then
+            gh release upload catalog-v1 $FILES --clobber
+          else
+            gh release create catalog-v1 $FILES --title "Wishtory game catalog" --notes "Signed metadata for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero: item catalog, banner list and pity rules. This release contains data only."
+          fi
