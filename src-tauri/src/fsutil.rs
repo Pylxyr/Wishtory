@@ -35,16 +35,13 @@ pub fn read_shared_head(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>>
     })();
     match direct {
         Ok(b) => Ok(b),
-        Err(first) => read_from_private_copy(path)
-            .map(|mut b| {
-                b.truncate(usize::try_from(max_bytes).unwrap_or(usize::MAX));
-                b
-            })
-            .map_err(|_| first),
+        Err(first) => read_from_private_copy(path, max_bytes).map_err(|_| first),
     }
 }
 
-fn read_from_private_copy(path: &Path) -> std::io::Result<Vec<u8>> {
+/// Copies at most `max_bytes` of `path` (a locked multi-MB log is not copied whole when only its
+/// head is wanted) into a fresh private temp file and returns what was copied.
+fn read_from_private_copy(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
     // `create_new` refuses pre-existing files and symlinks. `fs::copy` would follow and
     // truncate a predictable temp-path symlink, which could overwrite an arbitrary file.
     for _ in 0..16 {
@@ -61,8 +58,8 @@ fn read_from_private_copy(path: &Path) -> std::io::Result<Vec<u8>> {
             Err(e) => return Err(e),
         };
         let copied = (|| {
-            let mut input = fs::File::open(path)?;
-            std::io::copy(&mut input, &mut output)?;
+            let input = fs::File::open(path)?;
+            std::io::copy(&mut input.take(max_bytes), &mut output)?;
             output.flush()?;
             drop(output);
             fs::read(&tmp)
@@ -88,8 +85,9 @@ mod tests {
             COPY_SEQ.fetch_add(1, Ordering::Relaxed)
         ));
         fs::write(&source, b"read-only fallback").unwrap();
-        let contents = read_from_private_copy(&source).unwrap();
+        let contents = read_from_private_copy(&source, u64::MAX).unwrap();
         assert_eq!(contents, b"read-only fallback");
+        assert_eq!(read_from_private_copy(&source, 4).unwrap(), b"read");
         fs::remove_file(source).unwrap();
     }
 

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { open, save } from '@tauri-apps/plugin-dialog';
-  import { app, reloadAccounts, toast } from '../lib/state.svelte';
+  import { app, openLink, reloadAccounts, toast } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
   import { GAMES } from '../lib/types';
   import Icon from '../lib/components/Icon.svelte';
@@ -54,7 +54,7 @@
 
 <div class="page-head">
   <h1>Import / Export</h1>
-  <p>Wishtory speaks <a href="https://uigf.org" target="_blank" rel="noreferrer">UIGF</a>, the shared standard for wish history.</p>
+  <p>Wishtory speaks <button class="link" onclick={() => openLink('https://uigf.org/')}>UIGF</button>, the shared standard for wish history.</p>
 </div>
 
 <div class="split">

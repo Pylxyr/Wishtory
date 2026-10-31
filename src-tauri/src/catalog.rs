@@ -130,27 +130,40 @@ impl<F: Feed> FeedStore<F> {
     /// The newest verified cached copy, unless the copy bundled in this app is newer.
     pub fn open(app_data: &Path) -> Self {
         let cache_dir = app_data.join(format!("{}-cache", F::ASSET));
-        let cached = std::fs::read_dir(&cache_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-            .filter_map(|entry| {
-                let path = entry.path();
-                let metadata = std::fs::metadata(&path).ok()?;
-                if !metadata.is_file() || metadata.len() > max_envelope_bytes::<F>() as u64 {
-                    return None;
-                }
-                std::fs::read(path).ok()
-            })
-            .filter_map(|bytes| verify_envelope::<F>(&bytes).ok().map(|(doc, _)| doc))
-            .max_by_key(F::version);
         let embedded = F::bundled();
-        let current = cached
+        let current = Self::newest_cached(&cache_dir)
             .filter(|doc| doc.version() >= embedded.version())
             .unwrap_or(embedded);
         Self::new(app_data, current)
+    }
+
+    /// Cached envelopes are named `<version>.json` and are never pruned, so they are tried newest
+    /// first and the first one that verifies wins: older copies are not read, verified and parsed
+    /// at every start (each can be several MB).
+    fn newest_cached(cache_dir: &Path) -> Option<F> {
+        let mut files: Vec<(u64, PathBuf)> = std::fs::read_dir(cache_dir)
+            .ok()?
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+            .map(|path| {
+                let version = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .and_then(|stem| stem.parse().ok())
+                    .unwrap_or(0);
+                (version, path)
+            })
+            .collect();
+        files.sort_by_key(|(version, _)| std::cmp::Reverse(*version));
+        files.into_iter().find_map(|(_, path)| {
+            let metadata = std::fs::metadata(&path).ok()?;
+            if !metadata.is_file() || metadata.len() > max_envelope_bytes::<F>() as u64 {
+                return None;
+            }
+            let bytes = std::fs::read(path).ok()?;
+            verify_envelope::<F>(&bytes).ok().map(|(doc, _)| doc)
+        })
     }
 
     fn new(app_data: &Path, current: F) -> Self {
@@ -245,11 +258,32 @@ fn write_versioned<F: Feed>(dir: &Path, version: u64, bytes: &[u8]) -> Result<()
     Ok(())
 }
 
+/// GitHub answers release-asset downloads with a redirect to its own asset hosts
+/// (`release-assets.githubusercontent.com`, formerly `objects.githubusercontent.com`), so redirects
+/// cannot simply be switched off here as they are for the history API. They are followed only over
+/// HTTPS and only to GitHub-owned hosts, never to an arbitrary site.
+fn redirect_allowed(target: &url::Url, hops_so_far: usize) -> bool {
+    hops_so_far < 5
+        && target.scheme() == "https"
+        && target.host_str().is_some_and(|host| {
+            host == "github.com"
+                || host == "api.github.com"
+                || host.ends_with(".githubusercontent.com")
+        })
+}
+
 pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
         .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::limited(5))
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if redirect_allowed(attempt.url(), attempt.previous().len()) {
+                attempt.follow()
+            } else {
+                attempt.stop() // the 3xx answer is returned and reported as a failed download
+            }
+        }))
         .build()
         .map_err(|e| e.to_string())?;
     let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
@@ -855,6 +889,54 @@ mod tests {
         );
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn newest_cached_copy_is_tried_first_and_a_bad_one_falls_back_to_an_older_copy() {
+        let app_data =
+            std::env::temp_dir().join(format!("wishtory-catalog-newest-{}", std::process::id()));
+        let cache = app_data.join("catalog-cache");
+        let _ = std::fs::remove_dir_all(&app_data);
+        std::fs::create_dir_all(&cache).unwrap();
+        let good = include_bytes!("../../catalog/catalog-test-envelope.json");
+        std::fs::write(cache.join("2.json"), good).unwrap();
+        std::fs::write(cache.join("1.json"), b"older and never needed").unwrap();
+        std::fs::write(cache.join("3.json"), b"tampered newest copy").unwrap();
+        std::fs::write(cache.join("notes.txt"), b"ignored").unwrap();
+        assert_eq!(
+            CatalogStore::newest_cached(&cache).unwrap().catalog_version,
+            2
+        );
+        std::fs::remove_file(cache.join("2.json")).unwrap();
+        assert!(CatalogStore::newest_cached(&cache).is_none());
+        assert!(CatalogStore::newest_cached(&app_data.join("missing")).is_none());
+        std::fs::remove_dir_all(app_data).unwrap();
+    }
+
+    #[test]
+    fn redirects_stay_on_github_over_https() {
+        let allowed = |url: &str| redirect_allowed(&url::Url::parse(url).unwrap(), 1);
+        assert!(allowed(
+            "https://github.com/Pylxyr/Wishtory/releases/download/catalog-v1/a.json"
+        ));
+        assert!(allowed(
+            "https://api.github.com/repos/Pylxyr/Wishtory/releases"
+        ));
+        assert!(allowed(
+            "https://release-assets.githubusercontent.com/github-production-release-asset/1"
+        ));
+        assert!(allowed(
+            "https://objects.githubusercontent.com/github-production-release-asset/1"
+        ));
+        assert!(!allowed("http://github.com/Pylxyr/Wishtory"));
+        assert!(!allowed("https://example.com/catalog.json"));
+        assert!(!allowed("https://evilgithubusercontent.com/x"));
+        assert!(!allowed("https://github.com.evil.example/x"));
+        assert!(!allowed("https://github.com@evil.example/x"));
+        assert!(!redirect_allowed(
+            &url::Url::parse("https://github.com/x").unwrap(),
+            5
+        ));
     }
 
     fn test_store(app_data: &Path) -> CatalogStore {

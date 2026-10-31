@@ -528,6 +528,27 @@ fn decode_text(bytes: &[u8]) -> Result<String, AppError> {
         .map_err(|_| AppError::Format("the file is not UTF-8 or UTF-16 text".into()))
 }
 
+/// Reads a user-selected import file, never more than `max` bytes. The limit is applied to the
+/// bytes actually read, so a file that grows after the size check, or a device or pipe that
+/// reports no size, cannot exhaust memory.
+fn read_import_file(path: &str, max: u64) -> Result<Vec<u8>, AppError> {
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let size = file.metadata()?.len();
+    wlog!(Level::Debug, "import: reading a {size}-byte file");
+    let too_big =
+        || AppError::Format("the file is larger than 64 MB; that cannot be a wish history".into());
+    if size > max {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::new();
+    file.take(max + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > max {
+        return Err(too_big());
+    }
+    Ok(bytes)
+}
+
 /// Reads a user-selected UIGF / SRGF file.
 #[tauri::command]
 pub async fn import_file(
@@ -539,14 +560,7 @@ pub async fn import_file(
     let (catalog, banners) = (catalog.current(), banners.current());
     // File read, JSON parse and database merge can take a while: keep them off the async runtime.
     db.run(move |db| {
-        let size = std::fs::metadata(&path)?.len();
-        wlog!(Level::Debug, "import: reading a {size}-byte file");
-        if size > MAX_IMPORT_BYTES {
-            return Err(AppError::Format(
-                "the file is larger than 64 MB; that cannot be a wish history".into(),
-            ));
-        }
-        let text = decode_text(&std::fs::read(&path)?)?;
+        let text = decode_text(&read_import_file(&path, MAX_IMPORT_BYTES)?)?;
         let summary = uigf::import_with_catalog(db, &text, &catalog)
             .inspect(|r| {
                 wlog!(
@@ -738,6 +752,18 @@ mod tests {
             &roots
         )
         .is_err());
+    }
+
+    #[test]
+    fn import_reads_are_bounded_by_the_limit() {
+        let path =
+            std::env::temp_dir().join(format!("wishtory-import-{}.json", std::process::id()));
+        std::fs::write(&path, b"0123456789").unwrap();
+        let path_str = path.to_string_lossy();
+        assert_eq!(read_import_file(&path_str, 10).unwrap(), b"0123456789");
+        assert!(read_import_file(&path_str, 9).is_err());
+        assert!(read_import_file("/definitely/not/here.json", 10).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

@@ -156,6 +156,18 @@ pub fn get_about() -> About {
     }
 }
 
+/// The part of a release-page link after `releases/`: plain path segments only. No `..` / `.`,
+/// `\`, `%`, `?` or `#`, so a browser cannot normalise the link onto another repository.
+fn is_release_subpath(rest: &str) -> bool {
+    rest.split('/').all(|segment| {
+        segment != "."
+            && segment != ".."
+            && segment
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+' | b'~'))
+    })
+}
+
 /// Only links the app ships, and release pages of this project, may be opened.
 fn is_allowed(url: &str) -> bool {
     if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
@@ -164,7 +176,8 @@ fn is_allowed(url: &str) -> bool {
     [REPOSITORY, RELEASES, ISSUES].contains(&url)
         || url
             .strip_prefix(RELEASES)
-            .is_some_and(|rest| rest.starts_with('/'))
+            .and_then(|rest| rest.strip_prefix('/'))
+            .is_some_and(is_release_subpath)
         || GROUPS
             .iter()
             .flat_map(|group| group.credits)
@@ -194,4 +207,41 @@ fn open_in_browser(url: &str) -> Result<(), String> {
 #[cfg(not(windows))]
 fn open_in_browser(_url: &str) -> Result<(), String> {
     Err("Opening links is only supported on Windows.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opens_only_listed_links_and_release_pages_of_this_project() {
+        for link in [
+            REPOSITORY,
+            RELEASES,
+            ISSUES,
+            "https://github.com/Pylxyr/Wishtory/releases/",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/v0.1.0",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/v1.2.3-rc.1+b5",
+            "https://uigf.org/",
+            "https://paimon.moe/",
+        ] {
+            assert!(is_allowed(link), "{link}");
+        }
+        for link in [
+            "",
+            "https://uigf.org",
+            "http://github.com/Pylxyr/Wishtory",
+            "https://github.com/Pylxyr/Wishtory-evil",
+            "https://github.com/Pylxyr/Wishtory/releasesx",
+            "https://github.com/Pylxyr/Wishtory/releases/../../../evil/repo",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/%2e%2e/x",
+            "https://github.com/Pylxyr/Wishtory/releases/\\..\\..\\evil",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/v1?next=https://evil.example",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/v1#frag",
+            "https://github.com/Pylxyr/Wishtory/releases/tag/v1\n",
+            "file:///C:/Windows/System32/calc.exe",
+        ] {
+            assert!(!is_allowed(link), "{link:?}");
+        }
+    }
 }
