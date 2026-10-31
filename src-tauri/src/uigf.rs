@@ -5,7 +5,7 @@ use crate::{
     catalog::Catalog,
     db::{AccountPulls, Db},
     error::AppError,
-    models::{Account, Game, Pull},
+    models::{is_rerun_gacha_type, uigf_gacha_type, Account, Game, Pull},
 };
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -104,6 +104,17 @@ fn item_to_pull(game: &str, uid: &str, lang: &str, it: &Value) -> Option<Pull> {
     }
     if gacha_type.is_empty() {
         return None; // pity cannot place a pull without a banner
+    }
+    if game == "nap" {
+        // UIGF lists only the ordinary Zenless channels, so Wishtory's own export reports a
+        // Rescreening / Reverberation pull as 2 / 3 and keeps the real channel in an extra field.
+        // The channel is only taken from there when it agrees with the type next to it.
+        let own = get(it, "wishtory_gacha_type");
+        if is_rerun_gacha_type(game, &own)
+            && uigf_gacha_type(game, &own) == uigf_gacha_type(game, &gacha_type)
+        {
+            gacha_type = own;
+        }
     }
     Some(Pull {
         id,
@@ -375,7 +386,7 @@ fn import_block(
 // ---------- export ----------
 fn item_json(game: &str, p: &Pull) -> Value {
     let mut o = json!({
-        "gacha_type": p.gacha_type, "item_id": p.item_id, "count": p.count.to_string(),
+        "gacha_type": uigf_gacha_type(game, &p.gacha_type), "item_id": p.item_id, "count": p.count.to_string(),
         "time": p.time, "name": p.name, "item_type": p.item_type,
         "rank_type": p.rank_type.to_string(), "id": p.id
     });
@@ -389,6 +400,13 @@ fn item_json(game: &str, p: &Pull) -> Value {
         m.insert("uigf_gacha_type".into(), Value::from(ugt));
     } else {
         m.insert("gacha_id".into(), Value::from(p.gacha_id.clone()));
+        if is_rerun_gacha_type(game, &p.gacha_type) {
+            // Other tools ignore this; Wishtory uses it to restore the channel on import.
+            m.insert(
+                "wishtory_gacha_type".into(),
+                Value::from(p.gacha_type.clone()),
+            );
+        }
     }
     o
 }
@@ -907,5 +925,75 @@ mod tests {
                 && v["info"]["version"].as_str().unwrap().starts_with("v4.")
         );
         assert!(acc["list"][0]["gacha_id"].is_string() && acc["list"][0]["id"].is_string());
+    }
+
+    #[test]
+    fn rescreening_and_reverberation_survive_an_export_and_import_of_our_own_file() {
+        let nap = |id: &str, gacha_type: &str, time: &str| {
+            format!(
+                r#"{{"gacha_id":"x","gacha_type":"{gacha_type}","item_id":"1401","count":"1","time":"{time}","name":"Alice","item_type":"Agent","rank_type":"4","id":"{id}"}}"#
+            )
+        };
+        // Stored as the channels they were read from.
+        let db = temp_db("nap-rerun-source");
+        let source = format!(
+            r#"{{"info":{{"export_timestamp":1,"export_app":"f","export_app_version":"1","version":"v4.2"}},
+              "nap":[{{"uid":"1000000012","timezone":8,"lang":"en-us","list":[{},{},{}]}}]}}"#,
+            nap("1", "2", "2026-08-20 03:00:00"),
+            nap("2", "102", "2026-08-20 03:00:01"),
+            nap("3", "103", "2026-08-20 03:00:02"),
+        );
+        // A raw 102 / 103 (as a tool that kept the channel numbers would write) is accepted too.
+        import(&db, &source).unwrap();
+        let stored: Vec<_> = db
+            .pulls_for("nap", "1000000012")
+            .unwrap()
+            .into_iter()
+            .map(|p| p.gacha_type)
+            .collect();
+        assert_eq!(stored, ["2", "102", "103"]);
+
+        // The export stays valid UIGF 4 (only 1, 2, 3, 5) and carries the real channel on the side.
+        let exported = export(&db, "uigf4", Some(Game::Nap), Some("1000000012")).unwrap();
+        let encoded: Value = serde_json::from_str(&exported).unwrap();
+        let rows = encoded["nap"][0]["list"].as_array().unwrap();
+        let types: Vec<_> = rows
+            .iter()
+            .map(|r| r["gacha_type"].as_str().unwrap())
+            .collect();
+        assert_eq!(types, ["2", "2", "3"]);
+        assert!(rows[0].get("wishtory_gacha_type").is_none());
+        assert_eq!(rows[1]["wishtory_gacha_type"], "102");
+        assert_eq!(rows[2]["wishtory_gacha_type"], "103");
+
+        // Importing that file again restores the channels exactly.
+        let again = temp_db("nap-rerun-restore");
+        import(&again, &exported).unwrap();
+        let restored: Vec<_> = again
+            .pulls_for("nap", "1000000012")
+            .unwrap()
+            .into_iter()
+            .map(|p| p.gacha_type)
+            .collect();
+        assert_eq!(restored, ["2", "102", "103"]);
+    }
+
+    #[test]
+    fn a_file_from_another_tool_stays_on_the_ordinary_channels() {
+        // Without the extra field there is nothing to tell Rescreening from the Exclusive Channel,
+        // and a mismatching hint is ignored.
+        let db = temp_db("nap-rerun-foreign");
+        let source = r#"{"info":{"export_timestamp":1,"export_app":"f","export_app_version":"1","version":"v4.2"},
+          "nap":[{"uid":"1000000012","timezone":8,"lang":"en-us","list":[
+            {"gacha_id":"x","gacha_type":"2","item_id":"1","count":"1","time":"2026-08-20 03:00:00","name":"A","item_type":"Agent","rank_type":"3","id":"1"},
+            {"gacha_id":"x","gacha_type":"3","wishtory_gacha_type":"102","item_id":"1","count":"1","time":"2026-08-20 03:00:01","name":"B","item_type":"W-Engine","rank_type":"3","id":"2"}]}]}"#;
+        import(&db, source).unwrap();
+        let types: Vec<_> = db
+            .pulls_for("nap", "1000000012")
+            .unwrap()
+            .into_iter()
+            .map(|p| p.gacha_type)
+            .collect();
+        assert_eq!(types, ["2", "3"]);
     }
 }

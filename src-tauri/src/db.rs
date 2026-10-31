@@ -2,7 +2,7 @@
 
 use crate::{
     error::AppError,
-    models::{Account, Pull},
+    models::{is_rerun_gacha_type, Account, Pull},
 };
 use rusqlite::{params, Connection, Transaction};
 use std::{
@@ -435,9 +435,22 @@ fn merge_into(
             p.lang
         ])
     };
+    // A record read from a rerun channel is that channel's, even when it is already stored as the
+    // ordinary channel's (an import from another tool, which only knows 2 / 3): the live history
+    // is the authority, and the banner it was matched to is worked out again.
+    let mut reclassify = tx.prepare(
+        "UPDATE pulls SET gacha_type = ?4 WHERE game = ?1 AND uid = ?2 AND id = ?3 AND gacha_type <> ?4",
+    )?;
+    let mut forget_banner =
+        tx.prepare("DELETE FROM pull_banners WHERE game = ?1 AND uid = ?2 AND pull_id = ?3")?;
     for p in pulls {
         if existing_ids.contains(&p.id) {
             fill_row(&p.id, p)?;
+            if is_rerun_gacha_type(game, &p.gacha_type)
+                && reclassify.execute(params![game, uid, p.id, p.gacha_type])? > 0
+            {
+                forget_banner.execute(params![game, uid, p.id])?;
+            }
             continue;
         }
         if let Some(stored_id) = pull_signature(p).and_then(|s| candidates.take(&s)) {
@@ -783,6 +796,56 @@ mod tests {
             .complete_pull_ids_for("hk4e", "other")
             .unwrap()
             .is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_rerun_channel_read_reclassifies_a_pull_stored_as_the_ordinary_channel() {
+        let (db, path) = temp_db("rerun-reclassify");
+        let stored = |id: &str, gacha_type: &str| {
+            let mut p = pull(id, "Alice");
+            p.game = "nap".into();
+            p.gacha_type = gacha_type.into();
+            p
+        };
+        // Imported from a tool that only knows the types 2 / 3, so it is stored as Exclusive.
+        db.merge("nap", "1", 8, &[stored("a", "2"), stored("b", "2")])
+            .unwrap();
+        db.set_pull_banners(
+            "nap",
+            "1",
+            &[
+                ("a".into(), "banner-x".into()),
+                ("b".into(), "banner-y".into()),
+            ],
+        )
+        .unwrap();
+        // The live fetch reads "a" from the Rescreening channel (and "b" again as Exclusive).
+        assert_eq!(
+            db.merge("nap", "1", 8, &[stored("a", "102"), stored("b", "2")])
+                .unwrap(),
+            0
+        );
+        let types: Vec<_> = db
+            .pulls_for("nap", "1")
+            .unwrap()
+            .into_iter()
+            .map(|p| (p.id, p.gacha_type))
+            .collect();
+        assert_eq!(
+            types,
+            [("a".into(), "102".into()), ("b".into(), "2".into())]
+        );
+        let banners = db.pull_banners_for("nap", "1").unwrap();
+        assert!(!banners.contains_key("a"), "its banner is matched again");
+        assert_eq!(banners.get("b").map(String::as_str), Some("banner-y"));
+        // Only the rerun channels override: Genshin's 400 stays 400 when 301 is read again.
+        let mut genshin = pull("g", "x");
+        genshin.gacha_type = "400".into();
+        db.merge("hk4e", "1", 8, &[genshin.clone()]).unwrap();
+        genshin.gacha_type = "301".into();
+        db.merge("hk4e", "1", 8, &[genshin]).unwrap();
+        assert_eq!(db.pulls_for("hk4e", "1").unwrap()[0].gacha_type, "400");
         let _ = std::fs::remove_file(&path);
     }
 }

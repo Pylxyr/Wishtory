@@ -23,7 +23,11 @@ use std::collections::HashMap;
 
 /// Banners that only exist for part of the game's life stay hidden until they have a pull.
 fn hidden_when_empty(key: &str) -> bool {
-    key == "beginner" || key.starts_with("collab")
+    key == "beginner"
+        || key.starts_with("collab")
+        // Zenless rerun channels exist only while a Rescreening / Reverberation period runs.
+        || key == "rescreening"
+        || key == "reverberation"
 }
 
 /// Lower-case, straight-apostrophe form so `Amos’ Bow` and `Amos' Bow` compare equal.
@@ -69,6 +73,23 @@ fn has_gacha_id(pull: &Pull) -> bool {
 /// `gacha_id` shared with a placed pull joins that banner, so 3★ and 4★ pulls are labelled as soon
 /// as any 5★ from the same banner is known. A `gacha_id` claimed by two different banners is
 /// ignored.
+/// Rerun channels sit in the banner list beside the live banners as ordinary `character` /
+/// `weapon` entries, because the list's shape is fixed for the apps already installed. Their ids
+/// end in `-rescreening` / `-reverberation` and that is how a pull of the channel finds its entry
+/// (and how an Exclusive or W-Engine channel pull avoids matching one).
+fn is_rerun_entry(b: &BannerEntry) -> bool {
+    b.id.ends_with("-rescreening") || b.id.ends_with("-reverberation")
+}
+
+/// Whether a banner list entry belongs to the pity pool `key` (as returned by `banner_key`).
+fn serves(b: &BannerEntry, key: &str) -> bool {
+    match key {
+        "rescreening" => b.pool == "character" && b.id.ends_with("-rescreening"),
+        "reverberation" => b.pool == "weapon" && b.id.ends_with("-reverberation"),
+        other => b.pool == other && !is_rerun_entry(b),
+    }
+}
+
 pub fn resolve_banners<'a>(
     banners: &'a [BannerEntry],
     game: Game,
@@ -98,7 +119,7 @@ pub fn resolve_banners<'a>(
             continue;
         }
         if let Some(Some(banner)) = learned.get(pull.gacha_id.as_str()) {
-            if banner_key(game, &pull.gacha_type) == Some(banner.pool.as_str()) {
+            if banner_key(game, &pull.gacha_type).is_some_and(|key| serves(banner, key)) {
                 *slot = Some(*banner);
             }
         }
@@ -136,7 +157,7 @@ fn lost_to_custom_search(
     }
     let live: Vec<&BannerEntry> = banners
         .iter()
-        .filter(|b| b.game == game.as_str() && b.pool == "character")
+        .filter(|b| b.game == game.as_str() && b.pool == "character" && !is_rerun_entry(b))
         .filter(|b| b.start.as_str() <= pull.time.as_str() && pull.time.as_str() <= b.end.as_str())
         .collect();
     if live.is_empty() {
@@ -176,6 +197,8 @@ pub fn history_filters(game: Game) -> &'static [(&'static str, &'static str)] {
             ("weapon", "W-Engine Channel"),
             ("standard", "Standard Channel"),
             ("bangboo", "Bangboo Channel"),
+            ("rescreening", "Exclusive Rescreening"),
+            ("reverberation", "W-Engine Reverberation"),
         ],
     }
 }
@@ -198,6 +221,8 @@ pub fn pool_label(game: Game, gacha_type: &str) -> Option<&'static str> {
         (Game::Nap, "2") => "Exclusive",
         (Game::Nap, "3") => "W-Engine",
         (Game::Nap, "5") => "Bangboo",
+        (Game::Nap, "102") => "Rescreening",
+        (Game::Nap, "103") => "Reverberation",
         _ => return None,
     })
 }
@@ -212,7 +237,7 @@ pub fn resolve_banner<'a>(
     pull: &Pull,
 ) -> Option<&'a BannerEntry> {
     let pool = banner_key(game, &pull.gacha_type)?;
-    let same_pool = |b: &&BannerEntry| b.game == game.as_str() && b.pool == pool;
+    let same_pool = |b: &&BannerEntry| b.game == game.as_str() && serves(b, pool);
     if has_gacha_id(pull) {
         if let Some(found) = banners
             .iter()
@@ -262,6 +287,12 @@ pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
         (Game::Nap, "2") => "character",
         (Game::Nap, "3") => "weapon",
         (Game::Nap, "5") => "bangboo",
+        // Exclusive Rescreening and W-Engine Reverberation count their own searches, cumulative over
+        // every period but independent of the Exclusive and W-Engine channels (official notice).
+        // The history API reports their records with gacha_type 2 / 3, so Wishtory stores the
+        // channel it asked for (102 / 103) instead; see `fetch::stored_gacha_type`.
+        (Game::Nap, "102") => "rescreening",
+        (Game::Nap, "103") => "reverberation",
         _ => return None,
     })
 }
@@ -1227,5 +1258,135 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn rescreening_and_reverberation_count_their_own_pity_across_periods() {
+        // Zenless reports S-Rank as raw rank 4 (B = 2). Official rule: each rerun channel keeps its
+        // own count, cumulative over every period and unaffected by the other channels.
+        let nap = |gt: &str, id: u32, raw: u8, time: &str| at(pull("nap", gt, id, raw, "x"), time);
+        let mut pulls = vec![];
+        for id in 1..=4 {
+            pulls.push(nap("2", id, 2, "2026-01-22 12:00:00"));
+        }
+        for id in 5..=7 {
+            pulls.push(nap("102", id, 2, "2026-01-23 12:00:00")); // first period
+        }
+        for id in 8..=9 {
+            pulls.push(nap("102", id, 2, "2026-08-20 12:00:00")); // a later period
+        }
+        pulls.push(nap("102", 10, 4, "2026-08-20 12:30:00")); // S-Rank
+        pulls.push(nap("103", 11, 2, "2026-08-20 13:00:00"));
+        let r = compute(Game::Nap, &pulls);
+
+        let exclusive = find(&r, "character");
+        assert_eq!((exclusive.total, exclusive.pity), (4, 4));
+
+        let rescreening = find(&r, "rescreening");
+        assert_eq!(rescreening.label, "Exclusive Rescreening");
+        assert_eq!(rescreening.total, 6);
+        assert_eq!(rescreening.five_stars, 1);
+        assert_eq!(
+            rescreening.recent_fives[0].pity, 6,
+            "the count carries over periods"
+        );
+        assert_eq!(rescreening.pity, 0, "an S-Rank starts the count again");
+        assert_eq!(rescreening.hard_pity, 90);
+        // No coin flip is tracked: the first S-Rank of a period is the player's own pick.
+        assert_eq!(rescreening.recent_fives[0].off_banner, None);
+        assert_eq!(rescreening.recent_fives[0].outcome, None);
+
+        let reverberation = find(&r, "reverberation");
+        assert_eq!((reverberation.total, reverberation.pity), (1, 1));
+        assert_eq!(reverberation.hard_pity, 80);
+
+        // Per-pull pity follows the same pools.
+        let per_pull = pull_pities(Game::Nap, &pulls);
+        assert_eq!(per_pull[9], Some(6));
+    }
+
+    #[test]
+    fn rerun_channels_stay_hidden_until_they_have_a_pull() {
+        let only_exclusive = [at(pull("nap", "2", 1, 2, "x"), "2026-01-22 12:00:00")];
+        let keys: Vec<_> = compute(Game::Nap, &only_exclusive)
+            .into_iter()
+            .map(|b| b.banner)
+            .collect();
+        assert!(keys.contains(&"character".to_string()));
+        assert!(!keys.contains(&"rescreening".to_string()));
+        assert!(!keys.contains(&"reverberation".to_string()));
+    }
+
+    #[test]
+    fn rerun_channel_pulls_find_their_own_banner_entries() {
+        let window = ("2026-08-19 12:00:00", "2026-09-08 14:59:59");
+        let list = vec![
+            event(
+                "nap-character-a",
+                "nap",
+                "character",
+                window.0,
+                window.1,
+                &["1591"],
+            ),
+            event(
+                "nap-character-2026-08-19-rescreening",
+                "nap",
+                "character",
+                window.0,
+                window.1,
+                &["1481", "1411", "1201"],
+            ),
+            event(
+                "nap-weapon-2026-08-19-reverberation",
+                "nap",
+                "weapon",
+                window.0,
+                window.1,
+                &["14148"],
+            ),
+        ];
+        let t = "2026-08-20 12:00:00";
+        let id = |gt: &str| {
+            resolve_banner(&list, Game::Nap, &at(pull("nap", gt, 1, 2, "x"), t))
+                .map(|b| b.id.as_str())
+        };
+        // Two character entries are live, yet each channel finds exactly its own.
+        assert_eq!(id("2"), Some("nap-character-a"));
+        assert_eq!(id("102"), Some("nap-character-2026-08-19-rescreening"));
+        assert_eq!(id("103"), Some("nap-weapon-2026-08-19-reverberation"));
+        // The ordinary W-Engine channel has no entry of its own here and must not take the
+        // Reverberation one.
+        assert_eq!(id("3"), None);
+    }
+
+    #[test]
+    fn a_rescreening_agent_is_not_featured_on_the_exclusive_channel() {
+        // Custom Search: a limited S-Rank agent that no live Exclusive Channel features is a lost
+        // 50/50. The agents of the Rescreening channel running at the same time are no exception.
+        let window = ("2026-08-19 12:00:00", "2026-09-08 14:59:59");
+        let list = vec![
+            event(
+                "nap-character-a",
+                "nap",
+                "character",
+                window.0,
+                window.1,
+                &["1591"],
+            ),
+            event(
+                "nap-character-2026-08-19-rescreening",
+                "nap",
+                "character",
+                window.0,
+                window.1,
+                &["1481", "1411", "1201"],
+            ),
+        ];
+        let dialyn = at(pull("nap", "2", 1, 4, "1481"), "2026-08-20 12:00:00");
+        let r = compute_with_banners(Game::Nap, &[dialyn], &list, &RuleSet::bundled());
+        let five = &find(&r, "character").recent_fives[0];
+        assert_eq!(five.off_banner, Some(true));
+        assert_eq!(five.outcome.as_deref(), Some("loss"));
     }
 }

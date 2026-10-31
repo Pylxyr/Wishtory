@@ -40,6 +40,17 @@ The weekly workflow runs `npm run banners:track`. Paimon.moe publishes Genshin I
 
 Drafts go into the review PR and the report is added to its description. When the check changes no file but has something to review, it opens or updates one issue titled "Banner list needs review", and closes it when there is nothing left. Always check drafts against the official notice: Paimon.moe is a community source and can lag or be wrong.
 
+## Zenless rerun channels
+
+Exclusive Rescreening and W-Engine Reverberation are separate Signal Search channels with their own counters: cumulative over every period, independent of the Exclusive and W-Engine channels (HoYoverse's channel notices). Wishtory handles them as two more pity pools, `rescreening` and `reverberation`.
+
+- **Fetching:** the history API takes them as `real_gacha_type` 102 (Rescreening) and 103 (Reverberation) together with `init_log_gacha_base_type`, and reports their records as the ordinary types 2 and 3. Wishtory therefore stores the channel it asked for, and keeps a rerun channel's records only if none of them also came back from an ordinary channel (a server that ignored the request would otherwise relabel the Exclusive history). A channel the server cannot answer for is skipped and mentioned after the refresh; the other channels are still saved.
+- **Banner list:** the list's shape is fixed for installed apps, so the rerun periods are ordinary `character` / `weapon` entries whose **id ends in `-rescreening` or `-reverberation`**. That suffix is how a pull finds its entry, and how Exclusive and W-Engine channel pulls avoid matching one. Keep it when adding a period; the tracker script does not draft these (they are not in Paimon.moe's data).
+- **Pity numbers:** `rules.json` uses 90 for Rescreening and 80 for Reverberation, inherited from the channels they mirror. HoYoverse does not publish a count for them, so treat both as working figures.
+- **No win / loss tracking:** the first S-Rank of each period is the player's own pick (the Special Guarantee), so there is no coin flip to record.
+- **UIGF:** the standard lists only channels 1, 2, 3 and 5. Wishtory exports a rerun pull as 2 / 3 and adds a `wishtory_gacha_type` field that it reads back on import; other tools ignore the field and see ordinary channels.
+- A live fetch also corrects pulls that were imported as the ordinary channel (for example from another tool), because it reads them from the rerun channel.
+
 ## Pity rules
 
 `catalog/rules.json` holds what used to be tables in the Rust code: each banner's hard and soft pity and 50/50 odds, the permanent pool of every game (ids and English names), permanent-pool items that were also featured for a window of dates, and Zenless Custom Search. It is signed and published like the other feeds (`rules.envelope.json`, version `rules_version`), so a game change reaches users as a data update instead of an app release.

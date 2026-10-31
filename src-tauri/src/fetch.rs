@@ -107,9 +107,48 @@ fn api_base(game: Game, cn: bool) -> &'static str {
     }
 }
 
+/// The ordinary channel a Zenless rerun channel belongs to: Exclusive Rescreening (102) is the
+/// agent channel's selectable rerun, W-Engine Reverberation (103) the W-Engine channel's.
+fn rerun_base_channel(game: Game, channel: &str) -> Option<&'static str> {
+    match (game, channel) {
+        (Game::Nap, "102") => Some("2"),
+        (Game::Nap, "103") => Some("3"),
+        _ => None,
+    }
+}
+
+/// The `gacha_type` to store for a record read from `channel`. The history API reports the rerun
+/// channels' records with the ordinary channel's type (2 / 3), which would put Rescreening
+/// searches into the Exclusive pity counter, so the channel that was asked for is stored instead.
+fn stored_gacha_type(game: Game, channel: &str, reported: String) -> String {
+    if rerun_base_channel(game, channel).is_some() {
+        channel.to_string()
+    } else {
+        reported
+    }
+}
+
 /// ZZZ uses an internal channel id plus its normalized channel id. The endpoint
 /// returns an empty list when only `real_gacha_type` is supplied.
-fn gacha_params(game: Game, channel: &str) -> Vec<(&'static str, String)> {
+///
+/// The rerun channels (102 / 103) are requested the way the game's own history page asks for
+/// them: `real_gacha_type` plus the `init_log_gacha_base_type` of the page the link came from
+/// (falling back to the ordinary channel's number). Sending the internal `gacha_type` ids of the
+/// ordinary channels with them makes the server ignore the request.
+fn gacha_params(
+    game: Game,
+    channel: &str,
+    url_base_type: Option<&str>,
+) -> Vec<(&'static str, String)> {
+    if let Some(base) = rerun_base_channel(game, channel) {
+        return vec![
+            ("real_gacha_type", channel.to_string()),
+            (
+                "init_log_gacha_base_type",
+                url_base_type.unwrap_or(base).to_string(),
+            ),
+        ];
+    }
     if game == Game::Nap {
         let internal = match channel {
             "1" => "1001",
@@ -177,9 +216,21 @@ fn banner_name(game: Game, gacha_type: &str) -> String {
         (Game::Nap, "2") => "Exclusive Channel",
         (Game::Nap, "3") => "W-Engine Channel",
         (Game::Nap, "5") => "Bangboo Channel",
+        (Game::Nap, "102") => "Exclusive Rescreening",
+        (Game::Nap, "103") => "W-Engine Reverberation",
         _ => return format!("Banner {gacha_type}"),
     };
     name.to_string()
+}
+
+/// Everything one history request needs besides the channel and the page.
+struct Source<'a> {
+    client: &'a reqwest::Client,
+    game: Game,
+    base: &'a str,
+    common: &'a [(&'a str, String)],
+    /// `init_log_gacha_base_type` of the link the user's game produced, if it had one.
+    url_base_type: Option<&'a str>,
 }
 
 /// Ids already stored for an account (given its uid), used to stop at the first page that holds
@@ -247,11 +298,24 @@ pub async fn fetch_all(
     // the whole history. (The caller's `known` set only holds fully described rows and is empty
     // for a full re-sync.) A banner is only kept once it is complete, so pity counters never
     // start in the middle of a half-downloaded banner. Merging by id is idempotent.
+    let url_base_type = p
+        .get("init_log_gacha_base_type")
+        .map(String::as_str)
+        .filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()));
+    let source = Source {
+        client: &client,
+        game,
+        base,
+        common: &common,
+        url_base_type,
+    };
     let stored = OnceLock::<HashSet<String>>::new();
     let is_known = |uid: &str, id: &str| stored.get_or_init(|| known(uid)).contains(id);
     let mut pulls = Vec::new();
     let mut tz: Option<i32> = None;
     let mut failure: Option<(AppError, usize)> = None;
+    // Things worth telling the user that did not stop the refresh.
+    let mut notes: Vec<String> = Vec::new();
     let total = game.gacha_types().len();
     for (done, gt) in game.gacha_types().iter().enumerate() {
         let name = banner_name(game, gt);
@@ -260,7 +324,7 @@ pub async fn fetch_all(
             done + 1,
             pulls.len()
         ));
-        match fetch_banner(&client, game, base, &common, gt, &name, progress, &is_known).await {
+        match fetch_banner(&source, gt, &name, progress, &is_known).await {
             Ok((items, rtz)) => {
                 progress(format!("{name}: done, {} pulls", items.len()));
                 wlog!(
@@ -271,6 +335,17 @@ pub async fn fetch_all(
                 );
                 tz = tz.or(rtz);
                 pulls.extend(items);
+            }
+            // A rerun channel is optional: if the server cannot answer for it, the channels that
+            // were read are still saved and the user is told which one is missing.
+            Err(AppError::Api(message)) if rerun_base_channel(game, gt).is_some() => {
+                wlog!(
+                    Level::Warn,
+                    "{}: channel {gt} could not be read: {message}",
+                    game.as_str()
+                );
+                progress(format!("{name}: skipped"));
+                notes.push(format!("{name} could not be read ({message})."));
             }
             Err(e) => {
                 wlog!(
@@ -285,6 +360,18 @@ pub async fn fetch_all(
         sleep(Duration::from_millis(400)).await;
     }
 
+    for channel in drop_unseparable_rerun_channels(game, &mut pulls) {
+        let name = banner_name(game, channel);
+        wlog!(
+            Level::Warn,
+            "{}: channel {channel} repeated another channel's records and was not saved",
+            game.as_str()
+        );
+        notes.push(format!(
+            "{name} could not be told apart from the ordinary channel, so it was not saved."
+        ));
+    }
+
     let incomplete = match failure {
         Some((e, _)) if pulls.is_empty() => return Err(e),
         Some((e, done)) => Some(format!(
@@ -292,6 +379,10 @@ pub async fn fetch_all(
             game.gacha_types().len()
         )),
         None => None,
+    };
+    let incomplete = match (incomplete, notes.is_empty()) {
+        (None, true) => None,
+        (first, _) => Some(first.into_iter().chain(notes).collect::<Vec<_>>().join(" ")),
     };
 
     let uid = pulls
@@ -308,33 +399,21 @@ pub async fn fetch_all(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn fetch_banner(
-    client: &reqwest::Client,
-    game: Game,
-    base: &str,
-    common: &[(&str, String)],
+    source: &Source<'_>,
     gacha_type: &str,
     name: &str,
     progress: &impl Fn(String),
     is_known: &(impl Fn(&str, &str) -> bool + Sync),
 ) -> Result<(Vec<Pull>, Option<i32>), AppError> {
+    let game = source.game;
     let say = |message: &str| progress(format!("{name}: {message}"));
     let mut out = Vec::new();
     let mut skipped = 0usize;
     let mut tz = None;
     let mut end_id = "0".to_string();
     for page in 1..=MAX_PAGES {
-        let (list, rtz) = request_page(
-            client,
-            game,
-            base,
-            common,
-            gacha_type,
-            (page, &end_id),
-            &say,
-        )
-        .await?;
+        let (list, rtz) = request_page(source, gacha_type, (page, &end_id), &say).await?;
         tz = tz.or(rtz);
         let n = list.len();
         let last_id = list.last().map(|i| i.id.clone());
@@ -352,7 +431,7 @@ async fn fetch_banner(
                 id: it.id,
                 game: game.as_str().into(),
                 uid: it.uid,
-                gacha_type: it.gacha_type,
+                gacha_type: stored_gacha_type(game, gacha_type, it.gacha_type),
                 gacha_id: it.gacha_id,
                 item_id: it.item_id,
                 name: it.name,
@@ -390,6 +469,33 @@ async fn fetch_banner(
     Ok((out, tz))
 }
 
+/// A rerun channel's records are only kept when none of them also came back from an ordinary
+/// channel. A server that ignored the request's `real_gacha_type` would answer with the ordinary
+/// channel's history again, and labelling that as Rescreening would silently corrupt both pity
+/// counters. Returns the channels that were dropped.
+fn drop_unseparable_rerun_channels(game: Game, pulls: &mut Vec<Pull>) -> Vec<&'static str> {
+    let ordinary: HashSet<String> = pulls
+        .iter()
+        .filter(|p| rerun_base_channel(game, &p.gacha_type).is_none())
+        .map(|p| p.id.clone())
+        .collect();
+    let mut dropped = Vec::new();
+    for channel in game
+        .gacha_types()
+        .iter()
+        .filter(|c| rerun_base_channel(game, c).is_some())
+    {
+        let repeats = pulls
+            .iter()
+            .any(|p| p.gacha_type == *channel && ordinary.contains(&p.id));
+        if repeats {
+            pulls.retain(|p| p.gacha_type != *channel);
+            dropped.push(*channel);
+        }
+    }
+    dropped
+}
+
 /// A page whose every record is stored already: history comes newest first, so everything older
 /// is stored too. An empty page (or a record without a uid) never counts.
 fn page_has_nothing_new(list: &[Item], is_known: &impl Fn(&str, &str) -> bool) -> bool {
@@ -400,10 +506,7 @@ fn page_has_nothing_new(list: &[Item], is_known: &impl Fn(&str, &str) -> bool) -
 }
 
 async fn request_page(
-    client: &reqwest::Client,
-    game: Game,
-    base: &str,
-    common: &[(&str, String)],
+    source: &Source<'_>,
     gacha_type: &str,
     cursor: (u32, &str),
     say: &impl Fn(&str),
@@ -412,13 +515,13 @@ async fn request_page(
     let mut net_attempts = 0u32;
     let mut rate_attempts = 0u32;
     loop {
-        let mut q = common.to_vec();
-        q.extend(gacha_params(game, gacha_type));
+        let mut q = source.common.to_vec();
+        q.extend(gacha_params(source.game, gacha_type, source.url_base_type));
         q.push(("page", page.to_string()));
         q.push(("size", PAGE_SIZE.to_string()));
         q.push(("end_id", end_id.to_string()));
 
-        let resp = match client.get(base).query(&q).send().await {
+        let resp = match source.client.get(source.base).query(&q).send().await {
             Ok(r) if r.status().is_server_error() && net_attempts < 2 => {
                 net_attempts += 1;
                 say(&format!(
@@ -528,9 +631,9 @@ mod tests {
             api_base(Game::Nap, true),
             "https://public-operation-nap.mihoyo.com/common/gacha_record/api/getGachaLog"
         );
-        assert_eq!(Game::Nap.gacha_types(), &["1", "2", "3", "5"]);
+        assert_eq!(Game::Nap.gacha_types(), &["1", "2", "3", "5", "102", "103"]);
         assert_eq!(
-            gacha_params(Game::Nap, "5"),
+            gacha_params(Game::Nap, "5", None),
             vec![
                 ("gacha_type", "5001".into()),
                 ("real_gacha_type", "5".into()),
@@ -539,15 +642,15 @@ mod tests {
             ]
         );
         assert_eq!(
-            gacha_params(Game::Nap, "2")[0],
+            gacha_params(Game::Nap, "2", Some("2"))[0],
             ("gacha_type", "2001".into())
         );
         assert_eq!(
-            gacha_params(Game::Hk4e, "301"),
+            gacha_params(Game::Hk4e, "301", None),
             vec![("gacha_type", "301".into())]
         );
         assert_eq!(
-            gacha_params(Game::Hkrpg, "21"),
+            gacha_params(Game::Hkrpg, "21", None),
             vec![("gacha_type", "21".into())]
         );
     }
@@ -605,5 +708,107 @@ mod tests {
             &[item("9", "3")],
             &|_: &str, _: &str| false
         ));
+    }
+
+    fn pull(id: &str, gacha_type: &str) -> Pull {
+        Pull {
+            id: id.into(),
+            game: "nap".into(),
+            uid: "1".into(),
+            gacha_type: gacha_type.into(),
+            gacha_id: String::new(),
+            item_id: String::new(),
+            name: String::new(),
+            item_type: String::new(),
+            rank_type: 2,
+            time: "2026-08-20 12:00:00".into(),
+            lang: String::new(),
+            count: 1,
+        }
+    }
+
+    #[test]
+    fn rerun_channels_are_requested_like_the_games_own_history_page() {
+        // Exclusive Rescreening (102) and W-Engine Reverberation (103): the pool goes in
+        // real_gacha_type next to the base type, without the ordinary channels' internal ids.
+        assert_eq!(
+            gacha_params(Game::Nap, "102", None),
+            vec![
+                ("real_gacha_type", "102".into()),
+                ("init_log_gacha_base_type", "2".into()),
+            ]
+        );
+        assert_eq!(
+            gacha_params(Game::Nap, "103", None),
+            vec![
+                ("real_gacha_type", "103".into()),
+                ("init_log_gacha_base_type", "3".into()),
+            ]
+        );
+        // The base type of the user's own link wins, whichever tab it came from.
+        assert_eq!(
+            gacha_params(Game::Nap, "102", Some("5"))[1],
+            ("init_log_gacha_base_type", "5".into())
+        );
+        // The same numbers mean nothing for the other games.
+        assert_eq!(
+            gacha_params(Game::Hk4e, "102", Some("5")),
+            vec![("gacha_type", "102".into())]
+        );
+        assert_eq!(rerun_base_channel(Game::Hkrpg, "102"), None);
+    }
+
+    #[test]
+    fn the_requested_channel_is_stored_not_the_reported_type() {
+        // The API reports rerun records as gacha_type 2 / 3; the pity pool is the channel asked for.
+        assert_eq!(stored_gacha_type(Game::Nap, "102", "2".into()), "102");
+        assert_eq!(stored_gacha_type(Game::Nap, "103", "3".into()), "103");
+        assert_eq!(stored_gacha_type(Game::Nap, "2", "2".into()), "2");
+        // Genshin's second banner is reported as 400 under channel 301 and must stay 400.
+        assert_eq!(stored_gacha_type(Game::Hk4e, "301", "400".into()), "400");
+    }
+
+    #[test]
+    fn a_rerun_channel_that_repeats_an_ordinary_one_is_not_trusted() {
+        // Healthy: the rerun channel has records of its own.
+        let mut pulls = vec![
+            pull("1", "2"),
+            pull("2", "2"),
+            pull("3", "102"),
+            pull("4", "103"),
+        ];
+        assert!(drop_unseparable_rerun_channels(Game::Nap, &mut pulls).is_empty());
+        assert_eq!(pulls.len(), 4);
+
+        // A server that ignored real_gacha_type answered 102 with the Exclusive history again.
+        // Relabelling it would move every Exclusive pull into Rescreening, so it is dropped.
+        let mut pulls = vec![
+            pull("1", "2"),
+            pull("2", "2"),
+            pull("1", "102"),
+            pull("2", "102"),
+            pull("9", "103"),
+        ];
+        assert_eq!(
+            drop_unseparable_rerun_channels(Game::Nap, &mut pulls),
+            ["102"]
+        );
+        let kept: Vec<_> = pulls
+            .iter()
+            .map(|p| (p.id.as_str(), p.gacha_type.as_str()))
+            .collect();
+        assert_eq!(kept, [("1", "2"), ("2", "2"), ("9", "103")]);
+
+        // Other games have no rerun channels, whatever their types look like.
+        let mut pulls = vec![pull("1", "301"), pull("1", "102")];
+        assert!(drop_unseparable_rerun_channels(Game::Hk4e, &mut pulls).is_empty());
+        assert_eq!(pulls.len(), 2);
+    }
+
+    #[test]
+    fn rerun_channels_have_their_own_status_names() {
+        assert_eq!(banner_name(Game::Nap, "102"), "Exclusive Rescreening");
+        assert_eq!(banner_name(Game::Nap, "103"), "W-Engine Reverberation");
+        assert!(!banner_name(Game::Nap, "102").contains(':'));
     }
 }

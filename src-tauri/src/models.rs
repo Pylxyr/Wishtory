@@ -33,7 +33,9 @@ impl Game {
             Game::Hk4e => &["100", "200", "301", "302", "500"],
             // UIGF v4.1 added the additional event pool types introduced with Star Rail 3.4.
             Game::Hkrpg => &["1", "2", "11", "12", "21", "22"],
-            Game::Nap => &["1", "2", "3", "5"],
+            // 102 / 103 are the selectable rerun channels (Exclusive Rescreening and W-Engine
+            // Reverberation, since Zenless 2.5). The UIGF standard still lists only 1, 2, 3 and 5.
+            Game::Nap => &["1", "2", "3", "5", "102", "103"],
         }
     }
 }
@@ -52,6 +54,23 @@ pub struct Pull {
     pub time: String,
     pub lang: String,
     pub count: u32,
+}
+
+/// Zenless' selectable rerun channels (Exclusive Rescreening 102, W-Engine Reverberation 103).
+/// Their records are stored under these numbers even though the history API reports them as the
+/// ordinary Exclusive / W-Engine channel (2 / 3).
+pub fn is_rerun_gacha_type(game: &str, gacha_type: &str) -> bool {
+    game == "nap" && matches!(gacha_type, "102" | "103")
+}
+
+/// The ordinary channel a stored Zenless `gacha_type` is reported as in the UIGF standard, which
+/// lists only 1, 2, 3 and 5: Rescreening (102) is "2", Reverberation (103) is "3".
+pub fn uigf_gacha_type<'a>(game: &str, gacha_type: &'a str) -> &'a str {
+    match (game, gacha_type) {
+        ("nap", "102") => "2",
+        ("nap", "103") => "3",
+        _ => gacha_type,
+    }
 }
 
 impl Pull {

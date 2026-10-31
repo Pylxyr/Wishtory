@@ -29,7 +29,9 @@
       if (b.guaranteed === true) return 'Next 5★ is guaranteed';
       if (b.guaranteed === false) return `Not guaranteed: next 5★ is a ${b.guarantee_odds}/${100 - b.guarantee_odds}`;
     }
-    return `${b.total} pulls, ${b.five_stars} five-star${b.five_stars === 1 ? '' : 's'}`;
+    const summary = `${b.total} pulls, ${b.five_stars} five-star${b.five_stars === 1 ? '' : 's'}`;
+    // Zenless rerun channels keep one count across every Rescreening / Reverberation period.
+    return b.banner === 'rescreening' || b.banner === 'reverberation' ? `${summary}, all periods` : summary;
   }
 
   $effect(() => {

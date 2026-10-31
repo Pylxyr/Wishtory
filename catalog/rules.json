@@ -98,7 +98,9 @@
         {"key": "character", "label": "Exclusive Channel", "hard": 90, "soft": 74, "odds": 50},
         {"key": "weapon", "label": "W-Engine Channel", "hard": 80, "soft": 65, "odds": 75},
         {"key": "standard", "label": "Standard Channel", "hard": 90, "soft": 74},
-        {"key": "bangboo", "label": "Bangboo Channel", "hard": 80, "soft": 65}
+        {"key": "bangboo", "label": "Bangboo Channel", "hard": 80, "soft": 65},
+        {"key": "rescreening", "label": "Exclusive Rescreening", "hard": 90, "soft": 74},
+        {"key": "reverberation", "label": "W-Engine Reverberation", "hard": 80, "soft": 65}
       ],
       "standard": {
         "character": {
