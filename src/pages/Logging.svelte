@@ -51,7 +51,9 @@
   <button class="btn" onclick={clear} disabled={!logs.length}>Clear</button>
 </div>
 
-<div class="card log-view" bind:this={box} role="log" aria-live="off">
+<!-- A scrollable log has to be reachable by keyboard so it can be scrolled. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="card log-view" bind:this={box} role="log" aria-live="off" aria-label="Log lines" tabindex="0">
   {#each shown as l (l.seq)}
     <div class="log-line">
       <span class="log-time">{l.time}</span>

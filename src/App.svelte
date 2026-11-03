@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { app, checkAppUpdate, initLogging, initProgress, reloadAccounts, setTheme, type Page } from './lib/state.svelte';
+  import { app, checkAppUpdate, initLogging, initProgress, reloadAccounts, restoreView, saveView, type Page } from './lib/state.svelte';
   import { api } from './lib/api';
   import { dur } from './lib/motion';
-  import GameBar from './lib/components/GameBar.svelte';
-  import Icon from './lib/components/Icon.svelte';
+  import ErrorCard from './lib/components/ErrorCard.svelte';
+  import PageBar from './lib/components/PageBar.svelte';
+  import Rail from './lib/components/Rail.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
   import Toasts from './lib/components/Toasts.svelte';
   import Tutorial from './lib/components/Tutorial.svelte';
   import Dashboard from './pages/Dashboard.svelte';
@@ -17,32 +19,22 @@
   import About from './pages/About.svelte';
   import Logging from './pages/Logging.svelte';
 
-  const tabs: { id: Page; label: string; icon: string }[] = [
-    { id: 'dashboard', label: 'Overview', icon: 'home' },
-    { id: 'history', label: 'History', icon: 'list' },
-    { id: 'accounts', label: 'Accounts', icon: 'users' },
-    { id: 'importexport', label: 'Import / Export', icon: 'swap' }
-  ];
-  const tools = $derived<{ id: Page; label: string; icon: string }[]>([
-    { id: 'help', label: 'Help', icon: 'help' },
-    { id: 'settings', label: 'Settings', icon: 'sliders' },
-    { id: 'about', label: 'About', icon: 'info' },
-    ...(app.loggingEnabled ? [{ id: 'logging' as Page, label: 'Logging', icon: 'terminal' }] : [])
-  ]);
-  // Pages that work on one game and account show the game, account and Refresh bar.
+  // Pages that work on one game and account show the game and account bar with the Refresh buttons.
   const gamePages: Page[] = ['dashboard', 'history', 'importexport'];
 
-  // A finished refresh report belongs to the page it ran on: leaving the page dismisses it.
-  // A refresh that is still running keeps its status visible.
+  // Comes back to the page, game and account the person last used. Runs before the effects below.
+  restoreView();
+  $effect(() => saveView());
+
+  let main: HTMLElement;
   $effect(() => {
     void app.page;
-    untrack(() => {
-      if (!app.busy) {
-        app.steps = [];
-        app.result = null;
-      }
-    });
+    main?.scrollTo(0, 0);
   });
+  function skipToContent(event: MouseEvent) {
+    event.preventDefault();
+    main.focus();
+  }
 
   onMount(async () => {
     initProgress();
@@ -70,46 +62,30 @@
   });
 </script>
 
+<a class="skip" href="#main" onclick={skipToContent}>Skip to content</a>
 <div class="shell">
-  <header class="topbar">
-    <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l2.4 8.1L22.5 12l-8.1 2.4L12 22.5l-2.4-8.1L1.5 12l8.1-2.4z" /></svg>
-      <span>Wishtory</span>
-    </div>
-    <nav class="topnav" aria-label="Main">
-      {#each tabs as t}
-        <button aria-label={t.label} aria-current={app.page === t.id ? 'page' : undefined} onclick={() => (app.page = t.id)}>
-          <Icon name={t.icon} size={16} /><span class="nav-text">{t.label}</span>
-        </button>
-      {/each}
-    </nav>
-    <div class="topbar-tools">
-      <span class="chip ok" data-tip="Wishtory only reads files the game already wrote. It never injects, edits game files or uses a proxy."><Icon name="shield" size={12} /> Read-only</span>
-      {#each tools as t}
-        <button class="icon-btn" aria-label={t.label} title={t.id === 'settings' && app.update?.available ? 'Settings (update available)' : t.label} aria-current={app.page === t.id ? 'page' : undefined} onclick={() => (app.page = t.id)}>
-          <Icon name={t.icon} size={18} />{#if t.id === 'settings' && app.update?.available}<span class="dot" aria-hidden="true"></span>{/if}
-        </button>
-      {/each}
-      <button class="icon-btn" aria-label={app.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} title={app.theme === 'dark' ? 'Light theme' : 'Dark theme'} onclick={() => setTheme(app.theme === 'dark' ? 'light' : 'dark')}>
-        <Icon name={app.theme === 'dark' ? 'sun' : 'moon'} size={18} />
-      </button>
-    </div>
-  </header>
-  {#if gamePages.includes(app.page)}<GameBar />{/if}
-  <main>
-    {#key app.page}
-      <div class="page" in:fade={{ duration: dur(120) }}>
-        {#if app.page === 'dashboard'}<Dashboard />
-        {:else if app.page === 'history'}<History />
-        {:else if app.page === 'accounts'}<Accounts />
-        {:else if app.page === 'importexport'}<ImportExport />
-        {:else if app.page === 'settings'}<Settings />
-        {:else if app.page === 'about'}<About />
-        {:else if app.page === 'logging' && app.loggingEnabled}<Logging />
-        {:else}<Help />{/if}
-      </div>
-    {/key}
-  </main>
+  <Rail />
+  <div class="work">
+    {#if gamePages.includes(app.page)}<PageBar />{/if}
+    <main id="main" tabindex="-1" bind:this={main}>
+      {#if gamePages.includes(app.page) && app.result?.kind === 'err' && app.result.game === app.game}
+        <div class="page"><ErrorCard /></div>
+      {/if}
+      {#key app.page}
+        <div class="page" in:fade={{ duration: dur(120) }}>
+          {#if app.page === 'dashboard'}<Dashboard />
+          {:else if app.page === 'history'}<History />
+          {:else if app.page === 'accounts'}<Accounts />
+          {:else if app.page === 'importexport'}<ImportExport />
+          {:else if app.page === 'settings'}<Settings />
+          {:else if app.page === 'about'}<About />
+          {:else if app.page === 'logging' && app.loggingEnabled}<Logging />
+          {:else}<Help />{/if}
+        </div>
+      {/key}
+    </main>
+    <StatusBar />
+  </div>
 </div>
 <Toasts />
 {#if app.tutorial}<Tutorial />{/if}

@@ -1,7 +1,18 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { GAMES } from '../lib/types';
   import Icon from '../lib/components/Icon.svelte';
+
+  // A recovery card can send people straight to one entry: open it and bring it into view.
+  const topic = app.helpTopic;
+  app.helpTopic = null;
+  onMount(() => {
+    if (!topic) return;
+    const el = document.getElementById(topic);
+    el?.scrollIntoView({ block: 'center' });
+    el?.querySelector('summary')?.focus();
+  });
 </script>
 
 <div class="page-head">
@@ -31,30 +42,30 @@
 
     <section class="card" aria-labelledby="trouble-title">
       <h2 id="trouble-title">Troubleshooting</h2>
-      <details class="fold">
+      <details class="fold" id="help-no-page" open={topic === 'help-no-page'}>
         <summary>“History page not found”</summary>
         <p class="muted">Open the history page in-game again, let it load fully, then Refresh.</p>
       </details>
-      <details class="fold">
+      <details class="fold" id="help-expired" open={topic === 'help-expired'}>
         <summary>“Link has expired”</summary>
         <p class="muted">The link only lives for a limited time. Reopen the history page in-game. If a download stops part-way, the banners that finished are saved; click Refresh again for the rest.</p>
       </details>
-      <details class="fold">
+      <details class="fold" id="help-server" open={topic === 'help-server'}>
         <summary>“The server returned an error” (for example “auth key time out”)</summary>
         <p class="muted">The history link the game saved has timed out. Open the history page in-game again, wait until the list loads, then click Refresh straight away. Wishtory tries your saved links newest first, so a fresh page view is usually enough.</p>
       </details>
-      <details class="fold">
+      <details class="fold" id="help-not-detected" open={topic === 'help-not-detected'}>
         <summary>“Game not detected”</summary>
         <p class="muted">Launch the game once so it writes its log file. Wishtory finds the install folder from that log.</p>
       </details>
-      <details class="fold">
+      <details class="fold" id="help-old" open={topic === 'help-old'}>
         <summary>Old wishes missing?</summary>
         <p class="muted">The game only exposes about 6 months. Import an older UIGF export to keep the rest.</p>
       </details>
     </section>
   </div>
 
-  <section class="card" aria-labelledby="safety-title">
+  <section class="card" id="help-safety" aria-labelledby="safety-title">
     <h2 id="safety-title"><Icon name="shield" size={16} /> Safety model and disclaimer</h2>
     <p class="muted">Wishtory is designed to be as safe as the well-known community tools. It reads only files the game already wrote (the log file and the web cache) and then talks to the official history API, the same service the in-game history page uses.</p>
     <ul class="muted plain">

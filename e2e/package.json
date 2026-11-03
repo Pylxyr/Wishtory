@@ -1,0 +1,12 @@
+{
+  "name": "wishtory-ui-checks",
+  "private": true,
+  "description": "Optional browser checks for the Wishtory interface (mocked Tauri bridge, Chromium).",
+  "scripts": {
+    "test": "node run.cjs"
+  },
+  "devDependencies": {
+    "axe-core": "^4.10.0",
+    "playwright": "^1.56.0"
+  }
+}
