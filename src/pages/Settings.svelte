@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { app, checkAppUpdate, openLink, setLogging, setTheme, toast } from '../lib/state.svelte';
+  import { app, checkAppUpdate, openLink, setLogging, setThemePref, toast, type ThemePref } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
 
   const GAME_NAMES = { hk4e: 'Genshin Impact', hkrpg: 'Honkai: Star Rail', nap: 'Zenless Zone Zero' };
@@ -7,8 +7,8 @@
   type Change = 'New' | 'Changed' | 'Removed';
   interface Row { id: string; change: Change; game: string; name: string; featured: string; ran: string; }
 
-  let checking = $state(false);
   let catalogChecking = $state(false);
+  const themes: { id: ThemePref; label: string }[] = [{ id: 'system', label: 'System' }, { id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }];
 
   const itemNames = $derived(new Map((app.catalog?.items ?? []).map((i) => [`${i.game}:${i.id}`, i.name])));
   // What the last installed update did, newest events first. A removed banner is gone from the list,
@@ -60,27 +60,6 @@
       catalogChecking = false;
     }
   }
-
-  async function updateBanners() {
-    checking = true;
-    try {
-      const update = await api.refreshBanners(true);
-      if (update.status === 'updated') {
-        app.banners = await api.getBanners();
-        app.bannerUpdate = update;
-        app.refreshKey++;
-        toast('ok', `Banner list updated to version ${update.banners_version}: ${update.added.length} new, ${update.changed.length} changed.`);
-      } else if (update.status === 'already-checking') {
-        toast('info', 'A banner check is already running.');
-      } else {
-        toast('ok', 'The banner list is up to date.');
-      }
-    } catch (e) {
-      toast('warn', `Could not check for banner updates: ${errMsg(e)}`);
-    } finally {
-      checking = false;
-    }
-  }
 </script>
 
 <div class="page-head">
@@ -92,17 +71,16 @@
   <div class="setting-row">
     <div class="setting-copy">
       <h2>Theme</h2>
-      <p class="muted">Choose the colour scheme.</p>
+      <p class="muted">System follows your Windows setting and changes with it.</p>
     </div>
     <div class="seg" role="group" aria-label="Theme">
-      <button aria-pressed={app.theme === 'dark'} onclick={() => setTheme('dark')}>Dark</button>
-      <button aria-pressed={app.theme === 'light'} onclick={() => setTheme('light')}>Light</button>
+      {#each themes as t}<button aria-pressed={app.themePref === t.id} onclick={() => setThemePref(t.id)}>{t.label}</button>{/each}
     </div>
   </div>
   <div class="setting-row">
     <div class="setting-copy">
       <h2>Logging</h2>
-      <p class="muted">Keeps a short in-memory diagnostic log (DEBUG level) and adds a Logging tab. Nothing is written to disk, links are never recorded, and nothing is logged while this is off.</p>
+      <p class="muted">Keeps a short in-memory diagnostic log (DEBUG level) and adds a Logging page to the sidebar. Nothing is written to disk, links are never recorded, and nothing is logged while this is off.</p>
     </div>
     <button
       class="switch" class:on={app.loggingEnabled} role="switch" aria-checked={app.loggingEnabled} aria-label="Enable logging"
@@ -132,58 +110,52 @@
     </div>
     <div class="setting-row">
       <div class="setting-copy">
-        <h2>Catalog updates</h2>
+        <h2>Game data</h2>
         <p class="muted">
           {#if app.catalog && app.banners}
-            Item catalog version {app.catalog.catalog_version} ({app.catalog.items.length.toLocaleString()} items, {app.catalog.generated_at.slice(0, 10)}) and banner list version {app.banners.banners_version}. Both refresh by themselves once a day; this checks both now.
+            Item catalog version {app.catalog.catalog_version} ({app.catalog.items.length.toLocaleString()} items, {app.catalog.generated_at.slice(0, 10)}) and banner list version {app.banners.banners_version} ({app.banners.banners.length.toLocaleString()} events). Both refresh by themselves once a day; this checks both now.
           {:else}
             The game catalog could not be loaded.
           {/if}
         </p>
       </div>
       <div class="row-actions">
-        <button class="btn" disabled={catalogChecking || checking} onclick={updateCatalog}>{catalogChecking ? 'Checking…' : 'Check for updates'}</button>
+        <button class="btn" disabled={catalogChecking} onclick={updateCatalog}>{catalogChecking ? 'Checking…' : 'Check for updates'}</button>
       </div>
     </div>
   </div>
 </section>
 
-<section class="banner-section" aria-labelledby="banner-heading">
-  <div class="settings-group">
-    <div class="setting-row">
-      <div class="setting-copy">
-        <h2 id="banner-heading">Banner list</h2>
-        <p class="muted">
-          {#if app.banners}
-            Version {app.banners.banners_version} with {app.banners.banners.length.toLocaleString()} banner events. It is checked once a day, and History uses it to show which banner each pull was made on.
-          {:else}
-            The banner list could not be loaded.
-          {/if}
-        </p>
+<section class="banner-section" aria-label="Last banner update">
+  <details class="settings-details">
+    <summary>
+      {#if app.bannerUpdate && app.bannerUpdate.status === 'updated'}
+        Last banner update: version {app.bannerUpdate.banners_version}, {app.bannerUpdate.added.length} new, {app.bannerUpdate.changed.length} changed, {app.bannerUpdate.removed.length} removed
+      {:else}
+        Last banner update
+      {/if}
+    </summary>
+    {#if app.bannerUpdate && app.bannerUpdate.status === 'updated'}
+      <p class="muted banner-meta">Installed {installedAt}. History uses the banner list to show which banner each pull was made on.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Change</th><th>Game</th><th>Banner</th><th>Featured</th><th>Ran</th></tr></thead>
+          <tbody>
+            {#each rows.slice(0, ROW_LIMIT) as r (r.change + r.id)}
+              <tr>
+                <td><span class="chip" class:ok={r.change === 'New'} class:err={r.change === 'Removed'}>{r.change}</span></td>
+                <td class="muted">{r.game}</td>
+                <td class="item">{r.name}</td>
+                <td class="featured">{r.featured}</td>
+                <td class="muted">{r.ran}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </div>
-      <button class="btn primary" disabled={checking} onclick={updateBanners}>{checking ? 'Checking…' : 'Update banners'}</button>
-    </div>
-  </div>
-  {#if app.bannerUpdate && app.bannerUpdate.status === 'updated'}
-    <p class="muted banner-meta">Last update: version {app.bannerUpdate.banners_version}, installed {installedAt}. {app.bannerUpdate.added.length} new, {app.bannerUpdate.changed.length} changed, {app.bannerUpdate.removed.length} removed.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Change</th><th>Game</th><th>Banner</th><th>Featured</th><th>Ran</th></tr></thead>
-        <tbody>
-          {#each rows.slice(0, ROW_LIMIT) as r (r.change + r.id)}
-            <tr>
-              <td><span class="chip" class:ok={r.change === 'New'} class:err={r.change === 'Removed'}>{r.change}</span></td>
-              <td class="muted">{r.game}</td>
-              <td class="item">{r.name}</td>
-              <td class="featured">{r.featured}</td>
-              <td class="muted">{r.ran}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-    {#if rows.length > ROW_LIMIT}<p class="muted banner-meta">Showing the newest {ROW_LIMIT} of {rows.length.toLocaleString()} changes.</p>{/if}
-  {:else}
-    <p class="muted banner-meta">No banner update has been installed yet. The list that came with this version is in use.</p>
-  {/if}
+      {#if rows.length > ROW_LIMIT}<p class="muted banner-meta">Showing the newest {ROW_LIMIT} of {rows.length.toLocaleString()} changes.</p>{/if}
+    {:else}
+      <p class="muted banner-meta">No banner update has been installed yet. The list that came with this version is in use.</p>
+    {/if}
+  </details>
 </section>

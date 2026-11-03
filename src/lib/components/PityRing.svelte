@@ -1,9 +1,14 @@
 <script lang="ts">
-  import type { BannerPity, FiveStar, GameCatalog } from '../types';
+  import { GAMES, type BannerPity, type FiveStar, type GameCatalog, type GameId } from '../types';
   import { elementTone, iconUrl } from '../elements';
+  import { pullsToGuarantee } from '../planning';
 
   let { p, game, catalog }: { p: BannerPity; game: string; catalog: GameCatalog | null } = $props();
 
+  const info = $derived(GAMES[game as GameId]);
+  const plan = $derived(p.total > 0 ? pullsToGuarantee(p) : null);
+  const worth = (pulls: number) => `${(pulls * info.pullCost).toLocaleString()} ${info.currency.toLowerCase()}`;
+  const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
   const inSoft = $derived(p.soft_pity !== null && p.pity >= p.soft_pity);
   const fiveRate = $derived(p.total ? ((p.five_stars * 100) / p.total).toFixed(2) : '0.00');
   const fourRate = $derived(p.total ? ((p.four_stars * 100) / p.total).toFixed(2) : '0.00');
@@ -17,7 +22,7 @@
   const legend = $derived(
     p.guarantee_odds !== null
       ? [['win', `Won ${odds}`], ['loss', `Lost ${odds}`], ['guaranteed', 'Guaranteed'], ['plain', 'Result unknown'], ['now', 'Current pity']]
-      : [['plain', 'Five-star pull'], ['now', 'Current pity']]
+      : [['plain', `${sentence(info.five)} pull`], ['now', 'Current pity']]
   );
 </script>
 
@@ -28,11 +33,11 @@
       <p class="guarantee">
         {#if p.guarantee_odds !== null}
           {#if p.guaranteed === true}
-            <span class="state state-guaranteed">Next 5★ is guaranteed to be featured</span>
-            <span class="muted">Your last 5★ was not the featured one.</span>
+            <span class="state state-guaranteed">Next {info.r5} is guaranteed to be featured</span>
+            <span class="muted">Your last {info.r5} was not the featured one.</span>
           {:else if p.guaranteed === false}
-            <span class="state">Not guaranteed: next 5★ is a {odds}</span>
-            <span class="muted">Your last 5★ was the featured one.</span>
+            <span class="state">Not guaranteed: next {info.r5} is a {odds}</span>
+            <span class="muted">Your last {info.r5} was the featured one.</span>
           {:else}
             <span class="state">Guarantee status unknown</span>
             <span class="muted">Not enough history to tell.</span>
@@ -42,9 +47,21 @@
         {/if}
         {#if inSoft}<span class="chip">Past soft pity</span>{/if}
       </p>
+      {#if plan}
+        <p class="plan muted">
+          {#if plan.featured === null}
+            Up to {plan.fiveStar} more pulls ({worth(plan.fiveStar)}) to a guaranteed {info.r5}.
+          {:else if p.guaranteed === true}
+            Up to {plan.fiveStar} more pulls ({worth(plan.fiveStar)}) to the featured {info.r5}.
+          {:else}
+            Worst case {plan.featured} more pulls ({worth(plan.featured)}) to a guaranteed featured {info.r5}: {plan.fiveStar} to the next {info.r5}, then up to {p.hard_pity} more if the {odds} is lost.
+          {/if}
+        </p>
+      {/if}
     </div>
-    <div class="pity-now" aria-label="{p.pity} pulls toward a five-star, out of {p.hard_pity}">
-      <strong>{p.pity}</strong><span>of {p.hard_pity} pulls</span>
+    <div class="pity-now">
+      <span class="sr">{p.pity} pulls toward a {info.five}, out of {p.hard_pity}</span>
+      <strong aria-hidden="true">{p.pity}</strong><span aria-hidden="true">of {p.hard_pity} pulls</span>
     </div>
   </header>
 
@@ -69,7 +86,7 @@
       {:else}
         {#if p.recent_fives.length}
           <div class="detail-section">
-            <h3>Pity at each five-star <span class="muted">oldest to newest</span></h3>
+            <h3>Pity at each {info.five} <span class="muted">oldest to newest</span></h3>
             <div class="luck" aria-hidden="true">
               <div class="luck-plot">
                 <span class="luck-line" style="bottom:100%"><em>hard {p.hard_pity}</em></span>
@@ -95,8 +112,8 @@
           <table class="stats">
             <thead><tr><th>Rarity</th><th>Pulls</th><th>Share</th><th>Average pity</th></tr></thead>
             <tbody>
-              <tr><td class="r5">5★</td><td>{p.five_stars}</td><td>{fiveRate}%</td><td>{p.avg_five_pity?.toFixed(2) ?? '—'}</td></tr>
-              <tr><td class="r4">4★</td><td>{p.four_stars}</td><td>{fourRate}%</td><td>{p.avg_four_pity?.toFixed(2) ?? '—'}</td></tr>
+              <tr><td class="r5">{info.r5}</td><td>{p.five_stars}</td><td>{fiveRate}%</td><td>{p.avg_five_pity?.toFixed(2) ?? '—'}</td></tr>
+              <tr><td class="r4">{info.r4}</td><td>{p.four_stars}</td><td>{fourRate}%</td><td>{p.avg_four_pity?.toFixed(2) ?? '—'}</td></tr>
             </tbody>
           </table>
           <p class="stats-note">{p.total.toLocaleString()} pulls in total on this banner.</p>
@@ -105,10 +122,10 @@
         {#if foursNewestFirst.length}
           <div class="detail-section">
             <details class="four-details">
-              <summary>4★ pulls <span class="muted">{foursNewestFirst.length}, newest first</span></summary>
+              <summary>{info.r4} pulls <span class="muted">{foursNewestFirst.length}, newest first</span></summary>
               <div class="pull-chip-list">
                 {#each foursNewestFirst as f, i (`${f.time}:${f.name}:${i}`)}
-                  <span class="pull-chip"><strong>{f.name || 'Four-star item'}</strong><i>{f.pity}</i></span>
+                  <span class="pull-chip"><strong>{f.name || `${info.r4} item`}</strong><i>{f.pity}</i></span>
                 {/each}
               </div>
             </details>
@@ -119,8 +136,10 @@
 
     {#if p.total > 0 && p.recent_fives.length}
       <div class="detail-side detail-section">
-        <h3>Five-star pulls <span class="muted">newest first</span></h3>
-        <ol class="five-list">
+        <h3>{sentence(info.r5)} pulls <span class="muted">newest first</span></h3>
+        <!-- A scrollable list has to be reachable by keyboard so its rows can be scrolled. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <ol class="five-list" tabindex="0" aria-label="{sentence(info.r5)} pulls, newest first">
           {#each fivesNewestFirst as f, i (`${f.time}:${f.name}:${i}`)}
             {@const itemMeta = catalog?.items.find((item) => item.game === game && (item.name === f.name || item.aliases.includes(f.name)))}
             {@const icon = iconUrl(itemMeta)}
@@ -129,7 +148,7 @@
                 <span class="glyph" aria-hidden="true">✦</span>
                 {#if icon}<img src={icon} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload={(e) => e.currentTarget.parentElement?.classList.add('loaded')} onerror={(e) => e.currentTarget.remove()} />{/if}
               </span>
-              <span class="five-name">{f.name || 'Five-star item'}</span>
+              <span class="five-name">{f.name || `${info.five} item`}</span>
               {#if f.outcome}<span class="five-outcome {f.outcome}">{outcomeLabel(f.outcome)}</span>{:else}<span></span>{/if}
               <span class="five-pity">{f.pity}<small> pulls</small></span>
               <time class="five-date">{f.time.slice(0, 10)}</time>

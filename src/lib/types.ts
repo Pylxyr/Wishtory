@@ -53,11 +53,25 @@ export interface BannerPity {
 export interface FetchSummary { game: string; uid: string; fetched: number; added: number; warning: string | null; }
 export interface ImportSummary { format: string; accounts: number; added: number; skipped: number; }
 
-export const GAMES: Record<GameId, { name: string; short: string; howTo: string }> = {
-  hk4e: { name: 'Genshin Impact', short: 'Genshin', howTo: 'Open the Paimon menu, then Wish, then History, and flick through a banner tab.' },
-  hkrpg: { name: 'Honkai: Star Rail', short: 'Star Rail', howTo: 'Open Warp → Records (Warp History) and let the list load.' },
-  nap: { name: 'Zenless Zone Zero', short: 'Zenless Zone Zero', howTo: 'Open Signal Search → History and let the list load.' }
+/** Words that differ per game. One place, so every page says "S-rank" for Zenless and "5★" elsewhere. */
+export interface GameInfo {
+  name: string; short: string; abbr: string; howTo: string;
+  historyPage: string; // where the in-game history page lives, for recovery steps
+  r5: string; r4: string; // short labels: "5★" / "S-rank"
+  five: string; fives: string; // "five-star" / "five-stars", "S-rank" / "S-rank pulls"
+  currency: string; pullCost: number; // what one pull is worth in the premium currency, for comparisons only
+}
+export const GAMES: Record<GameId, GameInfo> = {
+  hk4e: { name: 'Genshin Impact', short: 'Genshin', abbr: 'GI', howTo: 'Open the Paimon menu, then Wish, then History, and flick through a banner tab.', historyPage: 'Wish → History', r5: '5★', r4: '4★', five: 'five-star', fives: 'five-stars', currency: 'Primogems', pullCost: 160 },
+  hkrpg: { name: 'Honkai: Star Rail', short: 'Star Rail', abbr: 'HSR', howTo: 'Open Warp → Records (Warp History) and let the list load.', historyPage: 'Warp → Records', r5: '5★', r4: '4★', five: 'five-star', fives: 'five-stars', currency: 'Stellar Jade', pullCost: 160 },
+  nap: { name: 'Zenless Zone Zero', short: 'Zenless Zone Zero', abbr: 'ZZZ', howTo: 'Open Signal Search → History and let the list load.', historyPage: 'Signal Search → History', r5: 'S-rank', r4: 'A-rank', five: 'S-rank', fives: 'S-rank pulls', currency: 'Polychromes', pullCost: 160 }
 };
+
+/** "5★" or "S-rank": the rarity of a pull as the game words it. */
+export function rankLabel(game: GameId, rank: number): string {
+  const g = GAMES[game];
+  return rank === 5 ? g.r5 : rank === 4 ? g.r4 : game === 'nap' ? 'B-rank' : '3★';
+}
 
 /** Static per-game UI naming owned by the backend (history-page banner filter). */
 export interface GameMeta { game: GameId; banners: { key: string; label: string }[]; }
