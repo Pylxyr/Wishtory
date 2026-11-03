@@ -26,6 +26,10 @@ jobs:
       - name: Prepare review branch
         shell: bash
         run: |
+          # The identity comes first: merging main into an existing review branch makes a commit,
+          # and a fresh runner has no identity of its own ("Committer identity unknown").
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git fetch origin catalog-refresh || true
           if git show-ref --verify --quiet refs/remotes/origin/catalog-refresh; then
@@ -34,8 +38,6 @@ jobs:
           else
             git checkout -B catalog-refresh origin/main
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Build candidate from upstream metadata
         run: |
           git show origin/main:catalog/catalog.json > "$RUNNER_TEMP/previous-catalog.json"
