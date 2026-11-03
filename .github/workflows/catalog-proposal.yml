@@ -60,7 +60,12 @@ jobs:
           issue="$(find_issue "$issue_title")"
           ready="$(find_issue "$ready_title")"
 
-          if git diff --quiet -- catalog/catalog.json catalog/banners.json; then
+          # A candidate exists when this run changed the files, or when the review branch already
+          # differs from main (an earlier run pushed it but no pull request was opened, for example
+          # because Actions was not allowed to create one). Without the second check that commit
+          # would sit on the branch with nobody told, because this run finds nothing new to commit.
+          if git diff --quiet -- catalog/catalog.json catalog/banners.json \
+            && git diff --quiet origin/main HEAD -- catalog/catalog.json catalog/banners.json; then
             echo "No catalog changes found."
             # Nothing to merge, but there may still be something a person should look at.
             if [ -s "$report" ]; then
@@ -82,7 +87,10 @@ jobs:
           } > "$RUNNER_TEMP/pr-body.md"
 
           git add catalog/catalog.json catalog/banners.json
-          git commit -m "chore: update game catalog and banner list"
+          # Nothing is staged when the branch already holds the candidate from an earlier run.
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update game catalog and banner list"
+          fi
           git push origin catalog-refresh
 
           if gh pr view catalog-refresh --json number >/dev/null 2>&1; then
