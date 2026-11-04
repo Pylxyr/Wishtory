@@ -57,6 +57,7 @@
     }).catch(() => {});
     void checkAppUpdate(false); // at most once a day; only compares version numbers
     app.installs = await api.discoverGames().catch(() => []);
+    app.locations = await api.getGameLocations().catch(() => null);
     await reloadAccounts().catch(() => {});
     if (!localStorage.getItem('wishtory.tutorialDone')) app.tutorial = true;
   });

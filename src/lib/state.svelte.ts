@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { api, errMsg } from './api';
-import { GAMES, type AboutInfo, type Account, type AppUpdate, type BannerSet, type BannerUpdate, type FetchSummary, type GameCatalog, type GameId, type GameInstall, type GameMeta } from './types';
+import { GAMES, type AboutInfo, type Account, type AppUpdate, type BannerSet, type BannerUpdate, type FetchSummary, type GameCatalog, type GameId, type GameInstall, type GameLocations, type GameMeta } from './types';
 
 export type Page = 'dashboard' | 'history' | 'accounts' | 'importexport' | 'help' | 'settings' | 'about' | 'logging';
 export type ThemePref = 'system' | 'dark' | 'light';
@@ -15,6 +15,7 @@ export const app = $state({
   uid: null as string | null,
   accounts: [] as Account[],
   installs: [] as GameInstall[],
+  locations: null as GameLocations | null, // where games are searched for; null until loaded
   catalog: null as GameCatalog | null,
   meta: [] as GameMeta[], // static per-game UI naming from the backend
   banners: null as BannerSet | null,
@@ -185,6 +186,12 @@ export function selectGame(g: GameId) {
   app.game = g;
   const mine = app.accounts.filter((a) => a.game === g);
   app.uid = mine.find((a) => a.uid === app.lastUid[g])?.uid ?? mine[0]?.uid ?? null;
+}
+
+/** Saves the extra game folders (Linux), then looks for the games again. */
+export async function saveGameLocations(paths: string[]) {
+  app.locations = await api.setGameLocations(paths);
+  app.installs = await api.discoverGames().catch(() => []);
 }
 
 /** Jumps to the Help page, optionally with one troubleshooting entry opened. */

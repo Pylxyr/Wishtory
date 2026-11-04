@@ -12,12 +12,26 @@ Keep your **Genshin Impact**, **Honkai: Star Rail** and **Zenless Zone Zero** wi
 
 ## Install
 
-Windows 10 or 11.
+Windows 10 or 11, or Linux (see below).
 
 1. Download **`Wishtory_x.y.z_x64-setup.exe`** from the [latest release](https://github.com/Pylxyr/Wishtory/releases).
 2. Run it. It installs for your user only and never needs administrator rights.
 
 The installer is not code-signed yet, so Windows SmartScreen may warn you the first time. Choose **More info**, then **Run anyway**. To check the download first, compare its SHA-256 with `SHA256SUMS.txt` in the release (`Get-FileHash <file>` in PowerShell).
+
+### Linux (Arch, CachyOS and others)
+
+The games run in Wine or Proton on Linux, and Wishtory reads the same files inside the Wine prefix. It looks in the usual places by itself (Wine's default, Lutris, the anime-game and honkers launchers, Bottles, Steam and their Flatpak versions). If a game is not found, add the folder that holds its prefix under **Settings → Game locations**.
+
+Linux builds are not published with the releases yet, so build it yourself. On Arch and CachyOS:
+
+```sh
+sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 gtk3 xdg-utils
+git clone https://github.com/Pylxyr/Wishtory.git
+cd Wishtory/packaging/arch/wishtory-git && makepkg -si
+```
+
+Other distributions: install the packages from [Development](docs/development.md#build) and run `npm run tauri build`, which makes a `.deb`, `.rpm` and AppImage. Your data is stored in `~/.local/share/app.wishtory.desktop/wishtory.db`.
 
 ## Use it
 

@@ -332,6 +332,66 @@ const refreshBtn = '.pagebar-actions button.btn.primary';
     ok(e._errors.length === 0, 'console errors: ' + e._errors.join(' | ')); await e._ctx.close(); return 'screenshots saved';
   });
 
+  await check('Linux: Game locations is hidden on Windows and works on Linux (detected prefixes, add, remove, warning)', async () => {
+    let p = await open('');
+    await p.click(rail('Settings')); await p.waitForTimeout(250);
+    ok(await p.locator('text=Game locations').count() === 0, 'Game locations shown where it is not supported');
+    await p._ctx.close();
+
+    p = await open('?s=linux');
+    await p.click(rail('Settings')); await p.waitForTimeout(300);
+    const detected = await p.$$eval('.locations .loc-list li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(detected.length === 3 && detected[0].includes('anime-game-launcher/prefix') && detected[0].includes('Genshin') && detected[2].includes('no game log yet'), JSON.stringify(detected));
+    ok(await p.locator('text=Folders you added').count() === 0, 'empty list is shown');
+    await p.click('button:has-text("Add folder")'); await p.waitForTimeout(500);
+    ok(await p.locator('.toast.ok', { hasText: 'Added /home/me/Games.' }).count() === 1, 'no success toast');
+    const after = await p.$$eval('.locations .loc-list li', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+    ok(after.some((t) => t.startsWith('/home/me/Games') && t.includes('Remove')) && after.some((t) => t.includes('/home/me/Games/zzz') && t.includes('Zenless')), JSON.stringify(after));
+    ok(await p.locator('button[aria-label="Remove /home/me/Games"]').count() === 1, 'remove button is not labelled with its folder');
+    await p.click('button[aria-label="Remove /home/me/Games"]'); await p.waitForTimeout(400);
+    ok(await p.locator('text=Folders you added').count() === 0, 'folder was not removed');
+    await p._ctx.close();
+
+    p = await open('?s=linux-empty');
+    await p.click(rail('Settings')); await p.waitForTimeout(250);
+    await p.click('button:has-text("Add folder")'); await p.waitForTimeout(500);
+    ok(await p.locator('.toast.warn', { hasText: 'no Wine prefix was found' }).count() === 1, 'no warning for a folder without a prefix');
+    await p._ctx.close(); return '3 detected prefixes with game chips; add → toast + new prefix; remove; warning for an empty folder';
+  });
+
+  await check('Linux: "game not found" points at Game locations; Windows does not', async () => {
+    let p = await open('?s=linux-nogame');
+    await p.click(refreshBtn); await p.waitForTimeout(900);
+    const card = await p.evaluate(() => ({ title: document.querySelector('.recovery h2')?.textContent, steps: [...document.querySelectorAll('.recovery-steps li')].map((l) => l.textContent) }));
+    ok(card.title === 'Genshin Impact was not detected' && card.steps.some((t) => t.includes('Settings → Game locations')), JSON.stringify(card));
+    await p.click('.recovery .btn:has-text("Game locations")'); await p.waitForTimeout(400);
+    ok(await p.evaluate(() => document.querySelector('.rail-item[aria-current="page"]')?.getAttribute('aria-label')) === 'Settings', 'did not open Settings');
+    ok(await p.locator('#locations-title').count() === 1, 'Settings has no Game locations section');
+    await p._ctx.close();
+    p = await open('?s=nogame');
+    await p.click(refreshBtn); await p.waitForTimeout(900);
+    ok(await p.locator('.recovery h2', { hasText: 'was not detected' }).count() === 1, 'no recovery card');
+    ok(await p.locator('.recovery .btn:has-text("Game locations")').count() === 0, 'Windows card offers Game locations');
+    ok(!(await p.innerText('.recovery')).includes('Wine'), 'Windows card mentions Wine');
+    await p._ctx.close(); return 'Linux card has the Settings step and button; Windows card does not';
+  });
+
+  await check('Linux: Settings and Help pass axe with the new sections', async () => {
+    const axeSrc = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+    for (const theme of ['dark', 'light']) {
+      const p = await open('?s=linux', { theme });
+      for (const label of ['Settings', 'Help']) {
+        await p.click(rail(label)); await p.waitForTimeout(300);
+        await p.evaluate(axeSrc);
+        const v = await p.evaluate(async () => (await axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa', 'best-practice'] })).violations.map((x) => `${x.id} (${x.nodes.length}): ${x.nodes[0].target.join(' ')}`));
+        ok(v.length === 0, `${theme} ${label}: ${v.join('; ')}`);
+      }
+      ok(await p.locator('#help-linux').count() === 1, 'Help has no Linux card');
+      await p._ctx.close();
+    }
+    return 'no violations on Settings and Help, both themes';
+  });
+
   await check('Accessibility: axe finds nothing on any page in either theme (WCAG 2.2 AA + best practice)', async () => {
     const axeSrc = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
     const labels = ['Overview', 'History', 'Import / Export', 'Accounts', 'Settings', 'Help', 'About', 'Logging'];

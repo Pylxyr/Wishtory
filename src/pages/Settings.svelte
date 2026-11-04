@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { app, checkAppUpdate, openLink, setLogging, setThemePref, toast, type ThemePref } from '../lib/state.svelte';
+  import { open } from '@tauri-apps/plugin-dialog';
+  import { app, checkAppUpdate, openLink, saveGameLocations, setLogging, setThemePref, toast, type ThemePref } from '../lib/state.svelte';
   import { api, errMsg } from '../lib/api';
+  import { GAMES } from '../lib/types';
+  import Icon from '../lib/components/Icon.svelte';
 
   const GAME_NAMES = { hk4e: 'Genshin Impact', hkrpg: 'Honkai: Star Rail', nap: 'Zenless Zone Zero' };
   const ROW_LIMIT = 300;
@@ -8,6 +11,7 @@
   interface Row { id: string; change: Change; game: string; name: string; featured: string; ran: string; }
 
   let catalogChecking = $state(false);
+  let locationsBusy = $state(false);
   const themes: { id: ThemePref; label: string }[] = [{ id: 'system', label: 'System' }, { id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }];
 
   const itemNames = $derived(new Map((app.catalog?.items ?? []).map((i) => [`${i.game}:${i.id}`, i.name])));
@@ -60,6 +64,28 @@
       catalogChecking = false;
     }
   }
+
+  // Game locations (Linux): extra folders that hold Wine prefixes. Wishtory only reads them.
+  async function addFolder() {
+    const picked = await open({ directory: true, multiple: false, title: 'Choose the folder that holds your Wine prefix' }).catch(() => null);
+    if (typeof picked !== 'string') return;
+    await changeLocations([...(app.locations?.locations ?? []), picked], picked);
+  }
+  async function changeLocations(next: string[], added?: string) {
+    locationsBusy = true;
+    try {
+      await saveGameLocations(next);
+      if (!added) return;
+      const base = added.replace(/\/+$/, '');
+      const hit = app.locations?.detected.some((d) => d.path === base || d.path.startsWith(`${base}/`));
+      if (hit) toast('ok', `Added ${added}.`);
+      else toast('warn', `Added ${added}, but no Wine prefix was found in it. Choose the folder that contains drive_c, or a folder above it.`);
+    } catch (e) {
+      toast('err', errMsg(e));
+    } finally {
+      locationsBusy = false;
+    }
+  }
 </script>
 
 <div class="page-head">
@@ -71,7 +97,7 @@
   <div class="setting-row">
     <div class="setting-copy">
       <h2>Theme</h2>
-      <p class="muted">System follows your Windows setting and changes with it.</p>
+      <p class="muted">System follows your operating system's light or dark setting and changes with it.</p>
     </div>
     <div class="seg" role="group" aria-label="Theme">
       {#each themes as t}<button aria-pressed={app.themePref === t.id} onclick={() => setThemePref(t.id)}>{t.label}</button>{/each}
@@ -87,6 +113,49 @@
       onclick={() => setLogging(!app.loggingEnabled)}><i></i></button>
   </div>
 </div>
+
+{#if app.locations?.supported}
+  <section class="settings-group locations" aria-labelledby="locations-title">
+    <div class="setting-row">
+      <div class="setting-copy">
+        <h2 id="locations-title">Game locations</h2>
+        <p class="muted">On Linux the games run in Wine or Proton. Wishtory looks in the usual places by itself. If a game is not found, add the folder that holds its Wine prefix (the one that contains <code>drive_c</code>), or a folder above it such as <code>~/Games</code>. Wishtory only reads these folders.</p>
+      </div>
+      <button class="btn" onclick={addFolder} disabled={locationsBusy}><Icon name="folder" size={16} />Add folder…</button>
+    </div>
+    {#if app.locations.locations.length}
+      <div class="setting-row loc-block">
+        <div class="loc-body">
+          <h3>Folders you added</h3>
+          <ul class="loc-list">
+            {#each app.locations.locations as path (path)}
+              <li><code>{path}</code><button class="btn" aria-label="Remove {path}" disabled={locationsBusy} onclick={() => changeLocations(app.locations!.locations.filter((p) => p !== path))}>Remove</button></li>
+            {/each}
+          </ul>
+        </div>
+      </div>
+    {/if}
+    <div class="setting-row loc-block">
+      <div class="loc-body">
+        <h3>Found on this computer</h3>
+        {#if app.locations.detected.length}
+          <ul class="loc-list">
+            {#each app.locations.detected as d (d.path)}
+              <li>
+                <code>{d.path}</code>
+                <span class="loc-games">
+                  {#each d.games as g}<span class="chip ok">{GAMES[g].short}</span>{:else}<span class="muted">no game log yet</span>{/each}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="muted">No Wine prefixes were found yet. Add the folder of yours above.</p>
+        {/if}
+      </div>
+    </div>
+  </section>
+{/if}
 
 <section class="banner-section" aria-label="Updates">
   <div class="settings-group">

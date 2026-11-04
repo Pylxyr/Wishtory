@@ -204,9 +204,41 @@ fn open_in_browser(url: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not open the browser: {e}"))
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+fn open_in_browser(url: &str) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    // xdg-open opens the default browser on every Linux desktop (KDE, GNOME, ...); gio is the
+    // fallback. The URL is one argument, never parsed by a shell, and it was checked against the
+    // fixed list above.
+    for (program, prefix) in [("xdg-open", None), ("gio", Some("open"))] {
+        let mut command = Command::new(program);
+        command
+            .args(prefix)
+            .arg(url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        match command.spawn() {
+            Ok(mut child) => {
+                // Reap the helper when it exits, so it does not linger as a zombie process.
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                return Ok(());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("Could not open the browser: {e}")),
+        }
+    }
+    Err(
+        "Could not open the browser. Install xdg-utils (xdg-open) or open the link yourself."
+            .into(),
+    )
+}
+
+#[cfg(not(any(windows, unix)))]
 fn open_in_browser(_url: &str) -> Result<(), String> {
-    Err("Opening links is only supported on Windows.".into())
+    Err("Opening links is not supported on this system.".into())
 }
 
 #[cfg(test)]

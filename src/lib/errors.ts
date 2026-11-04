@@ -13,15 +13,16 @@ export interface Recovery {
   why: string;
   steps: string[];
   help: string | null; // id of the Help fold that explains it, or null
+  locations: boolean; // offer a shortcut to Settings → Game locations (Linux, game not found)
   canRetry: boolean;
   waitSeconds: number; // how long a retry makes no sense (rate limiting)
 }
 
-export function classify(message: string, game: GameId): Recovery {
+export function classify(message: string, game: GameId, linux = false): Recovery {
   const m = message.toLowerCase();
   const g = GAMES[game];
   const openHistory = `In ${g.name}, open ${g.historyPage} and wait until the list has loaded.`;
-  const base = { help: null, canRetry: true, waitSeconds: 0 };
+  const base = { help: null, canRetry: true, waitSeconds: 0, locations: false };
   if (m.includes("doesn't look like a valid")) {
     return { ...base, kind: 'invalid-url', title: 'That is not a history link', why: 'The pasted text is not a full HoYoverse history link for this game.', steps: ['Use Refresh instead, or paste the whole link: it starts with https:// and contains authkey=.'], canRetry: false };
   }
@@ -32,6 +33,18 @@ export function classify(message: string, game: GameId): Recovery {
     return { ...base, kind: 'no-history-page', title: 'The game has not saved a history page yet', why: 'Wishtory looks for the history page in the game’s cache and found none.', steps: [openHistory, 'Come back to Wishtory and click Try again.'], help: 'help-no-page' };
   }
   if (m.includes("wasn't found") && m.includes('launch the game')) {
+    if (linux) {
+      return {
+        ...base, kind: 'game-not-found', title: `${g.name} was not detected`,
+        why: 'Wishtory finds the game from the log file it writes inside its Wine or Proton prefix.',
+        steps: [
+          'Start the game once from your launcher, so it writes its log file.',
+          'If it is still not found, add the folder of its Wine prefix (the one that contains drive_c) under Settings → Game locations.',
+          'Then click Try again.'
+        ],
+        help: 'help-not-detected', locations: true
+      };
+    }
     return { ...base, kind: 'game-not-found', title: `${g.name} was not detected`, why: 'Wishtory finds the game from the log file it writes on launch.', steps: ['Start the game once so it writes its log file.', 'Then click Try again.'], help: 'help-not-detected' };
   }
   if (m.includes('slow down')) {

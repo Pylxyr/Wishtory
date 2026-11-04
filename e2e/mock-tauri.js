@@ -154,6 +154,19 @@
   const logs = [];
   for (let i = 0; i < 40; i++) logs.push({ seq: i, time: '2026-10-31 12:00:' + String(i).padStart(2, '0') + '.123', level: ['DEBUG', 'INFO', 'WARN', 'ERROR'][i % 4], source: ['fetch', 'db', 'catalog'][i % 3], message: 'Synthetic log line ' + i + ' for rendering' });
 
+  // Linux: Wine prefixes found on the machine, and the folders the person added. `supported` is false elsewhere.
+  const linux = scenario.startsWith('linux');
+  let locations = [];
+  const locationsView = () => ({
+    supported: linux, locations,
+    detected: !linux ? [] : [
+      { path: '/home/me/.local/share/anime-game-launcher/prefix', games: ['hk4e'] },
+      { path: '/home/me/Games/star-rail', games: ['hkrpg'] },
+      { path: '/home/me/.wine', games: [] },
+      ...(locations.includes('/home/me/Games') ? [{ path: '/home/me/Games/zzz', games: ['nap'] }] : [])
+    ]
+  });
+
   let n = 1; const handlers = {};
   window.__TAURI_INTERNALS__ = {
     transformCallback(cb) { const id = n++; window['_' + id] = cb; return id; },
@@ -162,7 +175,10 @@
       switch (cmd) {
         case 'plugin:event|listen': handlers[args.event] = args.handler; return n++;
         case 'plugin:event|unlisten': return null;
-        case 'plugin:dialog|open': case 'plugin:dialog|save': return null;
+        case 'plugin:dialog|open': return scenario === 'linux' ? '/home/me/Games' : scenario === 'linux-empty' ? '/home/me/Nothing' : null;
+        case 'plugin:dialog|save': return null;
+        case 'get_game_locations': return locationsView();
+        case 'set_game_locations': locations = args.locations.slice(); return locationsView();
         case 'discover_games': return [{ game: 'hk4e', found: true, log_path: 'C:/x', data_dir: 'C:/x' }, { game: 'hkrpg', found: true, log_path: 'C:/x', data_dir: 'C:/x' }, { game: 'nap', found: false, log_path: null, data_dir: null }];
         case 'list_accounts': return accounts.map(({ scale, ...a }) => a);
         case 'get_game_meta': return GM;
@@ -189,6 +205,7 @@
           say('Looking for the history link\u2026'); await new Promise((r) => setTimeout(r, 150));
           say('Character Event: 20 pulls read');
           if (scenario === 'busy') { say('Weapon Event: downloading page 3'); return new Promise(() => {}); }
+          if (scenario === 'nogame' || scenario === 'linux-nogame') throw "Genshin Impact wasn't found. Launch the game at least once so it creates its log file, then try again.";
           if (scenario === 'expired-once' && !window.__failedOnce) { window.__failedOnce = true; throw "This history link has expired. In the game, open the Wish / Warp / Signal Search history page again, wait until the list loads, then click Refresh."; }
           if (scenario === 'rate') throw "The server asked us to slow down. Please wait a minute and try again.";
           if (scenario === 'network') throw "Network problem: error sending request. Check your internet connection (and turn off any VPN or proxy that blocks HoYoverse), then click Refresh again.";

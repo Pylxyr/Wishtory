@@ -48,11 +48,15 @@ fn read_from_private_copy(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8
         let n = COPY_SEQ.fetch_add(1, Ordering::Relaxed);
         let tmp =
             std::env::temp_dir().join(format!("wishtory-copy-{}-{n}.tmp", std::process::id()));
-        let mut output = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
         {
+            // /tmp is shared with every other user: the copy may hold an authkey, so only we can read it.
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut output = match options.open(&tmp) {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e),
