@@ -23,7 +23,14 @@ The installer is not code-signed yet, so Windows SmartScreen may warn you the fi
 
 The games run in Wine or Proton on Linux, and Wishtory reads the same files inside the Wine prefix. It looks in the usual places by itself (Wine's default, Lutris, the anime-game and honkers launchers, Bottles, Steam and their Flatpak versions). If a game is not found, add the folder that holds its prefix under **Settings → Game locations**.
 
-Linux builds are not published with the releases yet, so build it yourself. On Arch and CachyOS:
+Download one of these from the [latest release](https://github.com/Pylxyr/Wishtory/releases):
+
+- **`Wishtory_x.y.z_amd64.AppImage`**: runs on most distributions. Make it executable (`chmod +x`) and start it. It needs FUSE 2 (`fuse2` on Arch and CachyOS, `libfuse2` on Debian and Ubuntu).
+- **`Wishtory_x.y.z_amd64.deb`** for Debian and Ubuntu, **`Wishtory-x.y.z-1.x86_64.rpm`** for Fedora and openSUSE.
+
+The packages are built on Ubuntu 24.04, so they need a reasonably recent distribution. To check a download, compare its SHA-256 with `SHA256SUMS.txt` in the release (`sha256sum <file>`).
+
+Or build it from source. On Arch and CachyOS:
 
 ```sh
 sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 gtk3 xdg-utils
