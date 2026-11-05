@@ -1,11 +1,12 @@
 # Maintainer: Wishtory contributors
 #
 # Builds Wishtory from a release tag for Arch Linux and derivatives (CachyOS, EndeavourOS, Manjaro).
-#   cd packaging/arch/wishtory && updpkgsums && makepkg -si
-# `updpkgsums` fills in the checksum. Use a release that includes Linux support; to build the
-# current source instead, use ../wishtory-git. Not on the AUR yet.
+#   cd packaging/arch/wishtory && makepkg -si
+# The checksum is that of the release tarball. After changing pkgver, run `updpkgsums` to refresh
+# it. Linux support starts with release 0.2.1; to build the current source instead, use
+# ../wishtory-git. Not on the AUR yet.
 pkgname=wishtory
-pkgver=0.1.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc='Local wish history manager for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero'
 arch=('x86_64')
@@ -15,7 +16,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'xdg-utils')
 makedepends=('rust' 'nodejs' 'npm')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('d3a94cfebc8548588765a4b2b5cb60ec510dfd1c947a72e6eace2ab9db1ad572')
 
 _src() { echo "$srcdir/Wishtory-$pkgver"; }
 
