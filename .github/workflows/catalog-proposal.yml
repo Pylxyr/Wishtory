@@ -16,6 +16,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      actions: write # to start CI on the review branch (see the last step)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,18 +27,31 @@ jobs:
       - name: Prepare review branch
         shell: bash
         run: |
-          # The identity comes first: merging main into an existing review branch makes a commit,
-          # and a fresh runner has no identity of its own ("Committer identity unknown").
+          bot_email="41898282+github-actions[bot]@users.noreply.github.com"
+          # The identity comes first: a merge below makes a commit, and a fresh runner has no
+          # identity of its own ("Committer identity unknown").
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "$bot_email"
           git fetch origin main
           git fetch origin catalog-refresh || true
-          if git show-ref --verify --quiet refs/remotes/origin/catalog-refresh; then
+
+          # The branch is rebuilt from today's main on every run, so the pull request is always one
+          # commit on top of main: up to date, never in conflict, and ready for "Rebase and merge".
+          # The one exception is a person's own commit on the branch (a corrected banner title,
+          # say): that work must survive, so the branch is kept and main is merged into it.
+          keep=false
+          if git show-ref --verify --quiet refs/remotes/origin/catalog-refresh \
+            && git log origin/main..origin/catalog-refresh --no-merges --format=%ae | grep -qvxF "$bot_email"; then
+            keep=true
+          fi
+          if [ "$keep" = true ]; then
+            echo "The review branch has a commit by a person; keeping it and merging main into it."
             git checkout -B catalog-refresh origin/catalog-refresh
             git merge --no-edit origin/main
           else
             git checkout -B catalog-refresh origin/main
           fi
+          echo "KEEP_BRANCH=$keep" >> "$GITHUB_ENV"
       - name: Build candidate from upstream metadata
         run: |
           git show origin/main:catalog/catalog.json > "$RUNNER_TEMP/previous-catalog.json"
@@ -67,6 +81,12 @@ jobs:
           if git diff --quiet -- catalog/catalog.json catalog/banners.json \
             && git diff --quiet origin/main HEAD -- catalog/catalog.json catalog/banners.json; then
             echo "No catalog changes found."
+            # A pull request left over from an earlier candidate has nothing left to propose once
+            # main has it all (a person's own branch is never closed from here).
+            if [ "$KEEP_BRANCH" != true ] \
+              && [ "$(gh pr view catalog-refresh --json state --jq .state 2>/dev/null)" = "OPEN" ]; then
+              gh pr close catalog-refresh --comment "Nothing is left to propose: main already has everything the weekly check found."
+            fi
             # Nothing to merge, but there may still be something a person should look at.
             if [ -s "$report" ]; then
               if [ -n "$issue" ]; then
@@ -81,7 +101,7 @@ jobs:
           fi
 
           {
-            echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published."
+            echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published. CI has been started on this branch; when it is green, use Rebase and merge."
             echo
             if [ -s "$report" ]; then cat "$report"; fi
           } > "$RUNNER_TEMP/pr-body.md"
@@ -91,7 +111,9 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore: update game catalog and banner list"
           fi
-          git push origin catalog-refresh
+          # The branch was rebuilt from main (unless a person edited it), so an earlier push of it
+          # is replaced. The lease refuses if anyone pushed to it since this run fetched it.
+          git push --force-with-lease origin catalog-refresh
 
           if gh pr view catalog-refresh --json number >/dev/null 2>&1; then
             gh pr edit catalog-refresh --title "Review updated game catalog and banner list" --body-file "$RUNNER_TEMP/pr-body.md"
@@ -125,6 +147,10 @@ jobs:
           else
             echo "$created"
           fi
+          # Pull requests opened with the workflow token do not start CI by themselves, so it is
+          # started here (workflow_dispatch is allowed for that token); its checks appear on the PR.
+          gh workflow run ci.yml --ref catalog-refresh \
+            || echo "::warning::Could not start CI on catalog-refresh; run it from the Actions tab before merging."
           # A pull request exists now, so the "ready for review" issue is obsolete.
           if [ -n "$ready" ]; then
             gh issue close "$ready" --comment "The review PR for catalog-refresh now covers this."
