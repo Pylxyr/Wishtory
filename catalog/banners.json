@@ -110,6 +110,7 @@
     {"id": "hk4e-character-2026-09-01", "game": "hk4e", "pool": "character", "name": "The Lone Light Knocks at Night / Astral Actuation", "start": "2026-09-01 18:00:00", "end": "2026-09-22 14:59:59", "featured_5": ["10000120", "10000116"]},
     {"id": "hk4e-character-2026-09-23", "game": "hk4e", "pool": "character", "name": "When Warm Winds Cavort / Surging Ballad", "start": "2026-09-22 15:00:00", "end": "2026-10-13 17:59:59", "featured_5": ["10000143", "10000140"]},
     {"id": "hk4e-character-2026-10-13", "game": "hk4e", "pool": "character", "name": "Void Star's Advent / La Chanson Cerise", "start": "2026-10-13 18:00:00", "end": "2026-11-03 14:59:59", "featured_5": ["10000114", "10000112"]},
+    {"id": "hk4e-character-2026-11-04", "game": "hk4e", "pool": "character", "name": "Myriad Patterns Unfold", "start": "2026-11-03 15:00:00", "end": "2026-11-24 17:59:59", "featured_5": ["10000136", "10000089"]},
     {"id": "hk4e-weapon-2020-09-28", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-09-28 18:00:00", "end": "2020-10-20 17:59:59", "featured_5": ["11501", "15502"]},
     {"id": "hk4e-weapon-2020-10-20", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-10-20 18:00:00", "end": "2020-11-11 17:59:59", "featured_5": ["14502", "12502"]},
     {"id": "hk4e-weapon-2020-11-11", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-11-11 18:00:00", "end": "2020-12-01 17:59:59", "featured_5": ["15501", "14504"]},
