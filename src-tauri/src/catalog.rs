@@ -129,8 +129,12 @@ pub struct FeedStore<F: Feed> {
 impl<F: Feed> FeedStore<F> {
     /// The newest verified cached copy, unless the copy bundled in this app is newer.
     pub fn open(app_data: &Path) -> Self {
+        Self::open_with(app_data, F::bundled())
+    }
+
+    /// `open` with the bundled copy passed in, so a test can model an older app bundle.
+    fn open_with(app_data: &Path, embedded: F) -> Self {
         let cache_dir = app_data.join(format!("{}-cache", F::ASSET));
-        let embedded = F::bundled();
         let current = Self::newest_cached(&cache_dir)
             .filter(|doc| doc.version() >= embedded.version())
             .unwrap_or(embedded);
@@ -955,11 +959,24 @@ mod tests {
             include_bytes!("../../catalog/catalog-test-envelope.json"),
         )
         .unwrap();
-        assert_eq!(CatalogStore::open(&app_data).current().catalog_version, 2);
+        // Model an older app bundle, so the version-2 fixture stays "newer" however far the real
+        // bundled catalog has moved on.
+        let older_bundle = || Catalog {
+            catalog_version: 1,
+            ..Catalog::bundled()
+        };
+        assert_eq!(
+            CatalogStore::open_with(&app_data, older_bundle())
+                .current()
+                .catalog_version,
+            2
+        );
         std::fs::write(cache.join("2.json"), b"tampered").unwrap();
         assert_eq!(
-            CatalogStore::open(&app_data).current().catalog_version,
-            Catalog::bundled().catalog_version
+            CatalogStore::open_with(&app_data, older_bundle())
+                .current()
+                .catalog_version,
+            1
         );
         std::fs::remove_dir_all(app_data).unwrap();
     }

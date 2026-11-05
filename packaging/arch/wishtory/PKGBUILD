@@ -1,0 +1,46 @@
+# Maintainer: Wishtory contributors
+#
+# Builds Wishtory from a release tag for Arch Linux and derivatives (CachyOS, EndeavourOS, Manjaro).
+#   cd packaging/arch/wishtory && updpkgsums && makepkg -si
+# `updpkgsums` fills in the checksum. Use a release that includes Linux support; to build the
+# current source instead, use ../wishtory-git. Not on the AUR yet.
+pkgname=wishtory
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Local wish history manager for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero'
+arch=('x86_64')
+url='https://github.com/Pylxyr/Wishtory'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'xdg-utils')
+makedepends=('rust' 'nodejs' 'npm')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+_src() { echo "$srcdir/Wishtory-$pkgver"; }
+
+prepare() {
+  cd "$(_src)"
+  export npm_config_cache="$srcdir/npm-cache"
+  npm ci --no-audit --no-fund
+  cargo fetch --locked --manifest-path src-tauri/Cargo.toml \
+    --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$(_src)"
+  export npm_config_cache="$srcdir/npm-cache"
+  # Only the program itself: the .deb, .rpm and AppImage bundles are not needed for a package.
+  npm run tauri build -- --no-bundle
+}
+
+package() {
+  cd "$(_src)"
+  install -Dm755 src-tauri/target/release/wishtory "$pkgdir/usr/bin/wishtory"
+  install -Dm644 packaging/linux/wishtory.desktop "$pkgdir/usr/share/applications/wishtory.desktop"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/wishtory.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/wishtory.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/wishtory.png"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/wishtory.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

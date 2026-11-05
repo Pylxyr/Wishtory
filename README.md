@@ -12,12 +12,33 @@ Keep your **Genshin Impact**, **Honkai: Star Rail** and **Zenless Zone Zero** wi
 
 ## Install
 
-Windows 10 or 11.
+Windows 10 or 11, or Linux (see below).
 
 1. Download **`Wishtory_x.y.z_x64-setup.exe`** from the [latest release](https://github.com/Pylxyr/Wishtory/releases).
 2. Run it. It installs for your user only and never needs administrator rights.
 
 The installer is not code-signed yet, so Windows SmartScreen may warn you the first time. Choose **More info**, then **Run anyway**. To check the download first, compare its SHA-256 with `SHA256SUMS.txt` in the release (`Get-FileHash <file>` in PowerShell).
+
+### Linux (Arch, CachyOS and others)
+
+The games run in Wine or Proton on Linux, and Wishtory reads the same files inside the Wine prefix. It looks in the usual places by itself (Wine's default, Lutris, the anime-game and honkers launchers, Bottles, Steam and their Flatpak versions). If a game is not found, add the folder that holds its prefix under **Settings → Game locations**.
+
+Download one of these from the [latest release](https://github.com/Pylxyr/Wishtory/releases):
+
+- **`Wishtory_x.y.z_amd64.AppImage`**: runs on most distributions. Make it executable (`chmod +x`) and start it. It needs FUSE 2 (`fuse2` on Arch and CachyOS, `libfuse2` on Debian and Ubuntu).
+- **`Wishtory_x.y.z_amd64.deb`** for Debian and Ubuntu, **`Wishtory-x.y.z-1.x86_64.rpm`** for Fedora and openSUSE.
+
+The packages are built on Ubuntu 24.04, so they need a reasonably recent distribution. To check a download, compare its SHA-256 with `SHA256SUMS.txt` in the release (`sha256sum <file>`).
+
+Or build it from source. On Arch and CachyOS:
+
+```sh
+sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 gtk3 xdg-utils
+git clone https://github.com/Pylxyr/Wishtory.git
+cd Wishtory/packaging/arch/wishtory-git && makepkg -si
+```
+
+Other distributions: install the packages from [Development](docs/development.md#build) and run `npm run tauri build`, which makes a `.deb`, `.rpm` and AppImage. Your data is stored in `~/.local/share/app.wishtory.desktop/wishtory.db`.
 
 ## Use it
 

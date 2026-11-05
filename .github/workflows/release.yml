@@ -1,12 +1,15 @@
 name: Release
 
-# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and publishes a GitHub release. You
-# normally never run this by hand: use "Cut release" (cut-release.yml). Other ways in:
+# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and the Linux packages (.deb, .rpm and
+# .AppImage), and publishes a GitHub release. You normally never run this by hand: use "Cut release"
+# (cut-release.yml). Other ways in:
 #   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
-#   - Run workflow here                                            -> dry run: builds and uploads the installer as an
-#                                                                    artifact; publishes nothing
+#   - Run workflow here                                            -> dry run: builds and uploads the installers as
+#                                                                    artifacts; publishes nothing
 #   - called by cut-release.yml with the tag it just pushed        -> build, publish
-# A release is the setup .exe plus SHA256SUMS.txt, with build provenance attached when the repository allows it.
+# A release is the Windows setup .exe, the Linux .deb, .rpm and .AppImage, and SHA256SUMS.txt, with build provenance
+# attached when the repository allows it. The Windows and Linux builds run side by side; nothing is published unless
+# both succeed.
 
 on:
   push:
@@ -147,12 +150,131 @@ jobs:
           path: release/*
           if-no-files-found: error
 
+  # The Linux packages. Built on the same runner image as the Linux CI job, so the system libraries and the bundle
+  # settings in src-tauri/tauri.linux.conf.json are the ones CI already proved. (Ubuntu 22.04 runners are being
+  # retired, so this does not use them.) Packages built here need a recent distribution (glibc 2.39 or newer).
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      # inputs.tag is empty for a tag push or a manual run, which build the triggering ref.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file patchelf libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Rust toolchain
+        shell: bash
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal
+          rustup default "$channel"
+          rustc --version
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+
+      # Same as the Windows build: the bundled feeds must carry the versions CI publishes.
+      - name: Stamp bundled feed versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/fetch-published.sh published
+          for name in catalog banners rules; do
+            if [ -f "published/$name.envelope.json" ]; then
+              node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.json" "published/$name.envelope.json" --stamp
+            fi
+          done
+
+      - name: Check versions
+        id: ver
+        shell: bash
+        env:
+          CALLED_TAG: ${{ inputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          tauri="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          cargo="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -n 1)"
+          if [ "$pkg" != "$tauri" ] || [ "$pkg" != "$cargo" ]; then
+            echo "::error::Version mismatch: package.json=$pkg, tauri.conf.json=$tauri, Cargo.toml=$cargo"
+            exit 1
+          fi
+          tag="v$pkg"
+          if [ -n "$CALLED_TAG" ] && [ "$CALLED_TAG" != "$tag" ]; then
+            echo "::error::Tag $CALLED_TAG does not match the project version $tag"
+            exit 1
+          fi
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $REF_NAME does not match the project version $tag"
+            exit 1
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Frontend checks
+        if: ${{ !inputs.skip_checks }}
+        run: npm run check
+
+      - name: Rust tests
+        if: ${{ !inputs.skip_checks }}
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      # APPIMAGE_EXTRACT_AND_RUN lets the AppImage tools run without FUSE, which a CI runner does not offer.
+      - name: Build the .deb, .rpm and AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          npx tauri build --bundles deb,rpm,appimage -- --locked
+
+      - name: Collect release files
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p release
+          for spec in "deb:deb" "rpm:rpm" "appimage:AppImage"; do
+            dir="${spec%%:*}"
+            ext="${spec##*:}"
+            files=(src-tauri/target/release/bundle/"$dir"/*."$ext")
+            if [ "${#files[@]}" -ne 1 ] || [ ! -f "${files[0]}" ]; then
+              echo "::error::Expected exactly one .$ext in bundle/$dir, found: ${files[*]}"
+              exit 1
+            fi
+            case "$(basename "${files[0]}")" in
+              *"$VERSION"*) ;;
+              *) echo "::error::${files[0]} does not carry version $VERSION"; exit 1 ;;
+            esac
+            cp "${files[0]}" release/
+          done
+          ls -l release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux
+          path: release/*
+          if-no-files-found: error
+
   publish:
-    needs: build
+    needs: [build, build-linux]
     # A tag push, or a call from cut-release.yml. A manual dry run has neither.
     # The explicit status check is required: without one GitHub applies an implicit success() over the whole
     # dependency chain.
-    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -171,12 +293,13 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-windows
+          pattern: release-*
           path: release
+          merge-multiple: true
       - name: Checksums
         run: |
           cd release
-          sha256sum -- *-setup.exe > SHA256SUMS.txt
+          sha256sum -- *-setup.exe *.deb *.rpm *.AppImage > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
@@ -184,7 +307,11 @@ jobs:
         continue-on-error: true
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: release/*.exe
+          subject-path: |
+            release/*.exe
+            release/*.deb
+            release/*.rpm
+            release/*.AppImage
       - name: Write release notes
         env:
           # AI release notes, tried in this order; with none available the notes come from commit messages and
@@ -211,6 +338,7 @@ jobs:
             echo "## About this build"
             echo
             echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it."
+            echo "The Linux packages (\`.AppImage\`, \`.deb\`, \`.rpm\`) are built on Ubuntu 24.04, so they need a recent distribution. The AppImage needs FUSE 2 (\`fuse2\` on Arch, \`libfuse2\` on Debian and Ubuntu)."
             if [ "$ATTEST_OUTCOME" = "success" ]; then
               echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
             fi

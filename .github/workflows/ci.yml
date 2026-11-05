@@ -41,6 +41,41 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+  # The same checks on Linux (Ubuntu), plus a .deb build, which proves the Linux bundle settings in
+  # src-tauri/tauri.linux.conf.json still work. Wine/Proton discovery has its own unit tests that run here.
+  test-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+      - name: Rust toolchain
+        shell: bash
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt
+          rustup default "$channel"
+          rustc --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build the .deb
+        run: npm run tauri build -- --bundles deb
+
   # The release automation is code too: the notes script has unit tests, and every workflow is
   # linted (expression typos, undefined outputs, shell mistakes) before it can break a release.
   scripts:

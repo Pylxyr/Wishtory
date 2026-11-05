@@ -105,6 +105,22 @@ pub struct Account {
     pub pull_count: i64,
 }
 
+/// A Wine or Proton prefix that Wishtory found (Linux), and which games have written a log in it.
+#[derive(Debug, Clone, Serialize)]
+pub struct DetectedPrefix {
+    pub path: String,
+    pub games: Vec<Game>,
+}
+
+/// What the Settings page shows about where games are searched for. `supported` is false on
+/// Windows, where the game's log is always in the user's profile and nothing needs configuring.
+#[derive(Debug, Clone, Serialize)]
+pub struct GameLocations {
+    pub supported: bool,
+    pub locations: Vec<String>,
+    pub detected: Vec<DetectedPrefix>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GameInstall {
     pub game: Game,

@@ -1,5 +1,10 @@
 export type GameId = 'hk4e' | 'hkrpg' | 'nap';
 
+/** A Wine or Proton prefix found on this computer (Linux), and the games that have a log in it. */
+export interface DetectedPrefix { path: string; games: GameId[]; }
+/** Where games are searched for. `supported` is false on Windows, where nothing needs configuring. */
+export interface GameLocations { supported: boolean; locations: string[]; detected: DetectedPrefix[]; }
+
 export interface GameInstall { game: GameId; found: boolean; log_path: string | null; data_dir: string | null; }
 export interface Account { game: GameId; uid: string; nickname: string; timezone: number; pull_count: number; }
 export interface Pull {

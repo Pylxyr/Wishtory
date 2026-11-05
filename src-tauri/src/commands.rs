@@ -8,9 +8,10 @@ use crate::{
     error::AppError,
     fetch,
     logging::Level,
-    models::{Account, Game, GameInstall, Pull},
+    models::{Account, Game, GameInstall, GameLocations, Pull},
     pity::{self, BannerPity},
     rules::RulesStore,
+    settings::SettingsStore,
     uigf::{self, ImportSummary},
 };
 use serde::Serialize;
@@ -40,6 +41,36 @@ pub async fn discover_games() -> Result<Vec<GameInstall>, AppError> {
     spawn_blocking(discover::discover_all)
         .await
         .map_err(join_err)
+}
+
+/// Where games are searched for: the extra folders the person added and, on Linux, the Wine and
+/// Proton prefixes found automatically. `supported` is false on Windows.
+async fn game_locations_view(settings: &SettingsStore) -> Result<GameLocations, AppError> {
+    let locations = settings.game_locations();
+    let detected = spawn_blocking(discover::detect_prefixes)
+        .await
+        .map_err(join_err)?;
+    Ok(GameLocations {
+        supported: cfg!(unix),
+        locations,
+        detected,
+    })
+}
+
+#[tauri::command]
+pub async fn get_game_locations(
+    settings: State<'_, SettingsStore>,
+) -> Result<GameLocations, AppError> {
+    game_locations_view(&settings).await
+}
+
+#[tauri::command]
+pub async fn set_game_locations(
+    settings: State<'_, SettingsStore>,
+    locations: Vec<String>,
+) -> Result<GameLocations, AppError> {
+    settings.set_game_locations(locations)?;
+    game_locations_view(&settings).await
 }
 
 /// Returns the most likely history URL found in the game's web cache (read-only).

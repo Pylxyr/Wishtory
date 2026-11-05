@@ -4,14 +4,20 @@ For installing and using Wishtory, see the [README](../README.md).
 
 ## Build
 
-Prerequisites: Windows 10/11, [Node.js 20+](https://nodejs.org), [Rust (MSVC)](https://rustup.rs), version 1.91 as pinned in `rust-toolchain.toml` (rustup installs it on first use), Visual Studio Build Tools (C++ workload), and WebView2 (preinstalled on Win 10/11).
+Prerequisites: [Node.js 20+](https://nodejs.org) and Rust, version 1.91 as pinned in `rust-toolchain.toml` (rustup installs it on first use), plus:
 
-```powershell
+- **Windows 10/11:** [Rust (MSVC)](https://rustup.rs), Visual Studio Build Tools (C++ workload), and WebView2 (preinstalled).
+- **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 gtk3 xdg-utils` (the `rust` package works instead of rustup).
+- **Debian / Ubuntu:** `sudo apt install build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils`.
+
+```sh
 npm install
-# placeholder icons are included; to replace them: npm run tauri icon path\to\your-icon.png
+# placeholder icons are included; to replace them: npm run tauri icon path/to/your-icon.png
 npm run tauri dev
-npm run tauri build
+npm run tauri build        # Windows: NSIS installer; Linux: .deb, .rpm and AppImage (src-tauri/tauri.linux.conf.json)
 ```
+
+On Linux the AppImage needs FUSE 2 (`fuse2` on Arch). If the window stays blank on NVIDIA, Wishtory already turns off WebKitGTK's DMABUF renderer; set `WEBKIT_DISABLE_DMABUF_RENDERER=0` to switch it back on, or `1` to force it off on other GPUs.
 
 Checks that CI also runs: `npm run catalog:test`, `npm run check`, `npm run build`, `cargo fmt --check` and `cargo test --locked` (both with `--manifest-path src-tauri/Cargo.toml`), plus `python3 -m unittest discover -s scripts -p "test_*.py"` and `actionlint` for the release automation.
 
@@ -35,6 +41,7 @@ Wishtory is designed to be as safe as the well-known community tools: it uses a 
 - It never modifies, locks, or writes to any game file or folder.
 - It never sets a system proxy and never uses man-in-the-middle techniques.
 - It never needs administrator rights (the installer is per-user).
+- On Linux it only reads inside the Wine or Proton prefixes it finds (`wine.rs`) and the folders you add under Settings → Game locations. The temporary copy it may make of a locked cache file is readable only by you.
 - It only performs **read-only** file access (from Rust) to:
   - `Player.log` / `output_log.txt` (to find where the game is installed), and
   - the newest `webCaches/<version>/Cache/Cache_Data/data_2` (to find the history link the game already created). If the file is locked, it is copied to your temp folder first.

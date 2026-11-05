@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
 
   const result = $derived(app.result);
-  const r = $derived(result?.kind === 'err' ? classify(result.text, result.game) : null);
+  const r = $derived(result?.kind === 'err' ? classify(result.text, result.game, !!app.locations?.supported) : null);
 
   // Rate limiting: the retry button counts down instead of inviting another refusal.
   let tick = $state(Date.now());
@@ -32,6 +32,7 @@
             <Icon name="refresh" size={16} />{wait > 0 ? `Try again in ${wait} s` : 'Try again'}
           </button>
         {/if}
+        {#if r.locations}<button class="btn" onclick={() => (app.page = 'settings')}><Icon name="folder" size={16} />Game locations</button>{/if}
         {#if r.help}<button class="btn" onclick={() => openHelp(r.help)}>Why does this happen?</button>{/if}
         <button class="btn" onclick={dismissResult}>Dismiss</button>
       </div>

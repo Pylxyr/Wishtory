@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Wishtory
+GenericName=Wish history manager
+Comment=Local wish history manager for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero
+Exec=wishtory
+Icon=wishtory
+Terminal=false
+Categories=Utility;
+Keywords=genshin;star rail;zenless;gacha;wish;pity;
+StartupWMClass=wishtory

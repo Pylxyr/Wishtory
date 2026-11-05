@@ -7,7 +7,7 @@
   let open = $state(false);
 
   const runGame = $derived(app.runGame ? GAMES[app.runGame].short : '');
-  const failure = $derived(app.result?.kind === 'err' ? classify(app.result.text, app.result.game) : null);
+  const failure = $derived(app.result?.kind === 'err' ? classify(app.result.text, app.result.game, !!app.locations?.supported) : null);
   // Screen readers hear the banner or phase name while working, then the outcome, not every progress line.
   const announce = $derived.by(() => {
     if (app.busy) {

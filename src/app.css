@@ -462,6 +462,13 @@ fieldset.options legend { padding: 0; margin-bottom: 8px; font-weight: 600; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 18px; }
 .setting-row + .setting-row { border-top: 1px solid var(--line); }
 .setting-copy h2 { margin-bottom: 2px; font-size: 15px; }
+.locations { margin-top: 18px; }
+.loc-block { display: block; }
+.loc-body h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.loc-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.loc-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; }
+.loc-list code { min-width: 0; font: 12.5px var(--font-mono); overflow-wrap: anywhere; }
+.loc-games { display: flex; flex: none; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .setting-copy p { max-width: 62ch; margin: 0; }
 .switch { position: relative; flex: none; width: 46px; height: 26px; padding: 0; border: 1px solid var(--control); border-radius: 99px; background: var(--panel-3); cursor: pointer; transition: background .2s, border-color .2s; }
 .switch i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .2s var(--ease), background .2s; }

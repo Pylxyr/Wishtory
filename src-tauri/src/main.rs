@@ -24,12 +24,27 @@ mod models;
 mod paimon_items;
 mod pity;
 mod rules;
+mod settings;
 mod uigf;
 mod update;
+#[cfg(unix)]
+mod wine;
 
 use tauri::Manager;
 
+/// WebKitGTK's DMABUF renderer can leave the window blank on NVIDIA's proprietary driver (common on
+/// Wayland). Turn it off there, unless the person already chose a value themselves.
+#[cfg(target_os = "linux")]
+fn tune_webkit() {
+    let nvidia = std::path::Path::new("/proc/driver/nvidia").exists();
+    if nvidia && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    tune_webkit();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -40,10 +55,13 @@ fn main() {
             app.manage(catalog);
             app.manage(catalog::BannerStore::open(&dir));
             app.manage(rules::RulesStore::open(&dir));
+            app.manage(settings::SettingsStore::open(&dir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::discover_games,
+            commands::get_game_locations,
+            commands::set_game_locations,
             commands::extract_authkey,
             commands::fetch_history,
             commands::refresh_from_game,

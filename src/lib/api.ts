@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AboutInfo, Account, AppUpdate, BannerPity, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall, GameMeta, ImportSummary, LogEntry, Pull } from './types';
+import type { AboutInfo, Account, AppUpdate, BannerPity, BannerSet, BannerUpdate, FetchSummary, GameCatalog, GameId, GameInstall, GameLocations, GameMeta, ImportSummary, LogEntry, Pull } from './types';
 
 export const errMsg = (e: unknown): string => (typeof e === 'string' ? e : e instanceof Error ? e.message : 'Something went wrong.');
 
 export const api = {
   discoverGames: () => invoke<GameInstall[]>('discover_games'),
+  getGameLocations: () => invoke<GameLocations>('get_game_locations'),
+  setGameLocations: (locations: string[]) => invoke<GameLocations>('set_game_locations', { locations }),
   extractAuthkey: (game: GameId) => invoke<string>('extract_authkey', { game }),
   // `full` downloads everything the server still keeps; by default a fetch stops at the first page that is already saved.
   refreshFromGame: (game: GameId, full = false) => invoke<FetchSummary>('refresh_from_game', { game, full }),

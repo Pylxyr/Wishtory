@@ -40,6 +40,18 @@
       </ul>
     </section>
 
+    {#if app.locations?.supported}
+      <section class="card" id="help-linux" aria-labelledby="linux-title">
+        <h2 id="linux-title">Playing on Linux</h2>
+        <p class="muted">The games run in Wine or Proton, and Wishtory reads the same files inside the Wine prefix. It never writes into it.</p>
+        <ul class="muted plain">
+          <li>It looks in the usual places by itself: Wine's default (<code>~/.wine</code>), <code>$WINEPREFIX</code>, Lutris and <code>~/Games</code>, the anime-game and honkers launchers, Bottles, Steam (Proton) and Flatpak versions of those.</li>
+          <li>If the game is not found, start it once, then add the folder of its prefix (the one that contains <code>drive_c</code>) under Settings → Game locations. A folder above it works too.</li>
+          <li>A game installed on another disk works when the prefix maps that disk as a drive. The <code>Z:</code> drive is your whole filesystem, so it always works.</li>
+        </ul>
+      </section>
+    {/if}
+
     <section class="card" aria-labelledby="trouble-title">
       <h2 id="trouble-title">Troubleshooting</h2>
       <details class="fold" id="help-no-page" open={topic === 'help-no-page'}>

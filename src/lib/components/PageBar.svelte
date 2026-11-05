@@ -39,7 +39,7 @@
     {#if install?.found}
       <span class="chip ok">{info.short} detected</span>
     {:else}
-      <span class="chip" use:tip={'Launch the game once so it creates its log file.'}>{info.short} not detected yet</span>
+      <span class="chip" use:tip={app.locations?.supported ? 'Start the game once so it writes its log file. If it is already installed, add its Wine prefix under Settings → Game locations.' : 'Launch the game once so it creates its log file.'}>{info.short} not detected yet</span>
     {/if}
   </div>
   <div class="pagebar-actions">
