@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Started by catalog-proposal.yml on the review branch: a pull request opened with the workflow
+  # token does not trigger the pull_request event above.
+  workflow_dispatch:
   # Called by cut-release.yml before it bumps anything.
   workflow_call:
 
