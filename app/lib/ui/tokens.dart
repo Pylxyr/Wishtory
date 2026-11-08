@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:flutter/material.dart';
 
 /// Wishtory's design tokens: graphite surfaces, one blue accent for every game, gold reserved for

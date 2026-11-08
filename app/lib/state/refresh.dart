@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bridge/wishtory_api.dart';
-import '../domain/game_info.dart';
 import 'loadable.dart';
 import 'nav.dart';
 import 'providers.dart';
