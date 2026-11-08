@@ -7,9 +7,6 @@ npm-debug.log*
 .env
 .env.*
 
-# Rust / Tauri
-src-tauri/target/
-src-tauri/gen/
 **/*.rs.bk
 catalog/catalog-signing-key.pem
 catalog/*.envelope.json
@@ -22,3 +19,13 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 __pycache__/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins*
+app/.packages
