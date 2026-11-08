@@ -1,0 +1,231 @@
+import 'dart:io' show Platform;
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../bridge/wishtory_api.dart';
+import '../../domain/game_info.dart';
+import '../../domain/recovery.dart';
+import '../../state/nav.dart';
+import '../../state/providers.dart';
+import '../../state/refresh.dart';
+import '../../state/settings.dart';
+import '../../state/toasts.dart';
+import '../../ui/tokens.dart';
+import '../../ui/widgets.dart';
+import '../help/tutorial.dart';
+
+class SettingsPage extends ConsumerWidget {
+  const SettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.wc;
+    final s = ref.watch(settingsProvider);
+    final prefs = ref.read(settingsProvider.notifier);
+    return PageBody(maxWidth: 900, children: [
+      const Text('Settings', style: Ty.h1),
+      const SizedBox(height: 20),
+      const SectionLabel('Appearance'),
+      Panel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Theme', style: Ty.h3),
+          const SizedBox(height: 8),
+          SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: ThemeMode.system, label: Text('System'), icon: Icon(Icons.brightness_auto, size: 16)),
+              ButtonSegment(value: ThemeMode.dark, label: Text('Dark'), icon: Icon(Icons.dark_mode_outlined, size: 16)),
+              ButtonSegment(value: ThemeMode.light, label: Text('Light'), icon: Icon(Icons.light_mode_outlined, size: 16)),
+            ],
+            selected: {s.themeMode},
+            onSelectionChanged: (v) => prefs.setTheme(v.first),
+          ),
+          const SizedBox(height: 16),
+          const Text('History table density', style: Ty.h3),
+          const SizedBox(height: 8),
+          SegmentedButton<bool>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: false, label: Text('Compact')),
+              ButtonSegment(value: true, label: Text('Comfortable')),
+            ],
+            selected: {s.comfortable},
+            onSelectionChanged: (v) => prefs.setComfortable(v.first),
+          ),
+        ]),
+      ),
+      if (Platform.isLinux) ...[
+        const SizedBox(height: 24),
+        const SectionLabel('Game locations'),
+        const _GameLocations(),
+      ],
+      const SizedBox(height: 24),
+      const SectionLabel('Updates'),
+      const _Updates(),
+      const SizedBox(height: 24),
+      const SectionLabel('Diagnostics'),
+      Panel(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Keep a diagnostics log', style: Ty.h3),
+            subtitle: Text('Off by default. Kept only in memory (last 1,000 lines), never written to disk, and never contains links or keys. Resets when you quit.', style: Ty.small.copyWith(color: c.muted)),
+            value: s.loggingEnabled,
+            onChanged: (v) async {
+              await prefs.setLogging(v);
+              if (v) ref.read(navProvider.notifier).goTo(AppPage.logs);
+            },
+          ),
+          const Divider(),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(onPressed: () => showTutorial(context, ref), icon: const Icon(Icons.school_outlined, size: 18), label: const Text('Show the first-run tour again')),
+          ),
+        ]),
+      ),
+    ]);
+  }
+}
+
+class _Updates extends ConsumerWidget {
+  const _Updates();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.wc;
+    final update = ref.watch(appUpdateProvider);
+    final catalog = ref.watch(catalogProvider).data;
+    final u = update.data;
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Wishtory', style: Ty.h3),
+        const SizedBox(height: 4),
+        Text(
+          u == null
+              ? 'Wishtory only compares version numbers; nothing is downloaded or installed automatically.'
+              : u.available
+                  ? 'Version ${u.latest} is available (you have ${u.current}).'
+                  : 'You are up to date (${u.current}).',
+          style: Ty.body.copyWith(color: c.muted),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, children: [
+          OutlinedButton(
+            onPressed: update.loading ? null : () => ref.read(appUpdateProvider.notifier).check(),
+            child: Text(update.loading ? 'Checking…' : 'Check for updates'),
+          ),
+          if (u != null && u.available) FilledButton(onPressed: () => ref.read(apiProvider).openExternal(u.url), child: const Text('View release')),
+        ]),
+        const Divider(height: 32),
+        const Text('Game catalog and rules', style: Ty.h3),
+        const SizedBox(height: 4),
+        Text(
+          'Item names, banner windows and pity rules come from signed files. Wishtory checks once a day and keeps working offline with the bundled copy.'
+          '${catalog == null ? '' : ' Catalog version ${catalog.catalogVersion}, generated ${catalog.generatedAt}.'}',
+          style: Ty.body.copyWith(color: c.muted),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton(onPressed: () => _checkFeeds(context, ref), child: const Text('Check now')),
+      ]),
+    );
+  }
+
+  Future<void> _checkFeeds(BuildContext context, WidgetRef ref) async {
+    final api = ref.read(apiProvider);
+    final toast = ref.read(toastProvider.notifier);
+    var changed = false;
+    try {
+      final status = await api.refreshCatalog(force: true);
+      if (status == UpdateStatus.updated) {
+        changed = true;
+        await ref.read(catalogProvider.notifier).reload();
+      }
+      final banners = await api.refreshBanners(force: true);
+      if (banners.status == UpdateStatus.updated) {
+        changed = true;
+        await ref.read(bannersProvider.notifier).reload();
+      }
+      if (changed) ref.read(dataTickProvider.notifier).bump();
+      toast.ok(changed ? 'Catalog and banners updated.' : 'Everything is up to date.');
+    } catch (e) {
+      toast.error(recoveryFor(e).detail);
+    }
+  }
+}
+
+class _GameLocations extends ConsumerStatefulWidget {
+  const _GameLocations();
+
+  @override
+  ConsumerState<_GameLocations> createState() => _GameLocationsState();
+}
+
+class _GameLocationsState extends ConsumerState<_GameLocations> {
+  GameLocations? _locations;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load(() => ref.read(apiProvider).getGameLocations());
+  }
+
+  Future<void> _load(Future<GameLocations> Function() action) async {
+    try {
+      final l = await action();
+      if (mounted) setState(() => _locations = l);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.wc;
+    final l = _locations;
+    if (_error != null) return RecoveryCard(recovery: recoveryFor(_error!, isLinux: true));
+    if (l == null) return const Skeleton(height: 90, radius: 12);
+    final api = ref.read(apiProvider);
+    return Panel(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'Wishtory looks for the games in Wine and Proton prefixes it finds on its own. If yours is somewhere else, add the folder that contains the game (or the prefix).',
+          style: Ty.body.copyWith(color: c.muted),
+        ),
+        const SizedBox(height: 12),
+        for (final p in l.detected)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.auto_awesome_outlined, size: 18),
+            title: Text(p.path, style: Ty.small.copyWith(fontFamily: Ty.mono)),
+            subtitle: Text('Found automatically · ${p.games.map((g) => GameInfo.of(g).short).join(', ')}'),
+          ),
+        for (final path in l.locations)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.folder_outlined, size: 18),
+            title: Text(path, style: Ty.small.copyWith(fontFamily: Ty.mono)),
+            trailing: IconButton(
+              tooltip: 'Remove',
+              icon: const Icon(Icons.close, size: 16),
+              onPressed: () => _load(() => api.setGameLocations([for (final x in l.locations) if (x != path) x])),
+            ),
+          ),
+        if (l.detected.isEmpty && l.locations.isEmpty) Text('No locations yet.', style: Ty.small.copyWith(color: c.faint)),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final dir = await getDirectoryPath();
+            if (dir != null) _load(() => api.setGameLocations([...l.locations, dir]));
+          },
+          icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+          label: const Text('Add a folder…'),
+        ),
+      ]),
+    );
+  }
+}

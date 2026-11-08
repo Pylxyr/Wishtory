@@ -109,3 +109,11 @@ Wishtory relies on these independent projects and references.
 ## License
 
 [MIT](LICENSE)
+
+
+## Development (Flutter UI rewrite)
+
+The app is a Flutter desktop UI (`app/`) over the Rust core (`crates/wishtory-core`), joined by
+`flutter_rust_bridge` (`crates/wishtory-bridge`). The Tauri/Svelte shell was removed.
+See [docs/redesign/DESIGN.md](docs/redesign/DESIGN.md) for the design and
+[docs/redesign/BUILDING.md](docs/redesign/BUILDING.md) for build steps.

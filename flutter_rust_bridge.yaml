@@ -1,0 +1,5 @@
+# Run from the repository root: flutter_rust_bridge_codegen generate
+rust_input: crate::api
+rust_root: crates/wishtory-bridge/
+dart_output: app/lib/bridge/generated
+dart_entrypoint_class_name: RustLib
