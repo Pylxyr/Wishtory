@@ -1,6 +1,6 @@
 [package]
 name = "wishtory-core"
-version = "0.2.1"
+version.workspace = true
 description = "Wishtory core: read-only game-cache discovery, history fetching, storage, pity maths, UIGF import/export"
 edition = "2021"
 rust-version = "1.91"

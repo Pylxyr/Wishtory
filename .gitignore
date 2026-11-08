@@ -1,7 +1,5 @@
-# Node
+# Node (catalog and release scripts only)
 node_modules/
-dist/
-.vite/
 npm-debug.log*
 .agents/
 .env

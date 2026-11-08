@@ -81,7 +81,7 @@ abstract class WishtoryCore implements RustOpaqueInterface {
   Future<List<Account>> listAccounts();
 
   /// Opens (creating if needed) Wishtory's data. `data_dir` is for tests; `None` uses the same
-  /// folder the earlier Tauri releases used, so saved history carries over.
+  /// folder every earlier release used, so saved history carries over.
   static Future<WishtoryCore> open({String? dataDir}) =>
       RustLib.instance.api.crateApiCoreApiWishtoryCoreOpen(dataDir: dataDir);
 

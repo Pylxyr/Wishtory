@@ -4,33 +4,37 @@ For installing and using Wishtory, see the [README](../README.md).
 
 ## Build
 
-Prerequisites: [Node.js 20+](https://nodejs.org) and Rust, version 1.91 as pinned in `rust-toolchain.toml` (rustup installs it on first use), plus:
+Prerequisites: Rust (the version pinned in `rust-toolchain.toml`; rustup installs it on first use) and Flutter (the version in `flutter-toolchain.txt`) with desktop support. [Node.js 20+](https://nodejs.org) is only needed for the catalog scripts. System libraries:
 
-- **Windows 10/11:** [Rust (MSVC)](https://rustup.rs), Visual Studio Build Tools (C++ workload), and WebView2 (preinstalled).
-- **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 gtk3 xdg-utils` (the `rust` package works instead of rustup).
-- **Debian / Ubuntu:** `sudo apt install build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils`.
+- **Windows 10/11:** Visual Studio Build Tools (the C++ desktop workload).
+- **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils`, plus Flutter from the AUR (`flutter`) or your own install.
+- **Debian / Ubuntu:** `sudo apt install build-essential clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils`.
 
 ```sh
-npm install
-# placeholder icons are included; to replace them: npm run tauri icon path/to/your-icon.png
-npm run tauri dev
-npm run tauri build        # Windows: NSIS installer; Linux: .deb, .rpm and AppImage (src-tauri/tauri.linux.conf.json)
+cargo build -p wishtory-bridge --release    # the Rust core, as a library the app loads
+cd app
+flutter pub get
+flutter run -d windows                      # or: -d linux
+flutter build windows --release             # or: flutter build linux --release
 ```
 
-On Linux the AppImage needs FUSE 2 (`fuse2` on Arch). If the window stays blank on NVIDIA, Wishtory already turns off WebKitGTK's DMABUF renderer; set `WEBKIT_DISABLE_DMABUF_RENDERER=0` to switch it back on, or `1` to force it off on other GPUs.
+The full steps, including regenerating the Dart <-> Rust glue, are in [Building the Flutter app](redesign/BUILDING.md). Releases are described in [Releasing](releasing.md).
 
-Checks that CI also runs: `npm run catalog:test`, `npm run check`, `npm run build`, `cargo fmt --check` and `cargo test --locked` (both with `--manifest-path src-tauri/Cargo.toml`), plus `python3 -m unittest discover -s scripts -p "test_*.py"` and `actionlint` for the release automation.
+Checks that CI also runs: `cargo fmt --all --check` and `cargo test --locked --workspace`; in `app/`, `flutter analyze` and `flutter test`; `npm run catalog:test`; `python3 -m unittest discover -s scripts -p "test_*.py"`; and `actionlint` for the release automation.
 
 ## Project layout
 
 ```
-src/            Svelte 5 frontend (pages, components, runes-based store)
-src-tauri/src/  Rust: discover, authkey (read-only cache parsing), fsutil, fetch, db, pity, uigf,
-                catalog (signed feeds), rules (pity rules), update, about, commands
-catalog/        Banner list, pity rules and signing public key (the item catalog is generated and signed in CI)
-scripts/        Catalog tooling (update, banner tracking, versioning, signing), release notes and the version bump script
-docs/           This guide, releasing, catalog updates
-.github/        CI, release and catalog workflows
+app/                  Flutter app: lib/ (screens, state, bridge), test/, and the Windows and Linux runners
+crates/wishtory-core/ Rust core: discover, authkey (read-only cache parsing), fsutil, wine, fetch, db, pity,
+                      uigf, paimon_items, catalog (signed feeds), rules (pity rules), update, about, settings
+crates/wishtory-bridge/ flutter_rust_bridge API over the core (src/api) and its generated glue
+catalog/              Banner list, pity rules and signing public key (the item catalog is generated and signed in CI)
+assets/icons/         App icons
+packaging/            Windows installer script, Linux package script and desktop file, Arch PKGBUILDs
+scripts/              Catalog tooling (update, banner tracking, signing), release notes and the version bump script
+docs/                 This guide, building, releasing, catalog updates, design notes
+.github/              CI, release and catalog workflows
 ```
 
 ## Safety model
@@ -40,7 +44,7 @@ Wishtory is designed to be as safe as the well-known community tools: it uses a 
 - It never attaches to, injects into, or talks to the game process.
 - It never modifies, locks, or writes to any game file or folder.
 - It never sets a system proxy and never uses man-in-the-middle techniques.
-- It never needs administrator rights (the installer is per-user).
+- It never needs administrator rights (the installer is per user).
 - On Linux it only reads inside the Wine or Proton prefixes it finds (`wine.rs`) and the folders you add under Settings → Game locations. The temporary copy it may make of a locked cache file is readable only by you.
 - It only performs **read-only** file access (from Rust) to:
   - `Player.log` / `output_log.txt` (to find where the game is installed), and

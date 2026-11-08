@@ -45,14 +45,19 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "wishtory");
+    gtk_header_bar_set_title(header_bar, "Wishtory");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "wishtory");
+    gtk_window_set_title(window, "Wishtory");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+  // Wishtory minimum window size: 960 x 640 (the same as on Windows).
+  GdkGeometry min_size = {};
+  min_size.min_width = 960;
+  min_size.min_height = 640;
+  gtk_window_set_geometry_hints(window, nullptr, &min_size, GDK_HINT_MIN_SIZE);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

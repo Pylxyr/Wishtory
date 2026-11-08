@@ -62,27 +62,52 @@ class TidyAiNotes(unittest.TestCase):
 
 class DetectLogic(unittest.TestCase):
     DIFF = (
-        "+++ b/src-tauri/src/main.rs\n"
-        "+            commands::get_game_meta,\n"
-        "+            logging::get_logs,\n"
-        "-            commands::old_command,\n"
-        "+++ b/src-tauri/src/pity.rs\n"
+        "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n"
+        "+    pub fn get_game_meta() -> Vec<GameMeta> {\n"
+        "+pub async fn get_logs() -> Vec<LogEntry> {\n"
+        "-    pub fn old_command() {\n"
+        "+++ b/crates/wishtory-core/src/pity.rs\n"
         "+pub fn history_filters(game: Game) -> u8 {\n"
     )
 
-    def test_commands_from_every_module_are_found(self):
+    def test_api_functions_are_found(self):
         seen = rn.detect_logic(self.DIFF)
         self.assertEqual(seen["commands"]["added"], {"get_game_meta", "get_logs"})
         self.assertEqual(seen["commands"]["removed"], {"old_command"})
         self.assertEqual(seen["code"]["added"], {"history_filters()"})
 
     def test_a_name_on_both_sides_counts_as_neither(self):
-        diff = "+++ b/src-tauri/src/main.rs\n+  commands::same,\n-  commands::same,\n"
+        diff = "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n+    pub fn same() {\n-    pub fn same() {\n"
         self.assertEqual(rn.detect_logic(diff)["commands"], {"added": set(), "removed": set()})
 
-    def test_ordinary_lines_are_not_commands(self):
-        diff = "+++ b/src-tauri/src/main.rs\n+            app.manage(rules::RulesStore::open(&dir));\n+mod rules;\n"
+    def test_ordinary_lines_are_not_api_functions(self):
+        diff = "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n+    let rules = RulesStore::open(&dir);\n+    fn private_helper() {\n"
         self.assertEqual(rn.detect_logic(diff)["commands"]["added"], set())
+
+    def test_functions_outside_the_api_file_are_public_items_not_api_functions(self):
+        diff = "+++ b/crates/wishtory-core/src/db.rs\n+pub fn open() {\n"
+        seen = rn.detect_logic(diff)
+        self.assertEqual(seen["commands"]["added"], set())
+        self.assertEqual(seen["code"]["added"], {"open()"})
+
+    def test_generated_bridge_code_is_ignored(self):
+        diff = "+++ b/crates/wishtory-bridge/src/frb_generated.rs\n+pub fn wire__crate__api__thing() {\n"
+        seen = rn.detect_logic(diff)
+        self.assertEqual(seen["commands"]["added"], set())
+        self.assertEqual(seen["code"]["added"], set())
+
+    def test_areas_follow_the_flutter_and_rust_layout(self):
+        for path, area in {
+            "crates/wishtory-core/src/pity.rs": "Pity and 50/50 rules",
+            "crates/wishtory-core/src/wine.rs": "Reading wish history",
+            "crates/wishtory-bridge/src/api/types.rs": "Bridge between the interface and the core",
+            "app/lib/bridge/generated/frb_generated.dart": "Generated bridge code",
+            "app/lib/features/history/history_page.dart": "User interface",
+            "app/test/planning_test.dart": "Tests",
+            "app/linux/CMakeLists.txt": "Windows and Linux app shells",
+            ".github/workflows/ci.yml": "Build and release",
+        }.items():
+            self.assertEqual(rn.area_of(path), area, path)
 
 
 class PreviousTag(unittest.TestCase):

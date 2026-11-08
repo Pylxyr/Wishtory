@@ -5,7 +5,9 @@ use wishtory_core::{
     about::{About as CoreAbout, Credit as CoreCredit, CreditGroup as CoreCreditGroup},
     catalog::{BannerEntry as CoreBanner, BannerSet, BannerUpdate as CoreBannerUpdate, Catalog},
     logging::LogEntry as CoreLogEntry,
-    models::{Account as CoreAccount, Game, GameInstall as CoreInstall, GameLocations as CoreLocations},
+    models::{
+        Account as CoreAccount, Game, GameInstall as CoreInstall, GameLocations as CoreLocations,
+    },
     ops::{FetchSummary as CoreFetch, GameMeta as CoreGameMeta, HistoryPull as CoreHistoryPull},
     pity::{BannerPity as CoreBannerPity, FiveStar as CoreFiveStar, FourStar as CoreFourStar},
     uigf::ImportSummary as CoreImport,
@@ -211,7 +213,11 @@ impl From<&BannerSet> for BannerList {
         Self {
             banners_version: s.banners_version as i64,
             generated_at: s.generated_at.clone(),
-            banners: s.banners.iter().filter_map(BannerEntry::from_core).collect(),
+            banners: s
+                .banners
+                .iter()
+                .filter_map(BannerEntry::from_core)
+                .collect(),
         }
     }
 }
