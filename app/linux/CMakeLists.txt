@@ -126,3 +126,15 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Wishtory native core (built by `cargo build -p wishtory-bridge --release` from the repository
+# root). main.dart looks for it in lib/ next to the executable.
+set(WISHTORY_NATIVE_LIB
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../target/release/libwishtory_bridge.so")
+install(CODE "
+  if(NOT EXISTS \"${WISHTORY_NATIVE_LIB}\")
+    message(FATAL_ERROR \"Missing ${WISHTORY_NATIVE_LIB}. Run: cargo build -p wishtory-bridge --release\")
+  endif()
+  " COMPONENT Runtime)
+install(FILES "${WISHTORY_NATIVE_LIB}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)

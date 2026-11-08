@@ -43,8 +43,8 @@ use std::{
     sync::Arc,
 };
 
-/// The identifier the previous (Tauri) releases used for their data folder. Kept so a person's
-/// saved history, cached catalog and settings are found again after the move to the new UI.
+/// The identifier of Wishtory's data folder. It has not changed since the first release, so a person's
+/// saved history, cached catalog and settings are found again after every update.
 pub const APP_ID: &str = "app.wishtory.desktop";
 
 /// `%APPDATA%\app.wishtory.desktop` on Windows, `~/.local/share/app.wishtory.desktop` on Linux.
@@ -84,7 +84,10 @@ impl Core {
     pub async fn get_game_locations(&self) -> Result<GameLocations, AppError> {
         ops::get_game_locations(&self.settings).await
     }
-    pub async fn set_game_locations(&self, locations: Vec<String>) -> Result<GameLocations, AppError> {
+    pub async fn set_game_locations(
+        &self,
+        locations: Vec<String>,
+    ) -> Result<GameLocations, AppError> {
         ops::set_game_locations(&self.settings, locations).await
     }
     pub async fn extract_authkey(&self, game: Game) -> Result<String, AppError> {

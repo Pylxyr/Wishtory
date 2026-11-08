@@ -17,77 +17,108 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    runs-on: windows-latest
+  # The Rust core and the bridge: format and tests, on both systems the app ships for. Wine/Proton
+  # discovery has its own unit tests, which run on both too.
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: ./.github/actions/toolchains
         with:
-          node-version: 22
-          cache: npm
-      - name: Rust toolchain
-        shell: bash
-        run: |
-          # The version is chosen in rust-toolchain.toml, never "whatever stable is today".
-          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
-          rustup toolchain install "$channel" --profile minimal --component rustfmt
-          rustup default "$channel"
-          rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
-      - run: npm ci
-      - run: npm run catalog:test
-      - run: npm run check
-      - run: npm run build
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+          flutter: "false"
+      - run: cargo fmt --all --check
+      - run: cargo test --locked --workspace
 
-  # The same checks on Linux (Ubuntu), plus a .deb build, which proves the Linux bundle settings in
-  # src-tauri/tauri.linux.conf.json still work. Wine/Proton discovery has its own unit tests that run here.
-  test-linux:
+  # The Flutter app on Linux: analysis, tests, and a real release build with the Rust library inside
+  # the bundle (a bundle without it would stop at start-up).
+  app-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
       - name: System libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev
-      - name: Rust toolchain
-        shell: bash
-        run: |
-          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
-          rustup toolchain install "$channel" --profile minimal --component rustfmt
-          rustup default "$channel"
-          rustc --version
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
-      - run: npm ci
-      - run: npm run check
-      - run: npm run build
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - name: Build the .deb
-        run: npm run tauri build -- --bundles deb
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev
+      - uses: ./.github/actions/toolchains
+      - run: cargo build --locked -p wishtory-bridge --release
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
+      - name: Test
+        working-directory: app
+        run: flutter test
+      - name: Build
+        working-directory: app
+        run: flutter build linux --release
+      - name: The bundle carries the Rust library
+        run: test -f app/build/linux/x64/release/bundle/lib/libwishtory_bridge.so
 
-  # The release automation is code too: the notes script has unit tests, and every workflow is
-  # linted (expression typos, undefined outputs, shell mistakes) before it can break a release.
+  # The Flutter app on Windows: a real release build with the Rust library next to the executable.
+  app-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchains
+      - run: cargo build --locked -p wishtory-bridge --release
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+      - name: Build
+        working-directory: app
+        run: flutter build windows --release
+      - name: The bundle carries the Rust library
+        shell: pwsh
+        run: |
+          $dll = "app/build/windows/x64/runner/Release/wishtory_bridge.dll"
+          if (-not (Test-Path $dll)) { throw "$dll is missing from the Windows bundle" }
+
+  # The committed Dart <-> Rust glue must be what the generator makes from the Rust API today.
+  bridge-in-sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchains
+      - name: Install the code generator (the version the Rust crate uses)
+        run: |
+          version="$(sed -n 's/^flutter_rust_bridge *= *"=\(.*\)"/\1/p' crates/wishtory-bridge/Cargo.toml)"
+          cargo install flutter_rust_bridge_codegen --version "$version" --locked
+      - name: Dependencies
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+      - name: Generate
+        run: flutter_rust_bridge_codegen generate
+      - name: Nothing changed
+        run: |
+          git status --short
+          git diff --exit-code || { echo "::error::The generated bridge code is out of date. Run flutter_rust_bridge_codegen generate and commit the result."; exit 1; }
+
+  # The release automation is code too: the scripts have unit tests, the catalog tooling has its own, and
+  # every workflow is linted (expression typos, undefined outputs, shell mistakes) before it can break a release.
   scripts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Release notes tests
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Catalog tooling tests
+        run: npm run catalog:test
+      - name: Script tests
         run: python3 -m unittest discover -s scripts -p "test_*.py" -v
+      - name: Every version file agrees
+        run: python3 scripts/bump_version.py --check "v$(python3 scripts/bump_version.py --current)"
       - name: Lint workflows
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12

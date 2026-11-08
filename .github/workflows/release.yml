@@ -1,15 +1,15 @@
 name: Release
 
-# Builds the Windows NSIS installer (Wishtory_<version>_x64-setup.exe) and the Linux packages (.deb, .rpm and
-# .AppImage), and publishes a GitHub release. You normally never run this by hand: use "Cut release"
+# Builds the Windows installer (Wishtory_<version>_x64-setup.exe) and portable zip, and the Linux packages (.tar.gz,
+# .deb and .rpm), and publishes a GitHub release. You normally never run this by hand: use "Cut release"
 # (cut-release.yml). Other ways in:
 #   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
-#   - Run workflow here                                            -> dry run: builds and uploads the installers as
+#   - Run workflow here                                            -> dry run: builds and uploads the packages as
 #                                                                    artifacts; publishes nothing
 #   - called by cut-release.yml with the tag it just pushed        -> build, publish
-# A release is the Windows setup .exe, the Linux .deb, .rpm and .AppImage, and SHA256SUMS.txt, with build provenance
-# attached when the repository allows it. The Windows and Linux builds run side by side; nothing is published unless
-# both succeed.
+# A release is the Windows setup .exe and .zip, the Linux .tar.gz, .deb and .rpm, and SHA256SUMS.txt, with build
+# provenance attached when the repository allows it. The Windows and Linux builds run side by side; nothing is
+# published unless both succeed.
 
 on:
   push:
@@ -62,20 +62,8 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
 
-      - name: Rust toolchain
-        shell: bash
-        run: |
-          # The version is chosen in rust-toolchain.toml, never "whatever stable is today".
-          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
-          rustup toolchain install "$channel" --profile minimal
-          rustup default "$channel"
-          rustc --version
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
+      - uses: ./.github/actions/toolchains
 
       # The app bundles catalog/*.json and prefers a cached update whose version is not lower, so the
       # bundled copies must carry the versions CI publishes (a file that kept an old number would lose
@@ -94,55 +82,81 @@ jobs:
 
       - name: Check versions
         id: ver
-        shell: pwsh
+        shell: bash
         env:
           CALLED_TAG: ${{ inputs.tag }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          if ($pkg -ne $tauri -or $pkg -ne $cargo) {
-            throw "Version mismatch: package.json=$pkg, tauri.conf.json=$tauri, Cargo.toml=$cargo"
-          }
-          $tag = "v$pkg"
-          if ($env:CALLED_TAG -and $env:CALLED_TAG -ne $tag) {
-            throw "Tag $($env:CALLED_TAG) does not match the project version $tag"
-          }
-          if ($env:REF_TYPE -eq "tag" -and $env:REF_NAME -ne $tag) {
-            throw "Tag $($env:REF_NAME) does not match the project version $tag"
-          }
-          "version=$pkg" >> $env:GITHUB_OUTPUT
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-
-      - run: npm ci
-
-      - name: Frontend checks
-        if: ${{ !inputs.skip_checks }}
-        run: npm run check
+          version="$(python scripts/bump_version.py --current)"
+          tag="v$version"
+          # Fails, and says which file disagrees, unless every version file carries this version.
+          python scripts/bump_version.py --check "$tag"
+          if [ -n "$CALLED_TAG" ] && [ "$CALLED_TAG" != "$tag" ]; then
+            echo "::error::Tag $CALLED_TAG does not match the project version $tag"
+            exit 1
+          fi
+          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "$tag" ]; then
+            echo "::error::Tag $REF_NAME does not match the project version $tag"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Rust tests
         if: ${{ !inputs.skip_checks }}
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --workspace
 
-      - name: Build the NSIS installer
-        shell: pwsh
+      - name: Build the Rust library
+        run: cargo build --locked -p wishtory-bridge --release
+
+      - name: App dependencies
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+
+      - name: App checks
+        if: ${{ !inputs.skip_checks }}
+        working-directory: app
         run: |
-          npx tauri build --bundles nsis -- --locked
-          if ($LASTEXITCODE -ne 0) { throw "tauri build failed ($LASTEXITCODE)" }
+          flutter analyze --no-fatal-infos
+          flutter test
 
-      - name: Collect release files
+      - name: Build the app
+        working-directory: app
+        run: flutter build windows --release
+
+      # Inno Setup builds the per-user installer from packaging/windows/wishtory.iss.
+      - name: Build the installer and the zip
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
+          $bundle = (Resolve-Path "app/build/windows/x64/runner/Release").Path
+          foreach ($needed in "wishtory.exe", "wishtory_bridge.dll") {
+            if (-not (Test-Path (Join-Path $bundle $needed))) { throw "$needed is missing from the Windows bundle" }
+          }
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          $setup = @(Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe")
-          if ($setup.Count -ne 1) { throw "Expected exactly one NSIS setup exe, found $($setup.Count)" }
-          if ($setup[0].Name -notlike "*$($env:VERSION)*") { throw "$($setup[0].Name) does not carry version $($env:VERSION)" }
-          Copy-Item $setup[0].FullName release/
-          Get-ChildItem release | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+          $out = (Resolve-Path release).Path
+
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Could not install Inno Setup ($LASTEXITCODE)" }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=$($env:VERSION)" "/DSourceDir=$bundle" "/DOutputDir=$out" packaging/windows/wishtory.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed ($LASTEXITCODE)" }
+
+          Compress-Archive -Path "$bundle\*" -DestinationPath "$out/Wishtory_$($env:VERSION)_windows_x64.zip"
+
+      - name: Check the release files
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          $files = @(Get-ChildItem release)
+          if ($files.Count -ne 2) { throw "Expected the setup exe and the zip, found $($files.Count) files" }
+          foreach ($file in $files) {
+            if ($file.Name -notlike "*$($env:VERSION)*") { throw "$($file.Name) does not carry version $($env:VERSION)" }
+            "{0}: {1:N1} MB" -f $file.Name, ($file.Length / 1MB)
+          }
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -150,9 +164,8 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  # The Linux packages. Built on the same runner image as the Linux CI job, so the system libraries and the bundle
-  # settings in src-tauri/tauri.linux.conf.json are the ones CI already proved. (Ubuntu 22.04 runners are being
-  # retired, so this does not use them.) Packages built here need a recent distribution (glibc 2.39 or newer).
+  # The Linux packages. Built on the same runner image as the Linux CI job, so the system libraries are the ones CI
+  # already proved. Packages built here need a recent distribution (glibc 2.39 or newer).
   build-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -165,26 +178,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
 
       - name: System libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential curl wget file patchelf libwebkit2gtk-4.1-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev rpm ruby
+          sudo gem install --no-document fpm -v 1.16.0
 
-      - name: Rust toolchain
-        shell: bash
-        run: |
-          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
-          rustup toolchain install "$channel" --profile minimal
-          rustup default "$channel"
-          rustc --version
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
+      - uses: ./.github/actions/toolchains
 
       # Same as the Windows build: the bundled feeds must carry the versions CI publishes.
       - name: Stamp bundled feed versions
@@ -207,14 +208,9 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          pkg="$(node -p "require('./package.json').version")"
-          tauri="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          cargo="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -n 1)"
-          if [ "$pkg" != "$tauri" ] || [ "$pkg" != "$cargo" ]; then
-            echo "::error::Version mismatch: package.json=$pkg, tauri.conf.json=$tauri, Cargo.toml=$cargo"
-            exit 1
-          fi
-          tag="v$pkg"
+          version="$(python3 scripts/bump_version.py --current)"
+          tag="v$version"
+          python3 scripts/bump_version.py --check "$tag"
           if [ -n "$CALLED_TAG" ] && [ "$CALLED_TAG" != "$tag" ]; then
             echo "::error::Tag $CALLED_TAG does not match the project version $tag"
             exit 1
@@ -223,43 +219,49 @@ jobs:
             echo "::error::Tag $REF_NAME does not match the project version $tag"
             exit 1
           fi
-          echo "version=$pkg" >> "$GITHUB_OUTPUT"
-
-      - run: npm ci
-
-      - name: Frontend checks
-        if: ${{ !inputs.skip_checks }}
-        run: npm run check
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Rust tests
         if: ${{ !inputs.skip_checks }}
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        run: cargo test --locked --workspace
 
-      # APPIMAGE_EXTRACT_AND_RUN lets the AppImage tools run without FUSE, which a CI runner does not offer.
-      - name: Build the .deb, .rpm and AppImage
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
+      - name: Build the Rust library
+        run: cargo build --locked -p wishtory-bridge --release
+
+      - name: App dependencies
+        working-directory: app
+        run: flutter pub get --enforce-lockfile
+
+      - name: App checks
+        if: ${{ !inputs.skip_checks }}
+        working-directory: app
         run: |
-          npx tauri build --bundles deb,rpm,appimage -- --locked
+          flutter analyze --no-fatal-infos
+          flutter test
 
-      - name: Collect release files
+      - name: Build the app
+        working-directory: app
+        run: flutter build linux --release
+
+      - name: Make the packages
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: packaging/linux/package.sh "$VERSION" app/build/linux/x64/release/bundle release
+
+      - name: Check the release files
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          mkdir -p release
-          for spec in "deb:deb" "rpm:rpm" "appimage:AppImage"; do
-            dir="${spec%%:*}"
-            ext="${spec##*:}"
-            files=(src-tauri/target/release/bundle/"$dir"/*."$ext")
+          for pattern in "*.tar.gz" "*.deb" "*.rpm"; do
+            files=(release/$pattern)
             if [ "${#files[@]}" -ne 1 ] || [ ! -f "${files[0]}" ]; then
-              echo "::error::Expected exactly one .$ext in bundle/$dir, found: ${files[*]}"
+              echo "::error::Expected exactly one $pattern in release/, found: ${files[*]}"
               exit 1
             fi
             case "$(basename "${files[0]}")" in
               *"$VERSION"*) ;;
               *) echo "::error::${files[0]} does not carry version $VERSION"; exit 1 ;;
             esac
-            cp "${files[0]}" release/
           done
           ls -l release
 
@@ -299,7 +301,7 @@ jobs:
       - name: Checksums
         run: |
           cd release
-          sha256sum -- *-setup.exe *.deb *.rpm *.AppImage > SHA256SUMS.txt
+          sha256sum -- *-setup.exe *.zip *.tar.gz *.deb *.rpm > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
@@ -309,9 +311,10 @@ jobs:
         with:
           subject-path: |
             release/*.exe
+            release/*.zip
+            release/*.tar.gz
             release/*.deb
             release/*.rpm
-            release/*.AppImage
       - name: Write release notes
         env:
           # AI release notes, tried in this order; with none available the notes come from commit messages and
@@ -337,8 +340,8 @@ jobs:
             echo
             echo "## About this build"
             echo
-            echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it."
-            echo "The Linux packages (\`.AppImage\`, \`.deb\`, \`.rpm\`) are built on Ubuntu 24.04, so they need a recent distribution. The AppImage needs FUSE 2 (\`fuse2\` on Arch, \`libfuse2\` on Debian and Ubuntu)."
+            echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it. The \`.zip\` is the same app without an installer."
+            echo "The Linux packages (\`.deb\`, \`.rpm\` and the portable \`.tar.gz\`) are built on Ubuntu 24.04, so they need a recent distribution. Arch and CachyOS users can use the PKGBUILD in \`packaging/arch\` or the \`.tar.gz\`."
             if [ "$ATTEST_OUTCOME" = "success" ]; then
               echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
             fi

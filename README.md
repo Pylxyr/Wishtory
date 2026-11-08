@@ -90,9 +90,20 @@ Banners and item names update by themselves, and Wishtory tells you when a new v
 
 ## Install
 
-Wishtory runs on **Windows 10 or 11** and on **Linux**, and never needs administrator rights.
+Wishtory runs on **Windows 10 or 11** and on **Linux**, and never needs administrator rights to run.
 
-Download the build for your system from the [latest release](https://github.com/Pylxyr/Wishtory/releases). To check the download first, compare its SHA-256 with `SHA256SUMS.txt` from the same page:
+Download the build for your system from the [latest release](https://github.com/Pylxyr/Wishtory/releases):
+
+| System | Download | Notes |
+| :--- | :--- | :--- |
+| Windows | `Wishtory_x.y.z_x64-setup.exe` | Installs for your user only |
+| Windows | `Wishtory_x.y.z_windows_x64.zip` | No installer: unpack anywhere and run `wishtory.exe` |
+| Debian, Ubuntu | `Wishtory_x.y.z_amd64.deb` | `sudo apt install ./Wishtory_x.y.z_amd64.deb` |
+| Fedora, openSUSE | `Wishtory-x.y.z-1.x86_64.rpm` | `sudo dnf install ./Wishtory-x.y.z-1.x86_64.rpm` |
+| Any Linux | `Wishtory_x.y.z_linux_x64.tar.gz` | Unpack anywhere and run `wishtory` |
+| Arch, CachyOS | [`packaging/arch`](packaging/arch) | `makepkg -si` in `wishtory` (release) or `wishtory-git` (latest source) |
+
+The Linux packages are built on Ubuntu 24.04, so they need a reasonably recent distribution. To check a download, compare its SHA-256 with `SHA256SUMS.txt` from the same release page:
 
 | System | Command |
 | :--- | :--- |
@@ -119,7 +130,7 @@ Opening links from the app needs `xdg-utils`, which most desktops already have.
 
 <br>
 
-You need Rust 1.91 or newer and Flutter with desktop support. The steps, for Windows and Linux, are in [docs/redesign/BUILDING.md](docs/redesign/BUILDING.md).
+You need Rust and Flutter with desktop support. The steps, for Windows and Linux, are in [docs/redesign/BUILDING.md](docs/redesign/BUILDING.md).
 
 </details>
 

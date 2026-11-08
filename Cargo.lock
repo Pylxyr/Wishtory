@@ -1928,7 +1928,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "wishtory-bridge"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "flutter_rust_bridge",
  "wishtory-core",
@@ -1936,7 +1936,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

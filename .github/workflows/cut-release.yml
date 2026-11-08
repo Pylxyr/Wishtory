@@ -3,7 +3,7 @@ name: Cut release
 # One-click release from the GitHub website:
 #   Actions > Cut release > Run workflow > pick patch / minor / major > Run.
 # It runs the full CI on main first, then bumps the version, commits and tags it on main, then builds and
-# publishes the Windows installer and the Linux packages (.deb, .rpm, AppImage) by calling release.yml. If CI fails, nothing is bumped or tagged.
+# publishes the Windows installer and zip and the Linux packages (.tar.gz, .deb, .rpm) by calling release.yml. If CI fails, nothing is bumped or tagged.
 
 on:
   workflow_dispatch:

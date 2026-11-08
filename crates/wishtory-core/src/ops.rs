@@ -57,9 +57,7 @@ async fn game_locations_view(settings: &SettingsStore) -> Result<GameLocations, 
     })
 }
 
-pub async fn get_game_locations(
-    settings: &SettingsStore,
-) -> Result<GameLocations, AppError> {
+pub async fn get_game_locations(settings: &SettingsStore) -> Result<GameLocations, AppError> {
     game_locations_view(&settings).await
 }
 
@@ -333,9 +331,7 @@ pub async fn get_banners(banners: &BannerStore) -> Result<Arc<BannerSet>, AppErr
 }
 
 /// The last installed banner update, so the app can show what changed after a restart.
-pub async fn get_banner_update(
-    banners: &BannerStore,
-) -> Result<Option<BannerUpdate>, AppError> {
+pub async fn get_banner_update(banners: &BannerStore) -> Result<Option<BannerUpdate>, AppError> {
     Ok(banners.last_update())
 }
 

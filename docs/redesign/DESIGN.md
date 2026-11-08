@@ -33,7 +33,7 @@ The **database and catalog caches do carry over**: `Core` keeps using
 State management: **Riverpod** (`Notifier` / `AsyncNotifier`, no code generation). It gives
 cancellation-safe async loading (the old Svelte code hand-rolls a `stale` flag in every page),
 testable providers and no build step. Preferences: `shared_preferences`. Dialogs: `file_selector`.
-Window: `window_manager` (min size 960x640, as before).
+Window: the title and the minimum size (960x640) are set in the platform runners under `app/windows` and `app/linux`; no plugin is needed.
 
 ## 2. Who uses this and what they want
 
@@ -206,10 +206,12 @@ already tested); Dart only formats and plans.
 ## 11. Build and release shape
 
 * `cargo build -p wishtory-bridge` produces the native library FRB loads; `flutter build windows|linux`
-  bundles it. CI keeps the existing Rust gates (`cargo fmt --check`, `cargo test --locked`) and adds
-  `flutter analyze` + `flutter test`.
-* Linux packages (deb/rpm/AppImage/PKGBUILD) and the Windows installer need to be rebuilt around the
-  Flutter bundle; that is tracked separately from the UI work. **(open)**
+  bundles it. CI runs the Rust gates (`cargo fmt --all --check`, `cargo test --locked --workspace`),
+  `flutter analyze` + `flutter test`, a release build on both systems, and a check that the generated
+  bridge code is current.
+* Releases carry an Inno Setup installer and a zip for Windows, and a `.tar.gz`, `.deb` and `.rpm` for
+  Linux (`packaging/`). The AppImage is gone: the `.tar.gz` covers the same need without FUSE. Arch and
+  CachyOS use the PKGBUILDs in `packaging/arch/`.
 
 ## 12. Implementation notes (what changed while building)
 

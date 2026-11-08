@@ -27,8 +27,18 @@ pub struct RefreshEvent {
     pub error: Option<ApiError>,
 }
 
-fn event(kind: RefreshEventKind, message: String, summary: Option<FetchSummary>, error: Option<ApiError>) -> RefreshEvent {
-    RefreshEvent { kind, message, summary, error }
+fn event(
+    kind: RefreshEventKind,
+    message: String,
+    summary: Option<FetchSummary>,
+    error: Option<ApiError>,
+) -> RefreshEvent {
+    RefreshEvent {
+        kind,
+        message,
+        summary,
+        error,
+    }
 }
 
 pub struct WishtoryCore {
@@ -37,7 +47,7 @@ pub struct WishtoryCore {
 
 impl WishtoryCore {
     /// Opens (creating if needed) Wishtory's data. `data_dir` is for tests; `None` uses the same
-    /// folder the earlier Tauri releases used, so saved history carries over.
+    /// folder every earlier release used, so saved history carries over.
     pub async fn open(data_dir: Option<String>) -> Result<WishtoryCore, ApiError> {
         let dir = match data_dir {
             Some(d) => PathBuf::from(d),
@@ -49,32 +59,64 @@ impl WishtoryCore {
     }
 
     pub async fn discover_games(&self) -> Result<Vec<GameInstall>, ApiError> {
-        Ok(self.inner.discover_games().await?.into_iter().map(Into::into).collect())
+        Ok(self
+            .inner
+            .discover_games()
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
     pub async fn get_game_locations(&self) -> Result<GameLocations, ApiError> {
         Ok(self.inner.get_game_locations().await?.into())
     }
-    pub async fn set_game_locations(&self, locations: Vec<String>) -> Result<GameLocations, ApiError> {
+    pub async fn set_game_locations(
+        &self,
+        locations: Vec<String>,
+    ) -> Result<GameLocations, ApiError> {
         Ok(self.inner.set_game_locations(locations).await?.into())
     }
 
     /// Read-only: finds the history link the game already cached, then downloads.
     /// `full` downloads everything the server still keeps instead of stopping at what is saved.
-    pub async fn refresh_from_game(&self, game: GameId, full: bool, events: StreamSink<RefreshEvent>) {
+    pub async fn refresh_from_game(
+        &self,
+        game: GameId,
+        full: bool,
+        events: StreamSink<RefreshEvent>,
+    ) {
         let progress = progress_sink(&events);
-        let result = self.inner.refresh_from_game(game.into(), full, progress).await;
+        let result = self
+            .inner
+            .refresh_from_game(game.into(), full, progress)
+            .await;
         finish(&events, result);
     }
 
     /// Same, with a link the person pasted.
-    pub async fn fetch_history(&self, game: GameId, url: String, full: bool, events: StreamSink<RefreshEvent>) {
+    pub async fn fetch_history(
+        &self,
+        game: GameId,
+        url: String,
+        full: bool,
+        events: StreamSink<RefreshEvent>,
+    ) {
         let progress = progress_sink(&events);
-        let result = self.inner.fetch_history(game.into(), url, full, progress).await;
+        let result = self
+            .inner
+            .fetch_history(game.into(), url, full, progress)
+            .await;
         finish(&events, result);
     }
 
     pub async fn list_accounts(&self) -> Result<Vec<Account>, ApiError> {
-        Ok(self.inner.list_accounts().await?.into_iter().filter_map(Account::from_core).collect())
+        Ok(self
+            .inner
+            .list_accounts()
+            .await?
+            .into_iter()
+            .filter_map(Account::from_core)
+            .collect())
     }
     pub async fn delete_account(&self, game: GameId, uid: String) -> Result<(), ApiError> {
         Ok(self.inner.delete_account(game.into(), uid).await?)
@@ -85,11 +127,28 @@ impl WishtoryCore {
     }
 
     /// Newest first. `banner` is one of the keys from [`game_meta`], or `None` for every banner.
-    pub async fn get_history(&self, game: GameId, uid: String, banner: Option<String>) -> Result<Vec<HistoryPull>, ApiError> {
-        Ok(self.inner.get_history(game.into(), uid, banner).await?.into_iter().map(Into::into).collect())
+    pub async fn get_history(
+        &self,
+        game: GameId,
+        uid: String,
+        banner: Option<String>,
+    ) -> Result<Vec<HistoryPull>, ApiError> {
+        Ok(self
+            .inner
+            .get_history(game.into(), uid, banner)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
     pub async fn get_pity(&self, game: GameId, uid: String) -> Result<Vec<BannerPity>, ApiError> {
-        Ok(self.inner.get_pity(game.into(), uid).await?.into_iter().map(Into::into).collect())
+        Ok(self
+            .inner
+            .get_pity(game.into(), uid)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
     pub async fn get_catalog(&self) -> Result<GameCatalog, ApiError> {
@@ -116,8 +175,17 @@ impl WishtoryCore {
     }
     /// `format` is one of the ids the Import / Export page offers; `game` and `uid` select one
     /// account, or both `None` for everything.
-    pub async fn export_file(&self, path: String, format: String, game: Option<GameId>, uid: Option<String>) -> Result<(), ApiError> {
-        Ok(self.inner.export_file(path, format, game.map(Game::from), uid).await?)
+    pub async fn export_file(
+        &self,
+        path: String,
+        format: String,
+        game: Option<GameId>,
+        uid: Option<String>,
+    ) -> Result<(), ApiError> {
+        Ok(self
+            .inner
+            .export_file(path, format, game.map(Game::from), uid)
+            .await?)
     }
 }
 
@@ -128,14 +196,22 @@ fn progress_sink(events: &StreamSink<RefreshEvent>) -> wishtory_core::Progress {
     })
 }
 
-fn finish(events: &StreamSink<RefreshEvent>, result: Result<ops::FetchSummary, wishtory_core::error::AppError>) {
+fn finish(
+    events: &StreamSink<RefreshEvent>,
+    result: Result<ops::FetchSummary, wishtory_core::error::AppError>,
+) {
     let event = match result.map_err(ApiError::from).and_then(|s| {
         FetchSummary::from_core(s).ok_or_else(|| ApiError {
             code: super::error::ErrorCode::Other,
             message: "The history belongs to a game this version does not know.".into(),
         })
     }) {
-        Ok(summary) => event(RefreshEventKind::Finished, String::new(), Some(summary), None),
+        Ok(summary) => event(
+            RefreshEventKind::Finished,
+            String::new(),
+            Some(summary),
+            None,
+        ),
         Err(e) => event(RefreshEventKind::Failed, e.message.clone(), None, Some(e)),
     };
     let _ = events.add(event);
@@ -145,7 +221,10 @@ fn finish(events: &StreamSink<RefreshEvent>, result: Result<ops::FetchSummary, w
 
 /// Static per-game naming (the History banner filter), kept in Rust so Dart holds no copy.
 pub fn game_meta() -> Vec<GameMeta> {
-    ops::get_game_meta().into_iter().filter_map(GameMeta::from_core).collect()
+    ops::get_game_meta()
+        .into_iter()
+        .filter_map(GameMeta::from_core)
+        .collect()
 }
 pub fn get_about() -> AboutInfo {
     about::get_about().into()
