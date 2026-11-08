@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' show ExternalLibrary;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'bridge/generated/frb_generated.dart';
@@ -15,14 +14,7 @@ import 'state/providers.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await windowManager.ensureInitialized();
-  await windowManager.waitUntilReadyToShow(
-    const WindowOptions(size: Size(1280, 820), minimumSize: Size(960, 640), center: true, title: 'Wishtory'),
-    () async {
-      await windowManager.show();
-      await windowManager.focus();
-    },
-  );
+  // Window title, size and minimum size are set in the platform runners (see docs/redesign/BUILDING.md).
 
   final prefs = await SharedPreferences.getInstance();
   final icons = await IconTable.load();

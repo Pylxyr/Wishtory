@@ -221,7 +221,7 @@ class _Toolbar extends ConsumerWidget {
         Wrap(spacing: 12, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
           SegmentedButton<HistoryMode>(
             showSelectedIcon: false,
-            segments: [
+            segments: const [
               ButtonSegment(value: HistoryMode.rare, label: Text('Rare pulls'), icon: Icon(Icons.star_outline, size: 16)),
               ButtonSegment(value: HistoryMode.all, label: Text('All pulls'), icon: Icon(Icons.table_rows_outlined, size: 16)),
             ],

@@ -1,5 +1,5 @@
 import 'generated/api/core_api.dart' as rs;
-import 'generated/api/core_api.dart' show WishtoryCore, RefreshEvent, RefreshEventKind;
+import 'generated/api/core_api.dart' show WishtoryCore, RefreshEvent;
 import 'generated/api/types.dart';
 
 export 'generated/api/core_api.dart' show RefreshEvent, RefreshEventKind;

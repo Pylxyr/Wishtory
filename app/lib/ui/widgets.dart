@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bridge/wishtory_api.dart';
 import '../domain/game_info.dart';
-import '../domain/icons.dart';
 import '../domain/recovery.dart';
 import '../state/providers.dart';
 import 'tokens.dart';
@@ -148,7 +147,7 @@ class ItemIcon extends ConsumerWidget {
               url,
               fit: BoxFit.cover,
               excludeFromSemantics: true,
-              errorBuilder: (_, __, ___) => fallback,
+              errorBuilder: (_, _, _) => fallback,
               loadingBuilder: (_, child, progress) => progress == null ? child : fallback,
             ),
     );
