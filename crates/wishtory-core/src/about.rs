@@ -101,21 +101,27 @@ const GROUPS: &[CreditGroup] = &[
                 "https://gachatracker.app/",
                 "",
             ),
+        ],
+    },
+    CreditGroup {
+        title: "Game wikis",
+        note: "The community wikis for each game, used to check banner dates, featured items and game terms. They are references; Wishtory does not use them at run time.",
+        credits: &[
             credit(
-                "TimeSaver",
-                "Zenless Zone Zero channel history, rerun and Rescreening windows.",
-                "https://timesaver.gg/",
-                "",
-            ),
-            credit(
-                "Genshin Impact Wiki",
+                "Genshin Impact Wiki (Fandom)",
                 "Event wish durations and server times.",
                 "https://genshin-impact.fandom.com/",
                 "",
             ),
             credit(
-                "Zenless Zone Zero Wiki",
-                "Exclusive Rescreening and Custom Search details.",
+                "Honkai: Star Rail Wiki (Fandom)",
+                "Warp banner windows, featured characters and Light Cones, and game terms.",
+                "https://honkai-star-rail.fandom.com/",
+                "",
+            ),
+            credit(
+                "Zenless Zone Zero Wiki (Fandom)",
+                "Channel history, Exclusive Rescreening and Custom Search details.",
                 "https://zenless-zone-zero.fandom.com/",
                 "",
             ),
@@ -125,9 +131,10 @@ const GROUPS: &[CreditGroup] = &[
         title: "Built with",
         note: "Open-source software and fonts shipped inside Wishtory. The full list of libraries and their licences is in the source repository.",
         credits: &[
-            credit("Tauri", "Desktop app framework.", "https://tauri.app/", "Apache-2.0 OR MIT"),
-            credit("Svelte", "Interface framework.", "https://svelte.dev/", "MIT"),
-            credit("Vite", "Frontend build tooling.", "https://vite.dev/", "MIT"),
+            credit("Flutter", "Interface toolkit.", "https://flutter.dev/", "BSD-3-Clause"),
+            credit("Rust", "Core: game-file discovery, history download, pity maths and storage.", "https://www.rust-lang.org/", "Apache-2.0 OR MIT"),
+            credit("flutter_rust_bridge", "Connects the Flutter interface to the Rust core.", "https://github.com/fzyzcjy/flutter_rust_bridge", "MIT"),
+            credit("Riverpod", "State management.", "https://riverpod.dev/", "MIT"),
             credit("SQLite", "Local wish database.", "https://sqlite.org/", "Public domain"),
             credit("Google Sans (Fontsource)", "Interface font.", "https://fontsource.org/fonts/google-sans", "OFL-1.1"),
             credit("JetBrains Mono (Fontsource)", "Monospace font.", "https://www.jetbrains.com/lp/mono/", "OFL-1.1"),
@@ -254,6 +261,9 @@ mod tests {
             "https://github.com/Pylxyr/Wishtory/releases/tag/v1.2.3-rc.1+b5",
             "https://uigf.org/",
             "https://paimon.moe/",
+            "https://genshin-impact.fandom.com/",
+            "https://honkai-star-rail.fandom.com/",
+            "https://zenless-zone-zero.fandom.com/",
         ] {
             assert!(is_allowed(link), "{link}");
         }
