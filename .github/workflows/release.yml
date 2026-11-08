@@ -252,10 +252,10 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          for pattern in "*.tar.gz" "*.deb" "*.rpm"; do
-            files=(release/$pattern)
+          for ext in tar.gz deb rpm; do
+            files=(release/*."$ext")
             if [ "${#files[@]}" -ne 1 ] || [ ! -f "${files[0]}" ]; then
-              echo "::error::Expected exactly one $pattern in release/, found: ${files[*]}"
+              echo "::error::Expected exactly one .$ext in release/, found: ${files[*]}"
               exit 1
             fi
             case "$(basename "${files[0]}")" in
