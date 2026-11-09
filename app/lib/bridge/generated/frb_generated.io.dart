@@ -96,6 +96,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
+  CloudBackup dco_decode_box_autoadd_cloud_backup(dynamic raw);
+
+  @protected
   double dco_decode_box_autoadd_f_32(dynamic raw);
 
   @protected
@@ -115,6 +118,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CatalogItem dco_decode_catalog_item(dynamic raw);
+
+  @protected
+  CloudBackup dco_decode_cloud_backup(dynamic raw);
+
+  @protected
+  CloudStatus dco_decode_cloud_status(dynamic raw);
 
   @protected
   Credit dco_decode_credit(dynamic raw);
@@ -186,6 +195,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<CatalogItem> dco_decode_list_catalog_item(dynamic raw);
 
   @protected
+  List<CloudBackup> dco_decode_list_cloud_backup(dynamic raw);
+
+  @protected
   List<Credit> dco_decode_list_credit(dynamic raw);
 
   @protected
@@ -232,6 +244,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+
+  @protected
+  CloudBackup? dco_decode_opt_box_autoadd_cloud_backup(dynamic raw);
 
   @protected
   double? dco_decode_opt_box_autoadd_f_32(dynamic raw);
@@ -346,6 +361,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
+  CloudBackup sse_decode_box_autoadd_cloud_backup(SseDeserializer deserializer);
+
+  @protected
   double sse_decode_box_autoadd_f_32(SseDeserializer deserializer);
 
   @protected
@@ -367,6 +385,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   CatalogItem sse_decode_catalog_item(SseDeserializer deserializer);
+
+  @protected
+  CloudBackup sse_decode_cloud_backup(SseDeserializer deserializer);
+
+  @protected
+  CloudStatus sse_decode_cloud_status(SseDeserializer deserializer);
 
   @protected
   Credit sse_decode_credit(SseDeserializer deserializer);
@@ -440,6 +464,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<CatalogItem> sse_decode_list_catalog_item(SseDeserializer deserializer);
 
   @protected
+  List<CloudBackup> sse_decode_list_cloud_backup(SseDeserializer deserializer);
+
+  @protected
   List<Credit> sse_decode_list_credit(SseDeserializer deserializer);
 
   @protected
@@ -490,6 +517,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
+  CloudBackup? sse_decode_opt_box_autoadd_cloud_backup(
+    SseDeserializer deserializer,
+  );
 
   @protected
   double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer);
@@ -619,6 +651,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_cloud_backup(
+    CloudBackup self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer);
 
   @protected
@@ -644,6 +682,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_catalog_item(CatalogItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_cloud_backup(CloudBackup self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_cloud_status(CloudStatus self, SseSerializer serializer);
 
   @protected
   void sse_encode_credit(Credit self, SseSerializer serializer);
@@ -730,6 +774,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_cloud_backup(
+    List<CloudBackup> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_credit(List<Credit> self, SseSerializer serializer);
 
   @protected
@@ -797,6 +847,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_cloud_backup(
+    CloudBackup? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer);

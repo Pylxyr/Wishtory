@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -2002130785;
+  int get rustContentHash => 272347739;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -82,6 +82,47 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
 abstract class RustLibApi extends BaseApi {
   Future<PlatformInt64> crateApiCoreApiWishtoryCoreClearAllHistory({
+    required WishtoryCore that,
+  });
+
+  Future<CloudBackup?> crateApiCoreApiWishtoryCoreCloudBackupIfDue({
+    required WishtoryCore that,
+  });
+
+  Future<CloudBackup> crateApiCoreApiWishtoryCoreCloudBackupNow({
+    required WishtoryCore that,
+  });
+
+  Future<void> crateApiCoreApiWishtoryCoreCloudCancelSignIn({
+    required WishtoryCore that,
+  });
+
+  Future<List<CloudBackup>> crateApiCoreApiWishtoryCoreCloudListBackups({
+    required WishtoryCore that,
+  });
+
+  Future<ImportSummary> crateApiCoreApiWishtoryCoreCloudRestore({
+    required WishtoryCore that,
+    required String id,
+    String? passphrase,
+  });
+
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSetAutoBackup({
+    required WishtoryCore that,
+    required bool enabled,
+  });
+
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSignIn({
+    required WishtoryCore that,
+    required String passphrase,
+  });
+
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSignOut({
+    required WishtoryCore that,
+    required bool deleteBackups,
+  });
+
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudStatus({
     required WishtoryCore that,
   });
 
@@ -239,6 +280,340 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<CloudBackup?> crateApiCoreApiWishtoryCoreCloudBackupIfDue({
+    required WishtoryCore that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_cloud_backup,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudBackupIfDueConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudBackupIfDueConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_backup_if_due",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<CloudBackup> crateApiCoreApiWishtoryCoreCloudBackupNow({
+    required WishtoryCore that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cloud_backup,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudBackupNowConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudBackupNowConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_backup_now",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiCoreApiWishtoryCoreCloudCancelSignIn({
+    required WishtoryCore that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudCancelSignInConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudCancelSignInConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_cancel_sign_in",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<List<CloudBackup>> crateApiCoreApiWishtoryCoreCloudListBackups({
+    required WishtoryCore that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_cloud_backup,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudListBackupsConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudListBackupsConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_list_backups",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<ImportSummary> crateApiCoreApiWishtoryCoreCloudRestore({
+    required WishtoryCore that,
+    required String id,
+    String? passphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          sse_encode_String(id, serializer);
+          sse_encode_opt_String(passphrase, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_import_summary,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudRestoreConstMeta,
+        argValues: [that, id, passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudRestoreConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_restore",
+        argNames: ["that", "id", "passphrase"],
+      );
+
+  @override
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSetAutoBackup({
+    required WishtoryCore that,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          sse_encode_bool(enabled, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cloud_status,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudSetAutoBackupConstMeta,
+        argValues: [that, enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudSetAutoBackupConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_set_auto_backup",
+        argNames: ["that", "enabled"],
+      );
+
+  @override
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSignIn({
+    required WishtoryCore that,
+    required String passphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          sse_encode_String(passphrase, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cloud_status,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudSignInConstMeta,
+        argValues: [that, passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudSignInConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_sign_in",
+        argNames: ["that", "passphrase"],
+      );
+
+  @override
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudSignOut({
+    required WishtoryCore that,
+    required bool deleteBackups,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          sse_encode_bool(deleteBackups, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cloud_status,
+          decodeErrorData: sse_decode_api_error,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudSignOutConstMeta,
+        argValues: [that, deleteBackups],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudSignOutConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_sign_out",
+        argNames: ["that", "deleteBackups"],
+      );
+
+  @override
+  Future<CloudStatus> crateApiCoreApiWishtoryCoreCloudStatus({
+    required WishtoryCore that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerWishtoryCore(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_cloud_status,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCoreApiWishtoryCoreCloudStatusConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCoreApiWishtoryCoreCloudStatusConstMeta =>
+      const TaskConstMeta(
+        debugName: "WishtoryCore_cloud_status",
+        argNames: ["that"],
+      );
+
+  @override
   Future<void> crateApiCoreApiWishtoryCoreDeleteAccount({
     required WishtoryCore that,
     required GameId game,
@@ -257,7 +632,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 11,
             port: port_,
           );
         },
@@ -293,7 +668,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 12,
             port: port_,
           );
         },
@@ -337,7 +712,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 13,
             port: port_,
           );
         },
@@ -382,7 +757,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 5,
+              funcId: 14,
               port: port_,
             );
           },
@@ -420,7 +795,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 15,
             port: port_,
           );
         },
@@ -456,7 +831,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 16,
             port: port_,
           );
         },
@@ -492,7 +867,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 17,
             port: port_,
           );
         },
@@ -528,7 +903,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 18,
             port: port_,
           );
         },
@@ -570,7 +945,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 19,
             port: port_,
           );
         },
@@ -610,7 +985,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 20,
             port: port_,
           );
         },
@@ -648,7 +1023,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 21,
             port: port_,
           );
         },
@@ -684,7 +1059,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 22,
             port: port_,
           );
         },
@@ -715,7 +1090,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 23,
             port: port_,
           );
         },
@@ -754,7 +1129,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 24,
             port: port_,
           );
         },
@@ -792,7 +1167,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 25,
             port: port_,
           );
         },
@@ -835,7 +1210,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 17,
+              funcId: 26,
               port: port_,
             );
           },
@@ -875,7 +1250,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 27,
             port: port_,
           );
         },
@@ -905,7 +1280,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 28,
             port: port_,
           );
         },
@@ -932,7 +1307,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 29,
             port: port_,
           );
         },
@@ -959,7 +1334,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 30,
             port: port_,
           );
         },
@@ -986,7 +1361,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1013,7 +1388,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1041,7 +1416,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 33,
             port: port_,
           );
         },
@@ -1069,7 +1444,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 34,
             port: port_,
           );
         },
@@ -1317,6 +1692,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CloudBackup dco_decode_box_autoadd_cloud_backup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_cloud_backup(raw);
+  }
+
+  @protected
   double dco_decode_box_autoadd_f_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
@@ -1366,6 +1747,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       rarity: dco_decode_u_8(arr[4]),
       kind: dco_decode_String(arr[5]),
       paimonKey: dco_decode_opt_String(arr[6]),
+    );
+  }
+
+  @protected
+  CloudBackup dco_decode_cloud_backup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return CloudBackup(
+      id: dco_decode_String(arr[0]),
+      created: dco_decode_String(arr[1]),
+      size: dco_decode_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  CloudStatus dco_decode_cloud_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return CloudStatus(
+      available: dco_decode_bool(arr[0]),
+      signedIn: dco_decode_bool(arr[1]),
+      account: dco_decode_opt_String(arr[2]),
+      autoBackup: dco_decode_bool(arr[3]),
+      lastBackup: dco_decode_opt_String(arr[4]),
     );
   }
 
@@ -1606,6 +2015,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<CloudBackup> dco_decode_list_cloud_backup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_cloud_backup).toList();
+  }
+
+  @protected
   List<Credit> dco_decode_list_credit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_credit).toList();
@@ -1708,6 +2123,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  CloudBackup? dco_decode_opt_box_autoadd_cloud_backup(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_cloud_backup(raw);
   }
 
   @protected
@@ -2058,6 +2479,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  CloudBackup sse_decode_box_autoadd_cloud_backup(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_cloud_backup(deserializer));
+  }
+
+  @protected
   double sse_decode_box_autoadd_f_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_f_32(deserializer));
@@ -2115,6 +2544,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       rarity: var_rarity,
       kind: var_kind,
       paimonKey: var_paimonKey,
+    );
+  }
+
+  @protected
+  CloudBackup sse_decode_cloud_backup(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_created = sse_decode_String(deserializer);
+    var var_size = sse_decode_i_64(deserializer);
+    return CloudBackup(id: var_id, created: var_created, size: var_size);
+  }
+
+  @protected
+  CloudStatus sse_decode_cloud_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_available = sse_decode_bool(deserializer);
+    var var_signedIn = sse_decode_bool(deserializer);
+    var var_account = sse_decode_opt_String(deserializer);
+    var var_autoBackup = sse_decode_bool(deserializer);
+    var var_lastBackup = sse_decode_opt_String(deserializer);
+    return CloudStatus(
+      available: var_available,
+      signedIn: var_signedIn,
+      account: var_account,
+      autoBackup: var_autoBackup,
+      lastBackup: var_lastBackup,
     );
   }
 
@@ -2395,6 +2850,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<CloudBackup> sse_decode_list_cloud_backup(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <CloudBackup>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_cloud_backup(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<Credit> sse_decode_list_credit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -2581,6 +3048,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_bool(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  CloudBackup? sse_decode_opt_box_autoadd_cloud_backup(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_cloud_backup(deserializer));
     } else {
       return null;
     }
@@ -2919,6 +3399,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_cloud_backup(
+    CloudBackup self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_cloud_backup(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_f_32(self, serializer);
@@ -2970,6 +3459,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_8(self.rarity, serializer);
     sse_encode_String(self.kind, serializer);
     sse_encode_opt_String(self.paimonKey, serializer);
+  }
+
+  @protected
+  void sse_encode_cloud_backup(CloudBackup self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.created, serializer);
+    sse_encode_i_64(self.size, serializer);
+  }
+
+  @protected
+  void sse_encode_cloud_status(CloudStatus self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.available, serializer);
+    sse_encode_bool(self.signedIn, serializer);
+    sse_encode_opt_String(self.account, serializer);
+    sse_encode_bool(self.autoBackup, serializer);
+    sse_encode_opt_String(self.lastBackup, serializer);
   }
 
   @protected
@@ -3182,6 +3689,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_cloud_backup(
+    List<CloudBackup> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_cloud_backup(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_credit(List<Credit> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -3362,6 +3881,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_cloud_backup(
+    CloudBackup? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_cloud_backup(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3506,6 +4038,56 @@ class WishtoryCoreImpl extends RustOpaque implements WishtoryCore {
   /// Returns how many pulls were removed.
   Future<PlatformInt64> clearAllHistory() => RustLib.instance.api
       .crateApiCoreApiWishtoryCoreClearAllHistory(that: this);
+
+  /// The automatic backup: runs only if switched on and the last one is over a day old.
+  Future<CloudBackup?> cloudBackupIfDue() => RustLib.instance.api
+      .crateApiCoreApiWishtoryCoreCloudBackupIfDue(that: this);
+
+  Future<CloudBackup> cloudBackupNow() => RustLib.instance.api
+      .crateApiCoreApiWishtoryCoreCloudBackupNow(that: this);
+
+  /// Gives up a sign-in that is waiting for the browser.
+  Future<void> cloudCancelSignIn() => RustLib.instance.api
+      .crateApiCoreApiWishtoryCoreCloudCancelSignIn(that: this);
+
+  /// Newest first.
+  Future<List<CloudBackup>> cloudListBackups() => RustLib.instance.api
+      .crateApiCoreApiWishtoryCoreCloudListBackups(that: this);
+
+  /// Merges a backup into the saved history. `passphrase` is only for a backup made under a
+  /// different passphrase than the one saved on this PC.
+  Future<ImportSummary> cloudRestore({
+    required String id,
+    String? passphrase,
+  }) => RustLib.instance.api.crateApiCoreApiWishtoryCoreCloudRestore(
+    that: this,
+    id: id,
+    passphrase: passphrase,
+  );
+
+  Future<CloudStatus> cloudSetAutoBackup({required bool enabled}) =>
+      RustLib.instance.api.crateApiCoreApiWishtoryCoreCloudSetAutoBackup(
+        that: this,
+        enabled: enabled,
+      );
+
+  /// Opens Google's sign-in page in the browser and waits (up to five minutes) for the person to
+  /// finish. `passphrase` encrypts every backup and is kept in the system's credential store.
+  Future<CloudStatus> cloudSignIn({required String passphrase}) =>
+      RustLib.instance.api.crateApiCoreApiWishtoryCoreCloudSignIn(
+        that: this,
+        passphrase: passphrase,
+      );
+
+  /// Disconnects from Google. `delete_backups` also deletes the backup files from Drive first.
+  Future<CloudStatus> cloudSignOut({required bool deleteBackups}) =>
+      RustLib.instance.api.crateApiCoreApiWishtoryCoreCloudSignOut(
+        that: this,
+        deleteBackups: deleteBackups,
+      );
+
+  Future<CloudStatus> cloudStatus() =>
+      RustLib.instance.api.crateApiCoreApiWishtoryCoreCloudStatus(that: this);
 
   Future<void> deleteAccount({required GameId game, required String uid}) =>
       RustLib.instance.api.crateApiCoreApiWishtoryCoreDeleteAccount(

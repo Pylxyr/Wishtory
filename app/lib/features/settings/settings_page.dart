@@ -15,6 +15,7 @@ import '../../state/toasts.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../help/tutorial.dart';
+import 'cloud_backup.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -64,6 +65,9 @@ class SettingsPage extends ConsumerWidget {
       const SizedBox(height: 24),
       const SectionLabel('Updates'),
       const _Updates(),
+      const SizedBox(height: 24),
+      const SectionLabel('Cloud backup'),
+      const CloudBackupPanel(),
       const SizedBox(height: 24),
       const SectionLabel('Item pictures'),
       const _ItemPictures(),

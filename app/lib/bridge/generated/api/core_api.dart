@@ -39,6 +39,32 @@ abstract class WishtoryCore implements RustOpaqueInterface {
   /// Returns how many pulls were removed.
   Future<PlatformInt64> clearAllHistory();
 
+  /// The automatic backup: runs only if switched on and the last one is over a day old.
+  Future<CloudBackup?> cloudBackupIfDue();
+
+  Future<CloudBackup> cloudBackupNow();
+
+  /// Gives up a sign-in that is waiting for the browser.
+  Future<void> cloudCancelSignIn();
+
+  /// Newest first.
+  Future<List<CloudBackup>> cloudListBackups();
+
+  /// Merges a backup into the saved history. `passphrase` is only for a backup made under a
+  /// different passphrase than the one saved on this PC.
+  Future<ImportSummary> cloudRestore({required String id, String? passphrase});
+
+  Future<CloudStatus> cloudSetAutoBackup({required bool enabled});
+
+  /// Opens Google's sign-in page in the browser and waits (up to five minutes) for the person to
+  /// finish. `passphrase` encrypts every backup and is kept in the system's credential store.
+  Future<CloudStatus> cloudSignIn({required String passphrase});
+
+  /// Disconnects from Google. `delete_backups` also deletes the backup files from Drive first.
+  Future<CloudStatus> cloudSignOut({required bool deleteBackups});
+
+  Future<CloudStatus> cloudStatus();
+
   Future<void> deleteAccount({required GameId game, required String uid});
 
   Future<List<GameInstall>> discoverGames();

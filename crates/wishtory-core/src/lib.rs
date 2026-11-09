@@ -6,6 +6,10 @@
 // * Network traffic is the official HoYoverse history API (fetch.rs), the signed catalog, banner
 //   list and pity rules (catalog.rs, rules.rs) and a version check of this project's GitHub releases (update.rs). None of
 //   them is sent an account or wish data.
+// * Cloud backup (cloud/) is OFF until the person signs in to Google. Then, and only then, wish
+//   history is uploaded, encrypted on this PC with the person's passphrase, to the hidden app-data
+//   folder of their own Google Drive. The Google sign-in and passphrase are kept in the operating
+//   system's credential store, never in a file.
 // -----------------------------------------------------------------------------
 //! UI-agnostic core of Wishtory. A front end (the Flutter app, through `wishtory-bridge`) opens a
 //! [`Core`] once and calls its methods; nothing in this crate knows about windows or toolkits.
@@ -15,12 +19,14 @@ pub mod logging;
 pub mod about;
 pub mod authkey;
 pub mod catalog;
+pub mod cloud;
 pub mod db;
 pub mod discover;
 pub mod error;
 pub mod fetch;
 pub mod fsutil;
 pub mod models;
+pub mod net;
 pub mod ops;
 pub mod paimon_items;
 pub mod pity;
@@ -61,6 +67,7 @@ pub struct Core {
     pub banners: BannerStore,
     pub rules: RulesStore,
     pub settings: SettingsStore,
+    pub cloud: cloud::Cloud,
 }
 
 /// Status lines while a refresh runs. Plain text only: never a link or authkey.
@@ -75,6 +82,7 @@ impl Core {
             banners: BannerStore::open(dir),
             rules: RulesStore::open(dir),
             settings: SettingsStore::open(dir),
+            cloud: cloud::Cloud::new(),
         })
     }
 
@@ -158,5 +166,55 @@ impl Core {
         uid: Option<String>,
     ) -> Result<(), AppError> {
         ops::export_file(&self.db, &self.catalog, path, format, game, uid).await
+    }
+
+    // ---- Cloud backup (Google Drive app-data folder) ----
+
+    pub fn cloud_status(&self) -> cloud::CloudStatus {
+        self.cloud.status(&self.settings)
+    }
+    pub async fn cloud_sign_in(&self, passphrase: String) -> Result<cloud::CloudStatus, AppError> {
+        self.cloud.sign_in(&self.settings, passphrase).await
+    }
+    pub fn cloud_cancel_sign_in(&self) {
+        self.cloud.cancel_sign_in();
+    }
+    pub async fn cloud_sign_out(
+        &self,
+        delete_backups: bool,
+    ) -> Result<cloud::CloudStatus, AppError> {
+        self.cloud.sign_out(&self.settings, delete_backups).await
+    }
+    pub fn cloud_set_auto_backup(&self, enabled: bool) -> Result<cloud::CloudStatus, AppError> {
+        self.cloud.set_auto_backup(&self.settings, enabled)
+    }
+    pub async fn cloud_backup_now(&self) -> Result<cloud::BackupFile, AppError> {
+        self.cloud
+            .backup_now(&self.db, &self.catalog, &self.settings)
+            .await
+    }
+    pub async fn cloud_backup_if_due(&self) -> Result<Option<cloud::BackupFile>, AppError> {
+        self.cloud
+            .backup_if_due(&self.db, &self.catalog, &self.settings)
+            .await
+    }
+    pub async fn cloud_list_backups(&self) -> Result<Vec<cloud::BackupFile>, AppError> {
+        self.cloud.list_backups(&self.settings).await
+    }
+    pub async fn cloud_restore(
+        &self,
+        id: String,
+        passphrase: Option<String>,
+    ) -> Result<uigf::ImportSummary, AppError> {
+        self.cloud
+            .restore(
+                &self.db,
+                &self.catalog,
+                &self.banners,
+                &self.settings,
+                id,
+                passphrase,
+            )
+            .await
     }
 }

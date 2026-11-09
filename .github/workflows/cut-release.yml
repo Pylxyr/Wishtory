@@ -110,6 +110,8 @@ jobs:
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       AI_API_KEY: ${{ secrets.AI_API_KEY }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
 
   # The last word on whether this worked. A skipped or failed release job must never look like success: this job
   # checks that a published (non-draft) release exists for the tag, and says what to do when it does not.

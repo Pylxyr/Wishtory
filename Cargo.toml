@@ -12,3 +12,9 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+
+# Argon2 (cloud backup key derivation) is deliberately heavy; unoptimised it makes `cargo test` crawl.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

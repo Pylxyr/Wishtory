@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `hash`
 
 class AboutInfo {
   final String name;
@@ -400,6 +400,74 @@ class CatalogItem {
           rarity == other.rarity &&
           kind == other.kind &&
           paimonKey == other.paimonKey;
+}
+
+/// One backup file in the person's Drive.
+class CloudBackup {
+  final String id;
+
+  /// When Drive stored it, RFC 3339.
+  final String created;
+  final PlatformInt64 size;
+
+  const CloudBackup({
+    required this.id,
+    required this.created,
+    required this.size,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ created.hashCode ^ size.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CloudBackup &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          created == other.created &&
+          size == other.size;
+}
+
+/// What the Settings page shows about cloud backup (Google Drive).
+class CloudStatus {
+  /// False in builds made without a Google client ID: the section explains instead of offering it.
+  final bool available;
+  final bool signedIn;
+
+  /// The connected Google account, for display.
+  final String? account;
+  final bool autoBackup;
+
+  /// When the last backup finished, RFC 3339.
+  final String? lastBackup;
+
+  const CloudStatus({
+    required this.available,
+    required this.signedIn,
+    this.account,
+    required this.autoBackup,
+    this.lastBackup,
+  });
+
+  @override
+  int get hashCode =>
+      available.hashCode ^
+      signedIn.hashCode ^
+      account.hashCode ^
+      autoBackup.hashCode ^
+      lastBackup.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CloudStatus &&
+          runtimeType == other.runtimeType &&
+          available == other.available &&
+          signedIn == other.signedIn &&
+          account == other.account &&
+          autoBackup == other.autoBackup &&
+          lastBackup == other.lastBackup;
 }
 
 class Credit {

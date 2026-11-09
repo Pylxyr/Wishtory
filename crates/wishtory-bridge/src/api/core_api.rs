@@ -170,6 +170,54 @@ impl WishtoryCore {
         Ok(self.inner.refresh_banners(force).await?.into())
     }
 
+    // ---- Cloud backup: the person's own Google Drive, encrypted on this PC ----
+
+    pub fn cloud_status(&self) -> CloudStatus {
+        self.inner.cloud_status().into()
+    }
+    /// Opens Google's sign-in page in the browser and waits (up to five minutes) for the person to
+    /// finish. `passphrase` encrypts every backup and is kept in the system's credential store.
+    pub async fn cloud_sign_in(&self, passphrase: String) -> Result<CloudStatus, ApiError> {
+        Ok(self.inner.cloud_sign_in(passphrase).await?.into())
+    }
+    /// Gives up a sign-in that is waiting for the browser.
+    pub fn cloud_cancel_sign_in(&self) {
+        self.inner.cloud_cancel_sign_in();
+    }
+    /// Disconnects from Google. `delete_backups` also deletes the backup files from Drive first.
+    pub async fn cloud_sign_out(&self, delete_backups: bool) -> Result<CloudStatus, ApiError> {
+        Ok(self.inner.cloud_sign_out(delete_backups).await?.into())
+    }
+    pub fn cloud_set_auto_backup(&self, enabled: bool) -> Result<CloudStatus, ApiError> {
+        Ok(self.inner.cloud_set_auto_backup(enabled)?.into())
+    }
+    pub async fn cloud_backup_now(&self) -> Result<CloudBackup, ApiError> {
+        Ok(self.inner.cloud_backup_now().await?.into())
+    }
+    /// The automatic backup: runs only if switched on and the last one is over a day old.
+    pub async fn cloud_backup_if_due(&self) -> Result<Option<CloudBackup>, ApiError> {
+        Ok(self.inner.cloud_backup_if_due().await?.map(Into::into))
+    }
+    /// Newest first.
+    pub async fn cloud_list_backups(&self) -> Result<Vec<CloudBackup>, ApiError> {
+        Ok(self
+            .inner
+            .cloud_list_backups()
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+    /// Merges a backup into the saved history. `passphrase` is only for a backup made under a
+    /// different passphrase than the one saved on this PC.
+    pub async fn cloud_restore(
+        &self,
+        id: String,
+        passphrase: Option<String>,
+    ) -> Result<ImportSummary, ApiError> {
+        Ok(self.inner.cloud_restore(id, passphrase).await?.into())
+    }
+
     pub async fn import_file(&self, path: String) -> Result<ImportSummary, ApiError> {
         Ok(self.inner.import_file(path).await?.into())
     }

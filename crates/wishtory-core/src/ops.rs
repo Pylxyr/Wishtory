@@ -562,24 +562,45 @@ pub async fn import_file(
     // File read, JSON parse and database merge can take a while: keep them off the async runtime.
     db.run(move |db| {
         let text = decode_text(&read_import_file(&path, MAX_IMPORT_BYTES)?)?;
-        let summary = uigf::import_with_catalog(db, &text, &catalog)
-            .inspect(|r| {
-                wlog!(
-                    Level::Info,
-                    "import ({}): {} new, {} skipped, {} account(s)",
-                    r.format,
-                    r.added,
-                    r.skipped,
-                    r.accounts
-                )
-            })
-            .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))?;
-        if let Err(e) = assign_all_banners(db, &banners) {
-            wlog!(Level::Warn, "banner assignment failed: {e}");
-        }
-        Ok(summary)
+        merge_import(db, &text, &catalog, &banners)
     })
     .await
+}
+
+/// Imports UIGF text that is already in memory (a backup restored from the cloud).
+pub async fn import_text(
+    db: &Db,
+    catalog: &CatalogStore,
+    banners: &BannerStore,
+    text: String,
+) -> Result<ImportSummary, AppError> {
+    let (catalog, banners) = (catalog.current(), banners.current());
+    db.run(move |db| merge_import(db, &text, &catalog, &banners))
+        .await
+}
+
+fn merge_import(
+    db: &Db,
+    text: &str,
+    catalog: &Catalog,
+    banners: &BannerSet,
+) -> Result<ImportSummary, AppError> {
+    let summary = uigf::import_with_catalog(db, text, catalog)
+        .inspect(|r| {
+            wlog!(
+                Level::Info,
+                "import ({}): {} new, {} skipped, {} account(s)",
+                r.format,
+                r.added,
+                r.skipped,
+                r.accounts
+            )
+        })
+        .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))?;
+    if let Err(e) = assign_all_banners(db, banners) {
+        wlog!(Level::Warn, "banner assignment failed: {e}");
+    }
+    Ok(summary)
 }
 
 pub async fn export_file(

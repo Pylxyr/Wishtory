@@ -194,7 +194,7 @@ pub fn open_external(url: String) -> Result<(), AppError> {
 }
 
 #[cfg(windows)]
-fn open_in_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_in_browser(url: &str) -> Result<(), String> {
     // The URL is one argument, never parsed by a shell.
     std::process::Command::new("rundll32")
         .args(["url.dll,FileProtocolHandler", url])
@@ -204,7 +204,7 @@ fn open_in_browser(url: &str) -> Result<(), String> {
 }
 
 #[cfg(unix)]
-fn open_in_browser(url: &str) -> Result<(), String> {
+pub(crate) fn open_in_browser(url: &str) -> Result<(), String> {
     use std::process::{Command, Stdio};
     // xdg-open opens the default browser on every Linux desktop (KDE, GNOME, ...); gio is the
     // fallback. The URL is one argument, never parsed by a shell, and it was checked against the
@@ -236,7 +236,7 @@ fn open_in_browser(url: &str) -> Result<(), String> {
 }
 
 #[cfg(not(any(windows, unix)))]
-fn open_in_browser(_url: &str) -> Result<(), String> {
+pub(crate) fn open_in_browser(_url: &str) -> Result<(), String> {
     Err("Opening links is not supported on this system.".into())
 }
 

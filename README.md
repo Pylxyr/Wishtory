@@ -18,10 +18,11 @@ Read straight from the game's own saved data. Kept on your own PC.
 ![Genshin Impact](https://img.shields.io/badge/Genshin%20Impact-supported-5AA2FF?style=flat-square)
 ![Honkai: Star Rail](https://img.shields.io/badge/Honkai%3A%20Star%20Rail-supported-5AA2FF?style=flat-square)
 ![Zenless Zone Zero](https://img.shields.io/badge/Zenless%20Zone%20Zero-supported-5AA2FF?style=flat-square)
-![Local first](https://img.shields.io/badge/data-stays%20on%20your%20PC-2EA44F?style=flat-square)
+![Local first](https://img.shields.io/badge/data-stays%20on%20your%20PC%20by%20default-2EA44F?style=flat-square)
+![Encrypted backup](https://img.shields.io/badge/cloud%20backup-optional%20%C2%B7%20end--to--end%20encrypted-2EA44F?style=flat-square)
 ![Read only](https://img.shields.io/badge/game%20files-read%20only-2EA44F?style=flat-square)
 
-[Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Linux](#build-on-linux-cachyos-and-arch-included) &nbsp;|&nbsp; [Use it](#use-it) &nbsp;|&nbsp; [Is it safe?](#is-it-safe) &nbsp;|&nbsp; [Import and export](#import-and-export) &nbsp;|&nbsp; [Credits](#credits)
+[Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Linux](#build-on-linux-cachyos-and-arch-included) &nbsp;|&nbsp; [Use it](#use-it) &nbsp;|&nbsp; [Is it safe?](#is-it-safe) &nbsp;|&nbsp; [Import and export](#import-and-export) &nbsp;|&nbsp; [Cloud backup](#cloud-backup-optional) &nbsp;|&nbsp; [Credits](#credits)
 
 </div>
 
@@ -66,7 +67,7 @@ Switch between Genshin Impact, Honkai: Star Rail and Zenless Zone Zero, and betw
 <td width="50%" valign="top">
 
 ### Move in, move out
-Import and export with UIGF, SRGF and Paimon.moe backups, so your history is never locked in.
+Import and export with UIGF, SRGF and Paimon.moe backups, so your history is never locked in. Optionally back up to your own Google Drive, encrypted on your PC first.
 
 </td>
 <td width="50%" valign="top">
@@ -153,6 +154,8 @@ Wishtory then appears in your application menu, and `wishtory` starts it from a 
 
 Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives updates and uninstalling. Delete that folder to remove it too. The cleanup only removes what the script itself downloaded and built in this folder; the packages it installed through `pacman`, `apt` or `dnf` stay, because other programs use them too.
 
+To include [cloud backup](#cloud-backup-optional) in your own build, give the script your Google client ID first (see [docs/cloud-backup.md](docs/cloud-backup.md)): `WISHTORY_GOOGLE_CLIENT_ID=... WISHTORY_GOOGLE_CLIENT_SECRET=... bash packaging/linux/install.sh`. Without them the app is built without cloud backup.
+
 On a distribution without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `git`, `curl`, `unzip`, `xz`, `zip`, `clang`, `cmake`, `ninja`, `pkg-config`, the GTK 3 development files and Rust 1.91 or newer. Install them, then run it again, and it downloads Flutter itself.
 
 Arch users who already have Flutter installed can also build a pacman package from `packaging/arch/wishtory-git` with `makepkg -sic`.
@@ -194,6 +197,7 @@ Wishtory works the way the well-known community trackers do. It only **reads** f
 - It never sets a proxy and never needs administrator rights.
 - Your history link is only ever sent to the official HoYoverse history service for that game.
 - Its only other internet use is the banner and item catalog, item pictures (downloaded once, then kept on your PC), and the check for new versions. No account or wish data is sent to any of them.
+- **Cloud backup is off until you turn it on.** Only then does anything of yours leave your PC, and only as an encrypted file in your own Google Drive; see [Cloud backup](#cloud-backup-optional) below.
 
 The technical details are in [the developer guide](docs/development.md).
 
@@ -218,6 +222,25 @@ Wishtory speaks the [UIGF](https://uigf.org) standard and a few older formats:
 | Paimon.moe backup, Genshin | yes | yes |
 
 UIGF is the best choice for moving between trackers. Times are kept as the account's server-local time. Rows without a rarity are skipped, and the import summary tells you how many.
+
+---
+
+## Cloud backup (optional)
+
+Wishtory can keep a backup of your wish history in **your own Google Drive**, the way Android backup apps do: sign in once, then press **Back up now** or let it back up by itself once a day. Restore it on any PC by signing in with the same Google account and passphrase. It is off until you set it up in **Settings → Cloud backup**.
+
+**What protects your data**
+
+- **Encrypted before it leaves your PC.** You choose a passphrase (at least 10 characters). Every backup is encrypted with it using Argon2id and ChaCha20-Poly1305, so Google, and anyone who gets into your Google account, only ever sees a file they cannot read. **If you forget the passphrase, the backups cannot be opened**, and nobody, including the developer, can recover them.
+- **Wishtory can see nothing else in your Drive.** It asks Google for one permission only, access to its own hidden app-data folder. It cannot list, read or change any of your other files, and you will not see the backups in the normal Drive view.
+- **Your Google password never reaches Wishtory.** Sign-in happens on Google's own page in your browser.
+- **Secrets stay in your system's password storage.** The Google sign-in and the passphrase are kept in Windows Credential Manager, or in the Secret Service on Linux (KWallet and GNOME Keyring provide it). They are never written to a file, and if your system has no such storage, cloud backup tells you and stays off.
+- **Restoring only adds.** A restore merges into your saved history and skips pulls you already have. It never removes anything.
+- **You stay in control.** The last 5 backups are kept and older ones are deleted. **Disconnect** removes the sign-in from your PC and revokes it with Google, and can delete the backups from your Drive too. You can also remove Wishtory's access any time at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+What is backed up is the same wish history the **Export** page writes as UIGF, for every account. Item pictures, nicknames and settings are not included.
+
+This needs a build that includes a Google client ID. The Windows releases do when the maintainer has set one up; if your copy was built without it, the Settings page says so and nothing is ever sent. Building it yourself is described in [docs/cloud-backup.md](docs/cloud-backup.md).
 
 ---
 

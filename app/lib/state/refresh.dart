@@ -82,6 +82,7 @@ class RefreshController extends Notifier<RefreshState> {
     await ref.read(accountsProvider.notifier).reload();
     ref.read(navProvider.notifier).selectAccount(s.game, s.uid);
     ref.read(dataTickProvider.notifier).bump();
+    unawaited(runCloudBackupIfDue(ref.read(apiProvider)));
     state = RefreshState(
       game: game,
       result: RefreshResult(game: s.game, uid: s.uid, fetched: s.fetched, added: s.added, warning: s.warning),
@@ -112,6 +113,15 @@ Future<void> runStartupTasks(WidgetRef ref) async {
     }
   } catch (_) {}
   unawaited(ref.read(appUpdateProvider.notifier).check(silent: true));
+  unawaited(runCloudBackupIfDue(ref.read(apiProvider)));
+}
+
+/// The automatic cloud backup. Does nothing unless the person switched it on and a day has passed,
+/// and stays silent when it cannot run: the Settings page shows the state and any problem.
+Future<void> runCloudBackupIfDue(WishtoryApi api) async {
+  try {
+    await api.cloudBackupIfDue();
+  } catch (_) {}
 }
 
 class AppUpdateController extends Notifier<Loadable<AppUpdate>> {

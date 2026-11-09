@@ -35,6 +35,12 @@ on:
       AI_API_KEY:
         description: "Key for the AI release notes (other provider); unset means notes without AI"
         required: false
+      GOOGLE_CLIENT_ID:
+        description: "Google OAuth client ID (type Desktop app) for cloud backup; unset builds without cloud backup"
+        required: false
+      GOOGLE_CLIENT_SECRET:
+        description: "Google OAuth client secret for that client; not confidential for a desktop app, see docs/cloud-backup.md"
+        required: false
 
 concurrency:
   group: release-${{ github.ref }}
@@ -50,6 +56,11 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 60
+    # Compiled into the app (option_env! in crates/wishtory-core/src/cloud/oauth.rs). Unset: the release
+    # is built without cloud backup. Job level, so every step that compiles Rust sees the same values.
+    env:
+      WISHTORY_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      WISHTORY_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
     outputs:
       version: ${{ steps.ver.outputs.version }}
       tag: ${{ steps.ver.outputs.tag }}

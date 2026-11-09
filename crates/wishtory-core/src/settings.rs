@@ -1,7 +1,8 @@
-//! Small user settings kept next to the database (`settings.json` in the app data folder).
-//! Today there is one: extra folders to search for game installs, which Linux needs because games
-//! run inside Wine prefixes that can live anywhere.
-//! SAFETY: the folders are only ever read (see wine.rs and discover.rs).
+//! Small user settings kept next to the database (`settings.json` in the app data folder):
+//! extra folders to search for game installs (which Linux needs because games run inside Wine
+//! prefixes that can live anywhere), and the cloud backup switches.
+//! SAFETY: the folders are only ever read (see wine.rs and discover.rs). Nothing secret is kept
+//! here: the Google sign-in and the backup passphrase live in the operating system's credential store.
 
 use crate::error::AppError;
 use serde::{Deserialize, Serialize};
@@ -32,10 +33,26 @@ fn publish(locations: &[PathBuf]) {
     }
 }
 
+/// The non-secret cloud backup state.
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloudSettings {
+    /// Back up by itself, at most once a day, while the app is open.
+    #[serde(default)]
+    pub auto_backup: bool,
+    /// When the last backup finished, RFC 3339.
+    #[serde(default)]
+    pub last_backup: Option<String>,
+    /// The Google account that is connected, for display.
+    #[serde(default)]
+    pub account: Option<String>,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct SettingsFile {
     #[serde(default)]
     game_locations: Vec<String>,
+    #[serde(default)]
+    cloud: CloudSettings,
 }
 
 pub struct SettingsStore {
@@ -55,18 +72,38 @@ impl SettingsStore {
         store
     }
 
-    fn load_locations(&self) -> Vec<PathBuf> {
+    fn load_file(&self) -> SettingsFile {
         let usable = fs::metadata(&self.path)
             .map(|m| m.is_file() && m.len() <= MAX_FILE_BYTES)
             .unwrap_or(false);
         if !usable {
-            return vec![];
+            return SettingsFile::default();
         }
-        let file: SettingsFile = fs::read(&self.path)
+        fs::read(&self.path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default();
-        clean(file.game_locations)
+            .unwrap_or_default()
+    }
+
+    fn load_locations(&self) -> Vec<PathBuf> {
+        clean(self.load_file().game_locations)
+    }
+
+    /// The cloud backup state (defaults when nothing was saved).
+    pub fn cloud(&self) -> CloudSettings {
+        self.load_file().cloud
+    }
+
+    /// Changes the cloud backup state and saves it; returns the new state.
+    pub fn update_cloud(
+        &self,
+        change: impl FnOnce(&mut CloudSettings),
+    ) -> Result<CloudSettings, AppError> {
+        let _guard = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let mut file = self.load_file();
+        change(&mut file.cloud);
+        self.write(&file)?;
+        Ok(file.cloud)
     }
 
     /// The saved extra folders, as text for the interface.
@@ -91,12 +128,11 @@ impl SettingsStore {
                 )));
             }
         }
-        let file = SettingsFile {
-            game_locations: wanted
-                .iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect(),
-        };
+        let mut file = self.load_file();
+        file.game_locations = wanted
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
         self.write(&file)?;
         publish(&wanted);
         Ok(file.game_locations)
@@ -200,6 +236,27 @@ mod tests {
         assert!(again
             .set_game_locations(vec![folder.to_string_lossy().into_owned()])
             .is_ok());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cloud_state_and_game_folders_do_not_overwrite_each_other() {
+        let dir = scratch();
+        let store = SettingsStore::open(&dir);
+        assert_eq!(store.cloud(), CloudSettings::default());
+        store
+            .update_cloud(|c| {
+                c.auto_backup = true;
+                c.account = Some("me@example.com".into());
+            })
+            .unwrap();
+        store.set_game_locations(vec![]).unwrap();
+        let again = SettingsStore::open(&dir);
+        assert!(again.cloud().auto_backup);
+        assert_eq!(again.cloud().account.as_deref(), Some("me@example.com"));
+        // An older settings file without a `cloud` section still loads.
+        fs::write(dir.join("settings.json"), br#"{"game_locations":[]}"#).unwrap();
+        assert_eq!(SettingsStore::open(&dir).cloud(), CloudSettings::default());
         let _ = fs::remove_dir_all(&dir);
     }
 

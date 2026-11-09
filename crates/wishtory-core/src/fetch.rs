@@ -285,11 +285,8 @@ pub async fn fetch_all(
         ("authkey", authkey),
     ];
 
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(Duration::from_secs(10))
+    let client = crate::net::client_builder()
         .timeout(Duration::from_secs(20))
-        .https_only(true)
         .redirect(reqwest::redirect::Policy::none()) // the authkey must never follow a redirect
         .build()?;
 

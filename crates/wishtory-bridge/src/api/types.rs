@@ -201,6 +201,28 @@ pub struct ImportSummary {
     pub skipped: i64,
 }
 
+/// What the Settings page shows about cloud backup (Google Drive).
+#[derive(Debug, Clone)]
+pub struct CloudStatus {
+    /// False in builds made without a Google client ID: the section explains instead of offering it.
+    pub available: bool,
+    pub signed_in: bool,
+    /// The connected Google account, for display.
+    pub account: Option<String>,
+    pub auto_backup: bool,
+    /// When the last backup finished, RFC 3339.
+    pub last_backup: Option<String>,
+}
+
+/// One backup file in the person's Drive.
+#[derive(Debug, Clone)]
+pub struct CloudBackup {
+    pub id: String,
+    /// When Drive stored it, RFC 3339.
+    pub created: String,
+    pub size: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Credit {
     pub name: String,

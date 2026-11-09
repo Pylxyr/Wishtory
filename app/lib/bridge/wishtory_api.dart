@@ -34,6 +34,23 @@ abstract class WishtoryApi {
   Future<ImportSummary> importFile(String path);
   Future<void> exportFile(String path, String format, {GameId? game, String? uid});
 
+  /// Cloud backup to the person's own Google Drive, encrypted on this PC.
+  Future<CloudStatus> cloudStatus();
+
+  /// Opens Google's sign-in in the browser and completes when the person is done (or gives up).
+  Future<CloudStatus> cloudSignIn(String passphrase);
+  Future<void> cloudCancelSignIn();
+  Future<CloudStatus> cloudSignOut({required bool deleteBackups});
+  Future<CloudStatus> cloudSetAutoBackup(bool enabled);
+  Future<CloudBackup> cloudBackupNow();
+
+  /// The automatic backup: does nothing unless it is switched on and a day has passed.
+  Future<CloudBackup?> cloudBackupIfDue();
+
+  /// Newest first.
+  Future<List<CloudBackup>> cloudListBackups();
+  Future<ImportSummary> cloudRestore(String id, {String? passphrase});
+
   Future<List<GameMeta>> gameMeta();
   Future<AboutInfo> getAbout();
   Future<void> openExternal(String url);
@@ -92,6 +109,25 @@ class RustWishtoryApi implements WishtoryApi {
   @override
   Future<void> exportFile(String path, String format, {GameId? game, String? uid}) =>
       _core.exportFile(path: path, format: format, game: game, uid: uid);
+
+  @override
+  Future<CloudStatus> cloudStatus() => _core.cloudStatus();
+  @override
+  Future<CloudStatus> cloudSignIn(String passphrase) => _core.cloudSignIn(passphrase: passphrase);
+  @override
+  Future<void> cloudCancelSignIn() => _core.cloudCancelSignIn();
+  @override
+  Future<CloudStatus> cloudSignOut({required bool deleteBackups}) => _core.cloudSignOut(deleteBackups: deleteBackups);
+  @override
+  Future<CloudStatus> cloudSetAutoBackup(bool enabled) => _core.cloudSetAutoBackup(enabled: enabled);
+  @override
+  Future<CloudBackup> cloudBackupNow() => _core.cloudBackupNow();
+  @override
+  Future<CloudBackup?> cloudBackupIfDue() => _core.cloudBackupIfDue();
+  @override
+  Future<List<CloudBackup>> cloudListBackups() => _core.cloudListBackups();
+  @override
+  Future<ImportSummary> cloudRestore(String id, {String? passphrase}) => _core.cloudRestore(id: id, passphrase: passphrase);
 
   @override
   Future<List<GameMeta>> gameMeta() => rs.gameMeta();

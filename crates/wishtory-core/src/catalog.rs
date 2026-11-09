@@ -277,10 +277,8 @@ fn redirect_allowed(target: &url::Url, hops_so_far: usize) -> bool {
 }
 
 pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(concat!("Wishtory/", env!("CARGO_PKG_VERSION")))
+    let client = crate::net::client_builder()
         .timeout(Duration::from_secs(10))
-        .https_only(true)
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if redirect_allowed(attempt.url(), attempt.previous().len()) {
                 attempt.follow()

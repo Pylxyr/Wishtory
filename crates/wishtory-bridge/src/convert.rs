@@ -4,6 +4,7 @@ use crate::api::types::*;
 use wishtory_core::{
     about::{About as CoreAbout, Credit as CoreCredit, CreditGroup as CoreCreditGroup},
     catalog::{BannerEntry as CoreBanner, BannerSet, BannerUpdate as CoreBannerUpdate, Catalog},
+    cloud::{BackupFile as CoreBackup, CloudStatus as CoreCloudStatus},
     logging::LogEntry as CoreLogEntry,
     models::{
         Account as CoreAccount, Game, GameInstall as CoreInstall, GameLocations as CoreLocations,
@@ -315,6 +316,28 @@ impl From<CoreLogEntry> for LogEntry {
             level: l.level.into(),
             source: l.source,
             message: l.message,
+        }
+    }
+}
+
+impl From<CoreCloudStatus> for CloudStatus {
+    fn from(s: CoreCloudStatus) -> Self {
+        Self {
+            available: s.available,
+            signed_in: s.signed_in,
+            account: s.account,
+            auto_backup: s.auto_backup,
+            last_backup: s.last_backup,
+        }
+    }
+}
+
+impl From<CoreBackup> for CloudBackup {
+    fn from(b: CoreBackup) -> Self {
+        Self {
+            id: b.id,
+            created: b.created,
+            size: i64::try_from(b.size).unwrap_or(i64::MAX),
         }
     }
 }
