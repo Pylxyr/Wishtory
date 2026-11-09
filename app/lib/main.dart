@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'bridge/generated/frb_generated.dart';
 import 'bridge/wishtory_api.dart';
+import 'domain/icon_cache.dart';
 import 'domain/icons.dart';
 import 'state/providers.dart';
 
@@ -26,6 +27,7 @@ Future<void> main() async {
         sharedPrefsProvider.overrideWithValue(prefs),
         apiProvider.overrideWithValue(api),
         iconTableProvider.overrideWithValue(icons),
+        iconCacheProvider.overrideWithValue(IconCache(IconCache.defaultDirectory())),
       ],
       child: const WishtoryApp(),
     ));

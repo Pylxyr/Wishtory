@@ -58,7 +58,7 @@ const _topics = [
   _Topic(
     'privacy',
     'What leaves this PC',
-    'Only HoYoverse\'s own history service is contacted with your link, to download your history. Wishtory also fetches signed catalog and banner files and checks GitHub for new versions, and loads item pictures from Enka.Network. '
+    'Only HoYoverse\'s own history service is contacted with your link, to download your history. Wishtory also fetches signed catalog and banner files and checks GitHub for new versions, and loads item pictures from Enka.Network (once; they are then kept on this PC). '
         'No account or wish data is sent to any of them. Everything you save stays in Wishtory\'s folder on this PC.',
   ),
 ];

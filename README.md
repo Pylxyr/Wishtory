@@ -193,7 +193,7 @@ Wishtory works the way the well-known community trackers do. It only **reads** f
 - It never changes, locks or writes to any game file or folder.
 - It never sets a proxy and never needs administrator rights.
 - Your history link is only ever sent to the official HoYoverse history service for that game.
-- Its only other internet use is the banner and item catalog, item pictures, and the check for new versions. No account or wish data is sent to any of them.
+- Its only other internet use is the banner and item catalog, item pictures (downloaded once, then kept on your PC), and the check for new versions. No account or wish data is sent to any of them.
 
 The technical details are in [the developer guide](docs/development.md).
 

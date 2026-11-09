@@ -65,6 +65,9 @@ class SettingsPage extends ConsumerWidget {
       const SectionLabel('Updates'),
       const _Updates(),
       const SizedBox(height: 24),
+      const SectionLabel('Item pictures'),
+      const _ItemPictures(),
+      const SizedBox(height: 24),
       const SectionLabel('Diagnostics'),
       Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -224,6 +227,64 @@ class _GameLocationsState extends ConsumerState<_GameLocations> {
           },
           icon: const Icon(Icons.create_new_folder_outlined, size: 18),
           label: const Text('Add a folder…'),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Item pictures are saved on this PC after their first download. Shows the size and clears them.
+class _ItemPictures extends ConsumerStatefulWidget {
+  const _ItemPictures();
+
+  @override
+  ConsumerState<_ItemPictures> createState() => _ItemPicturesState();
+}
+
+class _ItemPicturesState extends ConsumerState<_ItemPictures> {
+  int? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _measure();
+  }
+
+  Future<void> _measure() async {
+    final bytes = await ref.read(iconCacheProvider).sizeBytes();
+    if (mounted) setState(() => _bytes = bytes);
+  }
+
+  String _size(int bytes) => bytes < 1024 * 1024 ? '${(bytes / 1024).round()} KB' : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.wc;
+    final bytes = _bytes;
+    return Panel(
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Saved item pictures', style: Ty.h3),
+            const SizedBox(height: 4),
+            Text(
+              'Pictures are downloaded from Enka.Network once and kept on this PC, so they load instantly and work offline. '
+              '${bytes == null ? '' : 'Using ${_size(bytes)}. '}Clearing them is safe: they download again when needed.',
+              style: Ty.body.copyWith(color: c.muted),
+            ),
+          ]),
+        ),
+        const SizedBox(width: 16),
+        OutlinedButton(
+          onPressed: bytes == 0
+              ? null
+              : () async {
+                  await ref.read(iconCacheProvider).clear();
+                  ref.invalidate(iconFileProvider);
+                  ref.read(toastProvider.notifier).ok('Saved pictures cleared.');
+                  await _measure();
+                },
+          child: const Text('Clear'),
         ),
       ]),
     );

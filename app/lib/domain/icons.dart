@@ -7,7 +7,8 @@ import 'game_info.dart';
 
 /// Item icons come from Enka.Network's public image host (credited in About). Star Rail paths
 /// derive from the catalog id; Genshin and Zenless need the lookup tables (5★ only). Anything
-/// missing returns null and the UI draws a star glyph instead.
+/// missing gives no address and the UI draws a star glyph instead. Pictures are saved on disk by
+/// `IconCache` after the first download.
 class IconTable {
   IconTable(this._elements, this._genshin, this._zenless);
 
@@ -26,20 +27,25 @@ class IconTable {
   /// The element of a Genshin/Star Rail character by English name, or "neutral".
   String elementOf(String name) => _elements[name.trim().toLowerCase()] ?? 'neutral';
 
-  String? iconUrl(CatalogItem? item) {
-    if (item == null || !RegExp(r'^\d+$').hasMatch(item.id)) return null;
+  /// The picture addresses to try, best first. Genshin characters use the front-facing portrait and
+  /// fall back to the side-facing one; everything else has a single picture.
+  List<String> iconUrls(CatalogItem? item) {
+    if (item == null || !RegExp(r'^\d+$').hasMatch(item.id)) return const [];
     final weapon = item.kind != 'character';
     switch (item.game) {
       case 'hkrpg':
-        return '$_enka/ui/hsr/SpriteOutput/${weapon ? 'LightConeMaxFigures' : 'AvatarRoundIcon/Avatar'}/${item.id}.png';
+        return ['$_enka/ui/hsr/SpriteOutput/${weapon ? 'LightConeMaxFigures' : 'AvatarRoundIcon/Avatar'}/${item.id}.png'];
       case 'hk4e':
         final key = _genshin[item.id];
-        return key == null ? null : '$_enka/ui/${weapon ? 'UI_EquipIcon_' : 'UI_AvatarIcon_Side_'}$key.png';
+        if (key == null) return const [];
+        return weapon
+            ? ['$_enka/ui/UI_EquipIcon_$key.png']
+            : ['$_enka/ui/UI_AvatarIcon_$key.png', '$_enka/ui/UI_AvatarIcon_Side_$key.png'];
       case 'nap':
         final key = _zenless[item.id];
-        return key == null ? null : '$_enka/ui/zzz/$key.png';
+        return key == null ? const [] : ['$_enka/ui/zzz/$key.png'];
     }
-    return null;
+    return const [];
   }
 }
 

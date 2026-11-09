@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bridge/wishtory_api.dart';
 import '../domain/game_info.dart';
+import '../domain/icon_cache.dart';
 import '../domain/recovery.dart';
 import '../state/providers.dart';
 import 'tokens.dart';
@@ -130,8 +131,15 @@ class ItemIcon extends ConsumerWidget {
     final c = context.wc;
     final color = c.rarity(rank);
     final item = ref.watch(catalogIndexProvider).find(game, name);
-    final url = ref.watch(iconTableProvider).iconUrl(item);
+    final urls = ref.watch(iconTableProvider).iconUrls(item);
     final fallback = Center(child: Icon(Icons.star_rounded, size: size * 0.55, color: color));
+    // The picture comes from the disk cache; until it is there (or when it never will be), the star shows.
+    final file = urls.isEmpty
+        ? null
+        : switch (ref.watch(iconFileProvider(IconRequest(urls)))) {
+            AsyncData(:final value) => value,
+            _ => null,
+          };
     return Container(
       width: size,
       height: size,
@@ -141,14 +149,15 @@ class ItemIcon extends ConsumerWidget {
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: url == null
+      child: file == null
           ? fallback
-          : Image.network(
-              url,
+          : Image.file(
+              file,
               fit: BoxFit.cover,
+              cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              gaplessPlayback: true,
               excludeFromSemantics: true,
               errorBuilder: (_, _, _) => fallback,
-              loadingBuilder: (_, child, progress) => progress == null ? child : fallback,
             ),
     );
   }

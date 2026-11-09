@@ -1,8 +1,11 @@
+import 'dart:io' show File;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bridge/wishtory_api.dart';
 import '../domain/game_info.dart';
+import '../domain/icon_cache.dart';
 import '../domain/icons.dart';
 import 'loadable.dart';
 import 'nav.dart';
@@ -11,6 +14,13 @@ import 'nav.dart';
 final sharedPrefsProvider = Provider<SharedPreferences>((ref) => throw UnimplementedError('sharedPrefsProvider'));
 final apiProvider = Provider<WishtoryApi>((ref) => throw UnimplementedError('apiProvider'));
 final iconTableProvider = Provider<IconTable>((ref) => throw UnimplementedError('iconTableProvider'));
+final iconCacheProvider = Provider<IconCache>((ref) => throw UnimplementedError('iconCacheProvider'));
+
+/// The saved picture for an item (downloaded on first use), or null when none is available.
+/// Auto-disposed, so a picture that failed is tried again when its row scrolls back into view.
+final iconFileProvider = FutureProvider.autoDispose.family<File?, IconRequest>(
+  (ref, request) => ref.watch(iconCacheProvider).getFirst(request),
+);
 
 /// Bumped after anything that changes saved pulls (refresh, import, delete), so pity and history reload.
 class DataTick extends Notifier<int> {
