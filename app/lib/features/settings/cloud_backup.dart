@@ -142,14 +142,71 @@ class _CloudBackupPanelState extends ConsumerState<CloudBackupPanel> {
       ),
     );
     if (ok != true) return;
-    final summary = await _run('Restoring…', () => _api.cloudRestore(backup.id));
-    if (summary == null) return;
-    await ref.read(accountsProvider.notifier).reload();
-    ref.read(dataTickProvider.notifier).bump();
-    _toast.ok(
-      summary.added == 0
-          ? 'Restored. Everything in this backup was already saved.'
-          : 'Restored: ${plural(summary.added, 'new pull')} across ${plural(summary.accounts, 'account')}.',
+    await _restoreWith(backup, null);
+  }
+
+  /// Restores one backup. If the saved passphrase does not open it (it was made under a different
+  /// one, for example on another PC), asks for the right one and tries once more.
+  Future<void> _restoreWith(CloudBackup backup, String? passphrase) async {
+    setState(() {
+      _busy = true;
+      _busyText = 'Restoring…';
+    });
+    try {
+      final summary = await _api.cloudRestore(backup.id, passphrase: passphrase);
+      await ref.read(accountsProvider.notifier).reload();
+      ref.read(dataTickProvider.notifier).bump();
+      _toast.ok(
+        summary.added == 0
+            ? 'Restored. Everything in this backup was already saved.'
+            : 'Restored: ${plural(summary.added, 'new pull')} across ${plural(summary.accounts, 'account')}.',
+      );
+    } catch (e) {
+      final detail = recoveryFor(e).detail;
+      final wrongPassphrase = detail.contains("Couldn't decrypt");
+      final other = wrongPassphrase && mounted ? await _askPassphrase() : null;
+      if (other != null && other.isNotEmpty) {
+        await _restoreWith(backup, other);
+        return;
+      }
+      if (!wrongPassphrase || passphrase != null) _toast.error(detail);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<String?> _askPassphrase() {
+    // Not disposed on purpose: the dialog is still animating out when it returns.
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.wc.panel,
+        title: const Text('Enter the backup passphrase', style: Ty.h2),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              'The passphrase saved on this PC did not open this backup. If it was made with a different passphrase, enter that one. It is used once and not saved.',
+              style: Ty.body.copyWith(color: context.wc.muted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: fieldDecoration(ctx, hint: 'Backup passphrase'),
+              onSubmitted: (value) => Navigator.pop(ctx, value),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Restore')),
+        ],
+      ),
     );
   }
 
