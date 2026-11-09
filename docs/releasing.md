@@ -1,12 +1,12 @@
 # Releasing
 
-Releases are built by GitHub Actions and contain the Windows setup installer (`Wishtory_<version>_x64-setup.exe`, built with Inno Setup from `packaging/windows/wishtory.iss`) and a portable zip, the Linux packages (`.tar.gz`, `.deb` and `.rpm`, made by `packaging/linux/package.sh`) and `SHA256SUMS.txt`. When the repository allows it, the installer, the zip and the Linux packages also carry signed build provenance.
+Releases are built by GitHub Actions and contain the Windows setup installer (`Wishtory_<version>_x64-setup.exe`, built with Inno Setup from `packaging/windows/wishtory.iss`), a portable zip and `SHA256SUMS.txt`. When the repository allows it, the installer and the zip also carry signed build provenance. There is no Linux download: Linux users build from source with `packaging/linux/install.sh` (see the README), and CI still builds and tests the Linux app on every change.
 
 ## One click
 
 1. Open **Actions -> Cut release -> Run workflow** on `main`, pick patch, minor or major (or type an exact version such as `0.2.0` or `0.2.0-rc1`; a `-` makes it a pre-release) and run it.
 
-The workflow runs CI on `main` first; if anything fails, nothing is bumped or tagged. It then sets the new version in `package.json`, `app/pubspec.yaml` (the `+build` number stays), the `[workspace.package]` section of `Cargo.toml` (both Rust crates inherit it) and `Cargo.lock`, commits `Release X.Y.Z`, pushes the commit and the tag `vX.Y.Z` in one atomic push, and calls the **Release** workflow. That builds the Rust library and the Flutter app, then the installer and zip on `windows-latest` and, at the same time, the Linux packages on `ubuntu-24.04` (the same runner image as the Linux CI job); nothing is published unless both succeed. Then a final job writes the checksums, attests the build, writes the release notes and publishes the GitHub Release. A final job fails the run if no published release exists for the tag. The Rust version is the one in `rust-toolchain.toml` and the Flutter version the one in `flutter-toolchain.txt` (the workflows read both from there), the Rust library and the Dart packages are built from their lock files (`--locked`, `--enforce-lockfile`), and the bundled catalog, banner list and rules are stamped with the versions currently published (see [Game catalog updates](game-catalog-updates.md)). The Windows installer is not code-signed, so SmartScreen may warn on first run. The Linux packages are built on Ubuntu 24.04, so they need a recent distribution (glibc 2.39 or newer).
+The workflow runs CI on `main` first; if anything fails, nothing is bumped or tagged. It then sets the new version in `package.json`, `app/pubspec.yaml` (the `+build` number stays), the `[workspace.package]` section of `Cargo.toml` (both Rust crates inherit it) and `Cargo.lock`, commits `Release X.Y.Z`, pushes the commit and the tag `vX.Y.Z` in one atomic push, and calls the **Release** workflow. That builds the Rust library and the Flutter app, then the installer and zip on `windows-latest`. Then a final job writes the checksums, attests the build, writes the release notes and publishes the GitHub Release. A final job fails the run if no published release exists for the tag. The Rust version is the one in `rust-toolchain.toml` and the Flutter version the one in `flutter-toolchain.txt` (the workflows read both from there), the Rust library and the Dart packages are built from their lock files (`--locked`, `--enforce-lockfile`), and the bundled catalog, banner list and rules are stamped with the versions currently published (see [Game catalog updates](game-catalog-updates.md)). The Windows installer is not code-signed, so SmartScreen may warn on first run.
 
 ## Release notes
 
@@ -27,7 +27,7 @@ With no AI configured the notes still come out, from layers 2 and 3. The first s
 ## Other ways in
 
 - Pushing a tag such as `v0.2.0` builds and publishes the version already in the files; the tag must match it.
-- **Actions -> Release -> Run workflow** is a dry run: it builds the installer, the zip and the Linux packages, uploads them as workflow artifacts, and publishes nothing.
+- **Actions -> Release -> Run workflow** is a dry run: it builds the installer and the zip, uploads them as workflow artifacts, and publishes nothing.
 - `python scripts/bump_version.py 0.3.0` sets the version by hand, `--check v0.3.0` verifies it.
 
 ## Dependencies

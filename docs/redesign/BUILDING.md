@@ -54,12 +54,14 @@ cargo fmt --all --check
 cargo test --locked --workspace
 ```
 
-## Packages
+## Installing and packaging
 
-`packaging/linux/package.sh <version> <bundle folder> <output folder>` makes the `.tar.gz`, `.deb` and
-`.rpm` from a Linux bundle (it needs `fpm`, and `rpm` for the `.rpm`). `packaging/windows/wishtory.iss`
-is the Inno Setup script for the Windows installer. `packaging/arch/` holds the two PKGBUILDs. The release
-workflow runs all of them; see [Releasing](../releasing.md).
+* **Linux:** `bash packaging/linux/install.sh` does the whole build above, installs the app under `~/.local`
+  and deletes the build output afterwards (`--keep-build` keeps it, `--uninstall` removes the app). Run it with
+  `bash`, so it does not depend on the file's executable bit. `packaging/arch/` holds two PKGBUILDs for
+  `makepkg`. Releases carry no Linux download.
+* **Windows:** `packaging/windows/wishtory.iss` is the Inno Setup script for the installer; the release
+  workflow runs it. See [Releasing](../releasing.md).
 
 ## Upgrading flutter_rust_bridge
 

@@ -1,15 +1,15 @@
 name: Release
 
-# Builds the Windows installer (Wishtory_<version>_x64-setup.exe) and portable zip, and the Linux packages (.tar.gz,
-# .deb and .rpm), and publishes a GitHub release. You normally never run this by hand: use "Cut release"
+# Builds the Windows installer (Wishtory_<version>_x64-setup.exe) and portable zip and publishes a GitHub release.
+# Linux has no download: it is built from source (see the README), and CI still builds and tests it on every
+# change. You normally never run this by hand: use "Cut release"
 # (cut-release.yml). Other ways in:
 #   - push a tag vX.Y.Z whose version matches every version file   -> checks, build, publish
-#   - Run workflow here                                            -> dry run: builds and uploads the packages as
+#   - Run workflow here                                            -> dry run: builds and uploads the installer as
 #                                                                    artifacts; publishes nothing
 #   - called by cut-release.yml with the tag it just pushed        -> build, publish
-# A release is the Windows setup .exe and .zip, the Linux .tar.gz, .deb and .rpm, and SHA256SUMS.txt, with build
-# provenance attached when the repository allows it. The Windows and Linux builds run side by side; nothing is
-# published unless both succeed.
+# A release is the Windows setup .exe and .zip and SHA256SUMS.txt, with build provenance attached when the
+# repository allows it.
 
 on:
   push:
@@ -164,119 +164,12 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  # The Linux packages. Built on the same runner image as the Linux CI job, so the system libraries are the ones CI
-  # already proved. Packages built here need a recent distribution (glibc 2.39 or newer).
-  build-linux:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      # inputs.tag is empty for a tag push or a manual run, which build the triggering ref.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.tag }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-
-      - name: System libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev rpm ruby
-          sudo gem install --no-document fpm -v 1.16.0
-
-      - uses: ./.github/actions/toolchains
-
-      # Same as the Windows build: the bundled feeds must carry the versions CI publishes.
-      - name: Stamp bundled feed versions
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          bash scripts/fetch-published.sh published
-          for name in catalog banners rules; do
-            if [ -f "published/$name.envelope.json" ]; then
-              node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.json" "published/$name.envelope.json" --stamp
-            fi
-          done
-
-      - name: Check versions
-        id: ver
-        shell: bash
-        env:
-          CALLED_TAG: ${{ inputs.tag }}
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          version="$(python3 scripts/bump_version.py --current)"
-          tag="v$version"
-          python3 scripts/bump_version.py --check "$tag"
-          if [ -n "$CALLED_TAG" ] && [ "$CALLED_TAG" != "$tag" ]; then
-            echo "::error::Tag $CALLED_TAG does not match the project version $tag"
-            exit 1
-          fi
-          if [ "$REF_TYPE" = "tag" ] && [ "$REF_NAME" != "$tag" ]; then
-            echo "::error::Tag $REF_NAME does not match the project version $tag"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Rust tests
-        if: ${{ !inputs.skip_checks }}
-        run: cargo test --locked --workspace
-
-      - name: Build the Rust library
-        run: cargo build --locked -p wishtory-bridge --release
-
-      - name: App dependencies
-        working-directory: app
-        run: flutter pub get --enforce-lockfile
-
-      - name: App checks
-        if: ${{ !inputs.skip_checks }}
-        working-directory: app
-        run: |
-          flutter analyze --no-fatal-infos
-          flutter test
-
-      - name: Build the app
-        working-directory: app
-        run: flutter build linux --release
-
-      - name: Make the packages
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: packaging/linux/package.sh "$VERSION" app/build/linux/x64/release/bundle release
-
-      - name: Check the release files
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          for ext in tar.gz deb rpm; do
-            files=(release/*."$ext")
-            if [ "${#files[@]}" -ne 1 ] || [ ! -f "${files[0]}" ]; then
-              echo "::error::Expected exactly one .$ext in release/, found: ${files[*]}"
-              exit 1
-            fi
-            case "$(basename "${files[0]}")" in
-              *"$VERSION"*) ;;
-              *) echo "::error::${files[0]} does not carry version $VERSION"; exit 1 ;;
-            esac
-          done
-          ls -l release
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-linux
-          path: release/*
-          if-no-files-found: error
-
   publish:
-    needs: [build, build-linux]
+    needs: [build]
     # A tag push, or a call from cut-release.yml. A manual dry run has neither.
     # The explicit status check is required: without one GitHub applies an implicit success() over the whole
     # dependency chain.
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build-linux.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
+    if: ${{ !cancelled() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.tag != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -301,7 +194,7 @@ jobs:
       - name: Checksums
         run: |
           cd release
-          sha256sum -- *-setup.exe *.zip *.tar.gz *.deb *.rpm > SHA256SUMS.txt
+          sha256sum -- *-setup.exe *.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # Needs a public repo, or GitHub Enterprise Cloud for a private one. Never blocks the release.
       - name: Attest build provenance
@@ -312,9 +205,6 @@ jobs:
           subject-path: |
             release/*.exe
             release/*.zip
-            release/*.tar.gz
-            release/*.deb
-            release/*.rpm
       - name: Write release notes
         env:
           # AI release notes, tried in this order; with none available the notes come from commit messages and
@@ -341,7 +231,7 @@ jobs:
             echo "## About this build"
             echo
             echo "The Windows installer is **not code-signed**, so SmartScreen will warn about it. The \`.zip\` is the same app without an installer."
-            echo "The Linux packages (\`.deb\`, \`.rpm\` and the portable \`.tar.gz\`) are built on Ubuntu 24.04, so they need a recent distribution. Arch and CachyOS users can use the PKGBUILD in \`packaging/arch\` or the \`.tar.gz\`."
+            echo "There is no Linux download: build it from source with the steps in the README (CachyOS and Arch included)."
             if [ "$ATTEST_OUTCOME" = "success" ]; then
               echo "Build provenance: verify with \`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
             fi

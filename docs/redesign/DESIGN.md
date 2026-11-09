@@ -209,9 +209,9 @@ already tested); Dart only formats and plans.
   bundles it. CI runs the Rust gates (`cargo fmt --all --check`, `cargo test --locked --workspace`),
   `flutter analyze` + `flutter test`, a release build on both systems, and a check that the generated
   bridge code is current.
-* Releases carry an Inno Setup installer and a zip for Windows, and a `.tar.gz`, `.deb` and `.rpm` for
-  Linux (`packaging/`). The AppImage is gone: the `.tar.gz` covers the same need without FUSE. Arch and
-  CachyOS use the PKGBUILDs in `packaging/arch/`.
+* Releases carry an Inno Setup installer and a zip for Windows (`packaging/windows`). Linux has no release
+  download: `packaging/linux/install.sh` builds from source, installs under `~/.local` and cleans up, and
+  the PKGBUILDs in `packaging/arch/` do the same through pacman. CI still builds the Linux app on every change.
 
 ## 12. Implementation notes (what changed while building)
 

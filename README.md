@@ -21,7 +21,7 @@ Read straight from the game's own saved data. Kept on your own PC.
 ![Local first](https://img.shields.io/badge/data-stays%20on%20your%20PC-2EA44F?style=flat-square)
 ![Read only](https://img.shields.io/badge/game%20files-read%20only-2EA44F?style=flat-square)
 
-[Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Use it](#use-it) &nbsp;|&nbsp; [Is it safe?](#is-it-safe) &nbsp;|&nbsp; [Import and export](#import-and-export) &nbsp;|&nbsp; [Credits](#credits)
+[Features](#features) &nbsp;|&nbsp; [Install](#install) &nbsp;|&nbsp; [Linux](#build-on-linux-cachyos-and-arch-included) &nbsp;|&nbsp; [Use it](#use-it) &nbsp;|&nbsp; [Is it safe?](#is-it-safe) &nbsp;|&nbsp; [Import and export](#import-and-export) &nbsp;|&nbsp; [Credits](#credits)
 
 </div>
 
@@ -90,27 +90,16 @@ Banners and item names update by themselves, and Wishtory tells you when a new v
 
 ## Install
 
-Wishtory runs on **Windows 10 or 11** and on **Linux**, and never needs administrator rights to run.
+**Windows 10 or 11:** download the build from the [latest release](https://github.com/Pylxyr/Wishtory/releases). Wishtory never needs administrator rights.
 
-Download the build for your system from the [latest release](https://github.com/Pylxyr/Wishtory/releases):
-
-| System | Download | Notes |
-| :--- | :--- | :--- |
-| Windows | `Wishtory_x.y.z_x64-setup.exe` | Installs for your user only |
-| Windows | `Wishtory_x.y.z_windows_x64.zip` | No installer: unpack anywhere and run `wishtory.exe` |
-| Debian, Ubuntu | `Wishtory_x.y.z_amd64.deb` | `sudo apt install ./Wishtory_x.y.z_amd64.deb` |
-| Fedora, openSUSE | `Wishtory-x.y.z-1.x86_64.rpm` | `sudo dnf install ./Wishtory-x.y.z-1.x86_64.rpm` |
-| Any Linux | `Wishtory_x.y.z_linux_x64.tar.gz` | Unpack anywhere and run `wishtory` |
-| Arch, CachyOS | [`packaging/arch`](packaging/arch) | `makepkg -si` in `wishtory` (release) or `wishtory-git` (latest source) |
-
-The Linux packages are built on Ubuntu 24.04, so they need a reasonably recent distribution. To check a download, compare its SHA-256 with `SHA256SUMS.txt` from the same release page:
-
-| System | Command |
+| Download | Notes |
 | :--- | :--- |
-| Windows | `Get-FileHash <file>` in PowerShell |
-| Linux | `sha256sum <file>` in a terminal |
+| `Wishtory_x.y.z_x64-setup.exe` | Installer, for your user only |
+| `Wishtory_x.y.z_windows_x64.zip` | No installer: unpack anywhere and run `wishtory.exe` |
 
-Builds are not code-signed yet, so Windows SmartScreen may warn you the first time: choose **More info**, then **Run anyway**.
+To check a download, compare its SHA-256 with `SHA256SUMS.txt` from the same release page: run `Get-FileHash <file>` in PowerShell. Builds are not code-signed yet, so Windows SmartScreen may warn you the first time: choose **More info**, then **Run anyway**.
+
+**Linux:** there is no download. You build Wishtory from source with one command, which also cleans up after itself. See [Build on Linux](#build-on-linux-cachyos-and-arch-included) below.
 
 <details>
 <summary><b>Linux: Wine and Proton</b></summary>
@@ -125,14 +114,60 @@ Opening links from the app needs `xdg-utils`, which most desktops already have.
 
 </details>
 
-<details>
-<summary><b>Build it yourself</b></summary>
+---
 
-<br>
+## Build on Linux (CachyOS and Arch included)
 
-You need Rust and Flutter with desktop support. The steps, for Windows and Linux, are in [docs/redesign/BUILDING.md](docs/redesign/BUILDING.md).
+One script builds Wishtory, installs it for your user (nothing needs root, everything goes under `~/.local`), and then **deletes the build files** (several GB of `target/` and `app/build/`), so only the installed app is left.
 
-</details>
+### CachyOS and Arch
+
+**1. Install the tools.** CachyOS already has `paru`; on plain Arch use `yay` or install the AUR package by hand.
+
+```sh
+sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils
+paru -S flutter          # Flutter is in the AUR, not the official repositories
+```
+
+If the Flutter package tells you to join a group or log in again, do that first. Then check that Flutter is happy:
+
+```sh
+flutter config --enable-linux-desktop
+flutter doctor           # the "Linux toolchain" line must have a check mark
+```
+
+**2. Build and install.**
+
+```sh
+git clone https://github.com/Pylxyr/Wishtory.git
+cd Wishtory
+bash packaging/linux/install.sh
+```
+
+Wishtory now appears in your application menu, and `wishtory` starts it from a terminal.
+
+**3. Later.**
+
+| To | Run |
+| :--- | :--- |
+| Update | `git pull`, then `bash packaging/linux/install.sh` again |
+| Keep the build files for faster rebuilds | `bash packaging/linux/install.sh --keep-build` |
+| Uninstall | `bash packaging/linux/install.sh --uninstall` |
+
+Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives updates and uninstalling. Delete that folder to remove it too. The cleanup only touches this folder's build output, never the Rust or Flutter downloads in your home folder, which other projects share.
+
+Prefer a proper pacman package? From the cloned folder, `cd packaging/arch/wishtory-git && makepkg -sic` builds one from the latest source and installs it system-wide (`-c` deletes the build files afterwards); remove it with `sudo pacman -R wishtory-git`.
+
+### Other distributions
+
+Install the same tools under your distribution's names, then run the same two commands.
+
+| Distribution | Packages |
+| :--- | :--- |
+| Debian, Ubuntu | `sudo apt install build-essential git clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils`, plus [Rust](https://rustup.rs) and [Flutter](https://docs.flutter.dev/get-started/install/linux/desktop) |
+| Fedora | `sudo dnf install @development-tools git clang cmake ninja-build pkgconf-pkg-config gtk3-devel xdg-utils`, plus Rust and Flutter |
+
+The Rust version is pinned in `rust-toolchain.toml` and the Flutter version in `flutter-toolchain.txt`. If the script says something is missing, it names it.
 
 ---
 

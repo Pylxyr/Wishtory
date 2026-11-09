@@ -117,6 +117,8 @@ jobs:
         run: npm run catalog:test
       - name: Script tests
         run: python3 -m unittest discover -s scripts -p "test_*.py" -v
+      - name: Lint the Linux install script
+        run: shellcheck packaging/linux/install.sh
       - name: Every version file agrees
         run: python3 scripts/bump_version.py --check "v$(python3 scripts/bump_version.py --current)"
       - name: Lint workflows
