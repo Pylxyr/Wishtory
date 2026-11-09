@@ -1,7 +1,7 @@
 name: wishtory
 description: Wishtory - local-first wish history and pity tracker for Genshin Impact, Honkai Star Rail and Zenless Zone Zero.
 publish_to: none
-version: 0.3.0+1
+version: 0.4.0+1
 
 environment:
   sdk: ^3.13.0
