@@ -52,6 +52,10 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "Wishtory");
   }
 
+  // Taskbar and title-bar icon: the "wishtory" icon installed in the hicolor theme by
+  // packaging/linux/install.sh (and the Arch packages). Without this GTK shows a generic icon.
+  gtk_window_set_icon_name(window, "wishtory");
+
   gtk_window_set_default_size(window, 1280, 720);
   // Wishtory minimum window size: 960 x 640 (the same as on Windows).
   GdkGeometry min_size = {};

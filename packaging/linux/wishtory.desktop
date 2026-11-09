@@ -8,4 +8,4 @@ Icon=wishtory
 Terminal=false
 Categories=Utility;
 Keywords=genshin;star rail;zenless;gacha;wish;pity;
-StartupWMClass=wishtory
+StartupWMClass=app.wishtory.wishtory
