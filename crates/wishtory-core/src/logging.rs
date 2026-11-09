@@ -61,13 +61,30 @@ pub fn enabled(level: Level) -> bool {
     ENABLED.load(Ordering::Relaxed) && level as u8 >= MIN_LEVEL.load(Ordering::Relaxed)
 }
 
-/// Replaces the value of any `authkey=` parameter, in case a message ever carries a link.
+/// Parameters whose values are never kept: the game's authkey, and the OAuth values of cloud backup
+/// (`token=` also covers `access_token=` and `refresh_token=`).
+const SECRET_PARAMS: [&str; 6] = [
+    "authkey=",
+    "token=",
+    "code=",
+    "code_verifier=",
+    "client_secret=",
+    "passphrase=",
+];
+
+/// Replaces the value of any secret parameter, in case a message ever carries a link or a form body.
 fn scrub(message: &str) -> String {
-    let lower = message.to_ascii_lowercase();
+    SECRET_PARAMS
+        .iter()
+        .fold(message.to_string(), |text, key| scrub_param(&text, key))
+}
+
+fn scrub_param(message: &str, key: &str) -> String {
+    let lower = message.to_ascii_lowercase(); // same byte offsets as `message`
     let mut out = String::with_capacity(message.len());
     let mut at = 0;
-    while let Some(found) = lower[at..].find("authkey=") {
-        let value_start = at + found + "authkey=".len();
+    while let Some(found) = lower[at..].find(key) {
+        let value_start = at + found + key.len();
         out.push_str(&message[at..value_start]);
         out.push_str("<redacted>");
         let rest = &message[value_start..];
@@ -139,5 +156,28 @@ pub fn get_logs() -> Vec<LogEntry> {
 pub fn clear_logs() {
     if let Ok(mut buf) = buffer().lock() {
         buf.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scrub;
+
+    #[test]
+    fn game_and_cloud_secrets_are_redacted() {
+        let line = "GET https://x.example/h?authkey=AAA%2B&game_biz=hk4e&code=4/0Abc&state=S \
+                    refresh_token=1//RT access_token=ya29.AT client_secret=GOCSPX-x passphrase=hunter2 done";
+        let out = scrub(line);
+        for secret in ["AAA", "4/0Abc", "1//RT", "ya29.AT", "GOCSPX-x", "hunter2"] {
+            assert!(!out.contains(secret), "{secret} leaked: {out}");
+        }
+        // Everything around the secrets survives.
+        assert!(out.contains("game_biz=hk4e") && out.contains("state=S") && out.ends_with("done"));
+    }
+
+    #[test]
+    fn text_without_secrets_is_unchanged() {
+        let line = "cloud: backup uploaded (51234 bytes), status 200 OK";
+        assert_eq!(scrub(line), line);
     }
 }
