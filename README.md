@@ -240,7 +240,7 @@ Wishtory can keep a backup of your wish history in **your own Google Drive**, th
 
 What is backed up is the same wish history the **Export** page writes as UIGF, for every account. Item pictures, nicknames and settings are not included.
 
-This needs a build that includes a Google client ID. The Windows releases do when the maintainer has set one up; if your copy was built without it, the Settings page says so and nothing is ever sent. Building it yourself is described in [docs/cloud-backup.md](docs/cloud-backup.md).
+Building it yourself is described in [docs/cloud-backup.md](docs/cloud-backup.md).
 
 ---
 
