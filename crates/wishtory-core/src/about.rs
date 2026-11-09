@@ -77,17 +77,11 @@ const GROUPS: &[CreditGroup] = &[
                 "https://uigf.org/",
                 "",
             ),
-            credit(
-                "HoYoverse official announcements",
-                "Used to check game terminology, mechanics and banner schedules.",
-                "https://www.hoyolab.com/",
-                "",
-            ),
         ],
     },
     CreditGroup {
         title: "Banner schedule cross-checks",
-        note: "Banner windows, titles and featured items were checked against HoYoverse's notices and these community trackers. They are references; Wishtory does not use them at run time.",
+        note: "Banner windows, titles and featured items were checked against these community trackers and the game wikis below. They are references; Wishtory does not use them at run time.",
         credits: &[
             credit(
                 "Banner History",
