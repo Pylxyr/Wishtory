@@ -172,7 +172,7 @@ If Wishtory says it cannot find the history page, you have not opened it yet, or
 | Shortcut | Action |
 | :--- | :--- |
 | `Ctrl` + `R` | Refresh |
-| `Alt` + `1` / `2` / `3` | Genshin Impact / Star Rail / Zenless Zone Zero |
+| `Alt` + `1` / `2` / `3` | Open Genshin Impact / Star Rail / Zenless Zone Zero |
 | `Ctrl` + `,` | Settings |
 | `F1` | Help |
 

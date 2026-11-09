@@ -54,30 +54,39 @@ keyboard-friendly tool; everything rare lives behind Settings or progressive dis
 ## 3. Information architecture
 
 ```
-┌ Navigation rail ───────────┬ Page bar (game pages only) ─────────────────────────────┐
-│ Wishtory                   │ [Genshin | Star Rail | Zenless]  [Account ▾]  [Refresh ▾]│
-│ ── Game ──                 ├──────────────────────────────────────────────────────────┤
-│  GI  HSR  ZZZ  (segmented) │                                                          │
-│ ── Pages ──                │   page content (max width 1200, centred)                 │
-│  Overview                  │                                                          │
-│  History                   │                                                          │
-│  Import / Export           ├──────────────────────────────────────────────────────────┤
-│ ── App ──                  │ Status bar: last result · progress · catalog version     │
-│  Accounts                  └──────────────────────────────────────────────────────────┘
-│  Settings (• update dot)
-│  Help · About
-└────────────────────────────┘
++ Navigation rail ----------+ Page bar (game pages only) ---------------------------------+
+| Wishtory                  | Genshin Impact  [Account v]   [Overview|History]  [Refresh v]|
+| -- Games --               | Refreshed 2 hours ago                                        |
+|  Genshin                  +--------------------------------------------------------------+
+|  Star Rail                |                                                              |
+|  Zenless Zone Zero        |   page content (max width 1200, centred)                     |
+| -- Your data --           |                                                              |
+|  Accounts                 |                                                              |
+|  Import / Export          +--------------------------------------------------------------+
+|                           | Status bar: privacy note, progress, catalog version          |
+| ------------------------- +--------------------------------------------------------------+
+|  Settings (dot = update)
+|  Help
+|  About
++---------------------------+
 ```
 
-* **Game and account are global context, not page settings.** They live in one place (the page bar
-  and rail) and every game page reads them. The old app did this and it was right; kept.
-* **Responsive**: ≥1100 px expanded rail with labels; below that an icon rail with tooltips. The
-  window minimum is 960×640, so a bottom bar is not needed. Cards reflow from 3 to 2 to 1 columns,
-  and the History detail panel is a side panel from 1280 px and a dialog below. Nothing relies on hover.
+* **The games are destinations.** Choosing a game in the rail (or with `Alt+1/2/3`) always opens it:
+  on Overview or History it switches the game and keeps the page; from Settings, About, Accounts, Help or
+  Import / Export it also leaves that page, for whichever of Overview and History was open last. Nothing
+  about a game choice is ever silent.
+* **Overview and History are two views of one game**, so they are tabs in the page bar, not rail items.
+  The rail only holds places: the games, the data that belongs to no single game, and the app pages.
+* **Game and account are global context, not page settings.** The game is chosen in the rail, the account
+  in the page bar, and every game page reads them. Import / Export has its own game picker, because its
+  game-specific formats depend on it.
+* **Responsive**: >=1100 px expanded rail with labels; below that an icon rail with tooltips. The page bar
+  puts everything on one row from about 900 px of content width and wraps below that. The window minimum
+  is 960x640, so a bottom bar is not needed. Cards reflow from 3 to 2 to 1 columns, and the History detail
+  panel is a side panel from 1280 px and a dialog below. Nothing relies on hover.
 * **Restored on launch**: last page, game and account.
-* **Shortcuts**: `Alt+1/2/3` switch game, `Ctrl+R` refresh, `Ctrl+F` search in History, `Ctrl+,`
-  Settings, `F1` Help. Modifier keys are required on purpose: bare digits or `/` would steal
-  keystrokes from text fields.
+* **Shortcuts**: `Alt+1/2/3` open a game, `Ctrl+R` refresh, `Ctrl+,` Settings, `F1` Help. Modifier keys are
+  required on purpose: bare digits or `/` would steal keystrokes from text fields.
 
 ## 4. Viewing 5★ and 4★ pulls — the hybrid
 

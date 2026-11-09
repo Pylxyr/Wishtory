@@ -25,7 +25,7 @@ extension AppPageInfo on AppPage {
 }
 
 class NavState {
-  const NavState({required this.page, required this.game, required this.uids});
+  const NavState({required this.page, required this.game, required this.uids, this.gamePage = AppPage.overview});
 
   final AppPage page;
   final GameId game;
@@ -33,8 +33,16 @@ class NavState {
   /// Chosen account per game key.
   final Map<String, String> uids;
 
-  NavState copyWith({AppPage? page, GameId? game, Map<String, String>? uids}) =>
-      NavState(page: page ?? this.page, game: game ?? this.game, uids: uids ?? this.uids);
+  /// Which game page (Overview or History) was open last. Picking a game from Settings, About and the
+  /// other pages goes here.
+  final AppPage gamePage;
+
+  NavState copyWith({AppPage? page, GameId? game, Map<String, String>? uids, AppPage? gamePage}) => NavState(
+        page: page ?? this.page,
+        game: game ?? this.game,
+        uids: uids ?? this.uids,
+        gamePage: gamePage ?? this.gamePage,
+      );
 }
 
 /// Page, game and account; remembered between launches.
@@ -51,18 +59,33 @@ class NavController extends Notifier<NavState> {
     try {
       uids = (jsonDecode(p.getString(_kUids) ?? '{}') as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String));
     } catch (_) {}
+    final shown = page == AppPage.logs ? AppPage.overview : page;
     return NavState(
-      page: page == AppPage.logs ? AppPage.overview : page,
+      page: shown,
       game: gameFromKey(p.getString(_kGame)) ?? GameId.genshin,
       uids: uids,
+      gamePage: shown.isGamePage ? shown : AppPage.overview,
     );
   }
 
   void goTo(AppPage page) {
-    state = state.copyWith(page: page);
+    state = state.copyWith(page: page, gamePage: page.isGamePage ? page : null);
     ref.read(sharedPrefsProvider).setString(_kPage, page.name);
   }
 
+  /// Show [game] and its data. On Overview or History this only switches the game and keeps the page.
+  /// From any other page (Settings, About, Accounts, Help...) it also leaves that page, for the game page
+  /// that was open last, so choosing a game always visibly does something.
+  void openGame(GameId game) {
+    final page = state.page.isGamePage ? state.page : state.gamePage;
+    state = state.copyWith(game: game, page: page);
+    final p = ref.read(sharedPrefsProvider);
+    p.setString(_kGame, gameKey(game));
+    p.setString(_kPage, page.name);
+  }
+
+  /// Switch the selected game without leaving the current page (for pages that have their own game
+  /// picker, like Import / Export).
   void selectGame(GameId game) {
     state = state.copyWith(game: game);
     ref.read(sharedPrefsProvider).setString(_kGame, gameKey(game));

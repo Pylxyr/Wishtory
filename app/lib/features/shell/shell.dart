@@ -58,9 +58,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     final controller = ref.read(navProvider.notifier);
     final bindings = <ShortcutActivator, VoidCallback>{
       const SingleActivator(LogicalKeyboardKey.keyR, control: true): () => ref.read(refreshProvider.notifier).run(),
-      const SingleActivator(LogicalKeyboardKey.digit1, alt: true): () => controller.selectGame(GameId.genshin),
-      const SingleActivator(LogicalKeyboardKey.digit2, alt: true): () => controller.selectGame(GameId.starRail),
-      const SingleActivator(LogicalKeyboardKey.digit3, alt: true): () => controller.selectGame(GameId.zenless),
+      const SingleActivator(LogicalKeyboardKey.digit1, alt: true): () => controller.openGame(GameId.genshin),
+      const SingleActivator(LogicalKeyboardKey.digit2, alt: true): () => controller.openGame(GameId.starRail),
+      const SingleActivator(LogicalKeyboardKey.digit3, alt: true): () => controller.openGame(GameId.zenless),
       const SingleActivator(LogicalKeyboardKey.comma, control: true): () => controller.goTo(AppPage.settings),
       const SingleActivator(LogicalKeyboardKey.f1): () => controller.goTo(AppPage.help),
     };
@@ -128,30 +128,35 @@ class AppRail extends ConsumerWidget {
       decoration: BoxDecoration(color: c.rail, border: Border(right: BorderSide(color: c.line))),
       padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
       child: FocusTraversalGroup(
-        child: ListView(children: [
+        child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 14),
+            padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
             child: Row(mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center, children: [
               Icon(Icons.auto_awesome, color: c.accent, size: 20),
               if (wide) ...[const SizedBox(width: 9), const Text('Wishtory', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3))],
             ]),
           ),
-          if (wide) const _RailLabel('Game'),
-          for (final g in GameId.values)
-            _RailItem(
-              abbr: GameInfo.of(g).abbr,
-              label: GameInfo.of(g).short,
-              wide: wide,
-              selected: nav.game == g,
-              count: wide ? counts.where((a) => a.game == g).length : null,
-              onTap: () => ref.read(navProvider.notifier).selectGame(g),
-            ),
-          if (wide) const _RailLabel('Pages') else const SizedBox(height: 10),
-          item(AppPage.overview, Icons.dashboard_outlined),
-          item(AppPage.history, Icons.history),
-          item(AppPage.importExport, Icons.swap_vert),
-          if (wide) const _RailLabel('App') else const SizedBox(height: 10),
-          item(AppPage.accounts, Icons.people_outline),
+          // The games are where you spend your time, so they come first. Choosing one always opens that
+          // game's Overview or History, whichever page you were on.
+          Expanded(
+            child: ListView(padding: EdgeInsets.zero, children: [
+              if (wide) const _RailLabel('Games'),
+              for (final g in GameId.values)
+                _RailItem(
+                  abbr: GameInfo.of(g).abbr,
+                  label: GameInfo.of(g).short,
+                  wide: wide,
+                  selected: nav.page.isGamePage && nav.game == g,
+                  count: wide ? counts.where((a) => a.game == g).length : null,
+                  onTap: () => ref.read(navProvider.notifier).openGame(g),
+                ),
+              if (wide) const _RailLabel('Your data') else const _RailDivider(),
+              item(AppPage.accounts, Icons.people_outline),
+              item(AppPage.importExport, Icons.swap_vert),
+            ]),
+          ),
+          // The rest of the app stays at the bottom, out of the way.
+          const _RailDivider(),
           item(AppPage.settings, Icons.settings_outlined, dot: update?.available == true),
           if (logging) item(AppPage.logs, Icons.receipt_long_outlined),
           item(AppPage.help, Icons.help_outline),
@@ -160,6 +165,16 @@ class AppRail extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _RailDivider extends StatelessWidget {
+  const _RailDivider();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Divider(height: 1, color: context.wc.line),
+      );
 }
 
 class _RailLabel extends StatelessWidget {
@@ -255,50 +270,78 @@ class PageBar extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final busy = ref.watch(refreshProvider.select((s) => s.busy));
     final last = account == null ? null : settings.lastRefresh[accountKey(account.game, account.uid)];
+
+    // Who and when: the game, the account, and how fresh the data is.
+    final title = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(GameInfo.of(nav.game).name, style: Ty.h1),
+          const SizedBox(width: 12),
+          const AccountMenu(),
+        ]),
+        if (account != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            last == null ? 'Not refreshed on this PC yet' : 'Refreshed ${ago(DateTime.fromMillisecondsSinceEpoch(last))}',
+            style: Ty.small.copyWith(color: c.muted),
+          ),
+        ],
+      ],
+    );
+
+    // What to look at: the two views of this game's data.
+    final views = SegmentedButton<AppPage>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(value: AppPage.overview, label: Text('Overview'), icon: Icon(Icons.dashboard_outlined, size: 16)),
+        ButtonSegment(value: AppPage.history, label: Text('History'), icon: Icon(Icons.history, size: 16)),
+      ],
+      selected: {nav.page},
+      onSelectionChanged: (v) => ref.read(navProvider.notifier).goTo(v.first),
+    );
+
+    // What to do: refresh from the game.
+    final refresh = Row(mainAxisSize: MainAxisSize.min, children: [
+      FilledButton.icon(
+        onPressed: busy ? null : () => ref.read(refreshProvider.notifier).run(),
+        icon: const Icon(Icons.sync, size: 18),
+        label: Text(busy ? 'Refreshing…' : 'Refresh'),
+      ),
+      PopupMenuButton<String>(
+        tooltip: 'More ways to refresh',
+        enabled: !busy,
+        icon: const Icon(Icons.arrow_drop_down),
+        onSelected: (v) async {
+          if (v == 'full') {
+            ref.read(refreshProvider.notifier).run(full: true);
+          } else {
+            final url = await showPasteLinkDialog(context);
+            if (url != null) ref.read(refreshProvider.notifier).run(url: url);
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'full', child: Text('Full re-sync')),
+          PopupMenuItem(value: 'link', child: Text('Paste a link…')),
+        ],
+      ),
+    ]);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(color: c.bg, border: Border(bottom: BorderSide(color: c.line))),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 16,
-        runSpacing: 8,
-        children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(GameInfo.of(nav.game).name, style: Ty.h1),
-            const SizedBox(width: 12),
-            const AccountMenu(),
-          ]),
-          if (account != null)
-            Text(
-              last == null ? 'Not refreshed on this PC yet' : 'Refreshed ${ago(DateTime.fromMillisecondsSinceEpoch(last))}',
-              style: Ty.small.copyWith(color: c.muted),
-            ),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            FilledButton.icon(
-              onPressed: busy ? null : () => ref.read(refreshProvider.notifier).run(),
-              icon: const Icon(Icons.sync, size: 18),
-              label: Text(busy ? 'Refreshing…' : 'Refresh'),
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'More ways to refresh',
-              enabled: !busy,
-              icon: const Icon(Icons.arrow_drop_down),
-              onSelected: (v) async {
-                if (v == 'full') {
-                  ref.read(refreshProvider.notifier).run(full: true);
-                } else {
-                  final url = await showPasteLinkDialog(context);
-                  if (url != null) ref.read(refreshProvider.notifier).run(url: url);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'full', child: Text('Full re-sync')),
-                PopupMenuItem(value: 'link', child: Text('Paste a link…')),
-              ],
-            ),
-          ]),
-        ],
-      ),
+      child: LayoutBuilder(builder: (context, box) {
+        if (box.maxWidth >= 900) {
+          return Row(children: [title, const SizedBox(width: 24), views, const Spacer(), refresh]);
+        }
+        return Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 10,
+          children: [title, views, refresh],
+        );
+      }),
     );
   }
 }
