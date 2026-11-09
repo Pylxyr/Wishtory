@@ -84,8 +84,10 @@ void main() {
 
   test('an unreachable host gives null instead of throwing', () async {
     final offline = IconCache(dir, timeout: const Duration(seconds: 2));
+    // Build the address first: HttpServer.port throws once the server is closed.
+    final gone = url('/ok.png');
     await server.close(force: true);
-    expect(await offline.get(url('/ok.png')), isNull);
+    expect(await offline.get(gone), isNull);
   });
 
   test('requests with the same addresses are equal', () {
