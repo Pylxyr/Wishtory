@@ -6,7 +6,7 @@ Wishtory separates metadata updates from app releases. The desktop app requests 
 
 - [EnkaNetwork processed stores](https://github.com/EnkaNetwork/API-docs/tree/master/store) provide stable item IDs, rarity, English names, localization hashes, and game traits for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero. The catalog updater normalizes source-specific values into Wishtory's game-specific traits.
 - [Paimon.moe's published item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data) provides exact native backup keys for Genshin items. Wishtory uses those keys to import and export native backups without guessing item names.
-- [HoYoverse's official Honkai: Star Rail announcement](https://www.hoyolab.com/article/43681649) and [Zenless Zone Zero update announcement](https://zenless.hoyoverse.com/en-us/news/166000) help verify newly introduced paths, attributes, and specialties when upstream data changes. They are references for checking game terminology; the updater reads the machine-readable EnkaNetwork and Paimon.moe sources above.
+- The community wikis for [Genshin Impact](https://genshin-impact.fandom.com/), [Honkai: Star Rail](https://honkai-star-rail.fandom.com/) and [Zenless Zone Zero](https://zenless-zone-zero.fandom.com/) help verify newly introduced paths, attributes, specialties and banner dates when upstream data changes. They are references for checking game terminology; the updater reads the machine-readable EnkaNetwork and Paimon.moe sources above.
 
 These projects and their data remain theirs; Wishtory is an independent, non-affiliated client. Catalog records are factual game metadata, and the source links above are provided for attribution and review.
 
