@@ -75,7 +75,11 @@ class IconCache {
   Future<File?> get(String url) {
     final failed = _failedAt[url];
     if (failed != null && DateTime.now().difference(failed) < retryAfter) return Future.value(null);
-    return _inflight[url] ??= _load(url).whenComplete(() => _inflight.remove(url));
+    // A block body, not `=> remove(...)`: whenComplete awaits a returned Future, and remove()
+    // returns this very future, so the arrow form made it wait on itself and never complete.
+    return _inflight[url] ??= _load(url).whenComplete(() {
+      _inflight.remove(url);
+    });
   }
 
   Future<File?> _load(String url) async {
