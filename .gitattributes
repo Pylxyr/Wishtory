@@ -1,0 +1,13 @@
+# Normalise text files to LF in the repository, whatever the contributor's Git settings are.
+* text=auto
+
+# Files that run or are read on Linux must stay LF even in a checkout made on Windows.
+*.sh text eol=lf
+PKGBUILD text eol=lf
+*.desktop text eol=lf
+
+# Never touch binaries.
+*.png binary
+*.ico binary
+*.ttf binary
+*.icns binary
