@@ -239,7 +239,6 @@ Wishtory relies on these independent projects and references. The same list is u
 - [EnkaNetwork API documentation and game stores](https://github.com/EnkaNetwork/API-docs/tree/master/store): item IDs, names, rarities and character traits behind the game catalog. Item icons load from enka.network.
 - [Paimon.moe](https://paimon.moe/) and its [open-source item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data): exact item keys match backup records, its Genshin backup format is supported, and its documented read-only cache lookup approach informed history-link discovery.
 - The [UIGF project](https://uigf.org/): the format used to move wish histories between compatible tools.
-- HoYoverse's official announcements, used to check game terminology, mechanics and banner schedules, including the [Honkai: Star Rail Path of Elation](https://www.hoyolab.com/article/43681649) and [Zenless Zone Zero's new specialties](https://zenless.hoyoverse.com/en-us/news/166000).
 
 ### Game wikis
 
