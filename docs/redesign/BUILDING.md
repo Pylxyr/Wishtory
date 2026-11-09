@@ -11,7 +11,8 @@ start-up. Node is only used by `scripts/` for the signed catalog, never to build
    * Windows: Visual Studio 2022 (or its Build Tools) with the "Desktop development with C++" workload.
    * Debian / Ubuntu: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils`
    * Arch / CachyOS: `sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils`, plus
-     Flutter from the AUR (`flutter`) or your own install.
+     Flutter (your own install, or the AUR `flutter` package).
+   * On Linux you can skip all of this: `bash packaging/linux/install.sh` sets up what it needs and cleans up.
 3. **The code generator**, only needed when you change the Rust API in `crates/wishtory-bridge/src/api`
    (it must be exactly the version the Rust crate uses):
    ```
@@ -56,10 +57,13 @@ cargo test --locked --workspace
 
 ## Installing and packaging
 
-* **Linux:** `bash packaging/linux/install.sh` does the whole build above, installs the app under `~/.local`
-  and deletes the build output afterwards (`--keep-build` keeps it, `--uninstall` removes the app). Run it with
-  `bash`, so it does not depend on the file's executable bit. `packaging/arch/` holds two PKGBUILDs for
-  `makepkg`. Releases carry no Linux download.
+* **Linux:** `bash packaging/linux/install.sh` asks once, installs the build packages with the system
+  package manager (pacman, apt or dnf), downloads Flutter (and Rust when the system has none or an old one) into a
+  temporary folder, runs the whole build above, installs the app under `~/.local` and deletes everything it
+  downloaded and built. `--yes` skips the question, `--keep-build` keeps the build output and the downloaded tools
+  (in `.wishtory-tools/`), `--uninstall` removes the app. Run it with `bash`, so it does not depend on the file's
+  executable bit. `packaging/arch/` holds two PKGBUILDs for `makepkg` (they need Flutter installed). Releases
+  carry no Linux download.
 * **Windows:** `packaging/windows/wishtory.iss` is the Inno Setup script for the installer; the release
   workflow runs it. See [Releasing](../releasing.md).
 

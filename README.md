@@ -118,25 +118,9 @@ Opening links from the app needs `xdg-utils`, which most desktops already have.
 
 ## Build on Linux (CachyOS and Arch included)
 
-One script builds Wishtory, installs it for your user (nothing needs root, everything goes under `~/.local`), and then **deletes the build files** (several GB of `target/` and `app/build/`), so only the installed app is left.
+There is no Linux download, but building it takes one command. The script asks before it does anything, sets up what it needs, installs Wishtory for your user (no root for the app itself, everything goes under `~/.local`), and then **deletes everything it downloaded and built**, so only the installed app is left.
 
-### CachyOS and Arch
-
-**1. Install the tools.** CachyOS already has `paru`; on plain Arch use `yay` or install the AUR package by hand.
-
-```sh
-sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils
-paru -S flutter          # Flutter is in the AUR, not the official repositories
-```
-
-If the Flutter package tells you to join a group or log in again, do that first. Then check that Flutter is happy:
-
-```sh
-flutter config --enable-linux-desktop
-flutter doctor           # the "Linux toolchain" line must have a check mark
-```
-
-**2. Build and install.**
+**1. Get the source and run the script.** `git` comes with CachyOS; on other systems install it first (`sudo pacman -S git`, `sudo apt install git` or `sudo dnf install git`).
 
 ```sh
 git clone https://github.com/Pylxyr/Wishtory.git
@@ -144,30 +128,34 @@ cd Wishtory
 bash packaging/linux/install.sh
 ```
 
-Wishtory now appears in your application menu, and `wishtory` starts it from a terminal.
+**2. Read what it plans, and answer `Y`.** On a fresh CachyOS it will show something like this:
 
-**3. Later.**
+```text
+To build Wishtory this script will:
+  - install build packages with sudo and pacman: base-devel git curl unzip xz zip clang cmake ninja gtk3 xdg-utils rust
+  - download Flutter into a temporary folder (about 2 GB)
+  - build Wishtory (several minutes)
+  - install it under /home/you/.local
+  - delete everything it downloaded and built
+Continue? [Y/n]
+```
+
+Only what your system lacks is listed. Packages come from your own package manager (`pacman`, `apt` or `dnf`, with a `sudo` password prompt), so there is no AUR helper and no manual Flutter or Rust setup. Flutter, and Rust when your system has none or an old one, are downloaded into a temporary folder and removed at the end. You need an internet connection and about 3 GB of free disk space while it runs.
+
+Wishtory then appears in your application menu, and `wishtory` starts it from a terminal.
 
 | To | Run |
 | :--- | :--- |
 | Update | `git pull`, then `bash packaging/linux/install.sh` again |
+| Skip the questions | `bash packaging/linux/install.sh --yes` |
 | Keep the build files for faster rebuilds | `bash packaging/linux/install.sh --keep-build` |
 | Uninstall | `bash packaging/linux/install.sh --uninstall` |
 
-Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives updates and uninstalling. Delete that folder to remove it too. The cleanup only touches this folder's build output, never the Rust or Flutter downloads in your home folder, which other projects share.
+Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives updates and uninstalling. Delete that folder to remove it too. The cleanup only removes what the script itself downloaded and built in this folder; the packages it installed through `pacman`, `apt` or `dnf` stay, because other programs use them too.
 
-Prefer a proper pacman package? From the cloned folder, `cd packaging/arch/wishtory-git && makepkg -sic` builds one from the latest source and installs it system-wide (`-c` deletes the build files afterwards); remove it with `sudo pacman -R wishtory-git`.
+On a distribution without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `git`, `curl`, `unzip`, `xz`, `zip`, `clang`, `cmake`, `ninja`, `pkg-config`, the GTK 3 development files and Rust 1.91 or newer. Install them, then run it again, and it downloads Flutter itself.
 
-### Other distributions
-
-Install the same tools under your distribution's names, then run the same two commands.
-
-| Distribution | Packages |
-| :--- | :--- |
-| Debian, Ubuntu | `sudo apt install build-essential git clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils`, plus [Rust](https://rustup.rs) and [Flutter](https://docs.flutter.dev/get-started/install/linux/desktop) |
-| Fedora | `sudo dnf install @development-tools git clang cmake ninja-build pkgconf-pkg-config gtk3-devel xdg-utils`, plus Rust and Flutter |
-
-The Rust version is pinned in `rust-toolchain.toml` and the Flutter version in `flutter-toolchain.txt`. If the script says something is missing, it names it.
+Arch users who already have Flutter installed can also build a pacman package from `packaging/arch/wishtory-git` with `makepkg -sic`.
 
 ---
 

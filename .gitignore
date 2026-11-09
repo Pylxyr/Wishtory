@@ -27,3 +27,6 @@ app/.dart_tool/
 app/build/
 app/.flutter-plugins*
 app/.packages
+
+# Tools downloaded by packaging/linux/install.sh --keep-build
+/.wishtory-tools/
