@@ -52,14 +52,15 @@ const shiftDay = (date, days) => {
 const dayBefore = (date) => shiftDay(date, -1);
 const isLaunch = (row) => row.start.split(' ')[1]?.startsWith('06:00') ?? false;
 
-// Paimon.moe opens an update's first phase at 06:00 (the maintenance) and the second at 18:00. The list
-// uses the conventions in docs/game-catalog-updates.md: the first phase is listed from 15:00 the day
-// before, and a phase ends at 17:59:59 (the next phase opens at 18:00) or 14:59:59.
+// Paimon.moe opens an update's first phase at 06:00 (the start of the update maintenance; the game is
+// playable again around 10:00 to 11:00) and the second at 18:00. The list uses the conventions in
+// docs/game-catalog-updates.md: the first phase is listed from 15:00 the day before, and a phase ends at
+// 17:59:59 (the next phase opens at 18:00) or 14:59:59.
 //
-// `launchDates` holds the days on which Paimon.moe opens an update's first phase. Some updates (3.8, 6.1)
-// end their last phase at 17:59:59 on the day before the next launch, where the others end at 14:59:59.
-// The next update's first phase is listed from 15:00 that day, so a phase ending at 17:59:59 would
-// overlap it: the list ends it at 14:59:59 instead, exactly as it does for the other updates.
+// `launchDates` holds the days on which Paimon.moe opens an update's first phase. HoYoverse's event wish
+// notices end the last phase of every update at 14:59 on the day before the next update opens (checked
+// for 3.8 and 6.0 "Luna I", the two that Paimon.moe lists ending at 17:59:59). A 17:59:59 end on the day
+// before a launch is therefore a Paimon.moe error, and is read as 14:59:59.
 export function toWindow(row, launchDates = new Set()) {
   const [startDate, startTime] = row.start.split(' ');
   const [endDate, endTime] = row.end.split(' ');
