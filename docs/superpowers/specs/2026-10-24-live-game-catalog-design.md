@@ -1,44 +1,150 @@
-# Live game catalog design
+# Game catalog: signed updates, change log and history impact
+
+This is the design reference for how Wishtory's game data is published, verified, installed and explained to the person using the app. Contributors and reviewers (human or automated) should follow it, and update it in the same pull request as any change to the behaviour it describes.
+
+The matching task list is `docs/superpowers/plans/2026-10-24-live-game-catalog.md`. Operating instructions for maintainers are in `docs/game-catalog-updates.md`.
+
+## Status
+
+| Part | State |
+| :--- | :--- |
+| Three signed feeds (item catalog, banner list, pity rules), bundled copy, cache, daily check | Implemented |
+| Weekly source review (Enka, Paimon.moe) and signed publishing | Implemented |
+| One catalog version, a change log, and a preview of what an update does to saved history | **Planned** (see "Catalog revisions") |
 
 ## Intent
 
-Let Wishtory recognize newly released characters and weapons without requiring a full app installer for every game patch. Keep pull history local and preserve readable records when metadata is missing.
+Let Wishtory recognise new characters and weapons, and correct banner dates or rules, without an installer for every game patch. Pull history stays on the person's PC, and an update must never change how their history is read without telling them first.
 
 ## Goals
 
-- Maintain one versioned, data-only catalog for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero.
-- Check a Wishtory-controlled HTTPS catalog feed in the background at most once per day; send no account or pull data.
-- Verify catalog signatures and schema, limit response sizes, install updates atomically, and keep the bundled/last-known-good catalog on any failure.
-- Use the catalog for traits and Paimon.moe item keys; keep raw pull names and rarities as the display/export fallback.
-- Add a scheduled source-sync that validates upstream community datasets and opens a reviewable catalog update rather than trusting third-party data directly at runtime.
+- Data-only updates: no code, no images, no executable content in a feed.
+- Authenticity: every feed is Ed25519-signed with a key whose public half is pinned in the app.
+- Safety: size limits, strict schemas, monotonic versions, atomic installs, and the last valid copy kept on any failure.
+- Privacy: the update check is a plain request for fixed public files. It carries no UID, pull, game path or other account data, and nothing about the person's history is ever sent.
+- Honesty about impact (planned): when an update changes how saved pulls are interpreted, the person sees which pulls and why, before anything changes.
 
 ## Non-goals
 
-- Automatically change pity rules or banner type interpretation from downloaded data. Mechanics changes remain tested app releases.
-- Silently guess Paimon.moe keys or rarity for unknown native-backup rows.
-- Download images or executable code in the metadata feed.
+- Editing, deleting or re-timing raw pull records. Catalog data only changes how records are read.
+- Remote code or remote changes to the app's mechanics. Game rules that change are data in `rules.json`; changes to how the app derives results are app releases.
+- Third-party requests at run time. Only the repository's own release assets are contacted.
 
-## Approaches
+## Current design (implemented)
 
-- Bundle-only generated data: simple and offline, but each item update needs an app release.
-- Fetch third-party catalogs directly in the app: fast to build, but app behavior depends on upstream availability, schemas, and security.
-- Wishtory-owned signed catalog with a scheduled upstream review workflow: independent data releases, offline fallback, and controlled ingestion. Selected by the user’s request to update smoothly without compromising local data.
+### Feeds
 
-## Design
+All feeds are assets of the repository's `catalog-v1` GitHub Release, each as `<asset>.envelope.json` (a payload plus its signature).
 
-Use EnkaNetwork's public processed stores as update candidates for all three games and Paimon.moe's published item keys for exact native-backup compatibility. A scheduled GitHub Action runs a deterministic generator, rejects incomplete or malformed data, retains previously known entries, and opens a PR for catalog changes. After a catalog PR is merged, a separate workflow signs and publishes one JSON envelope as the rolling data asset. The app downloads only Wishtory's asset, verifies its pinned Ed25519 signature and schema, and atomically caches the envelope under its catalog version. Startup uses the highest valid cached catalog immediately, then checks the feed asynchronously once daily. Unknown pulls continue to display the original API name/rank/type. Catalog lookups never alter pull identity or mechanics.
+| Feed | Source file | Version field | Rust type | Holds |
+| :--- | :--- | :--- | :--- | :--- |
+| Items | `catalog/catalog.json` | `catalog_version` | `Catalog` (`FeedStore<Catalog>`) | Items per game: id, name, rarity, kind, traits, Paimon key |
+| Banners | `catalog/banners.json` | `banners_version` | `BannerSet` (`BannerStore`) | Banner events: window, featured 5-star ids, optional gacha ids |
+| Rules | `catalog/rules.json` | `rules_version` | `RuleSet` (`FeedStore<RuleSet>`) | Hard and soft pity, 50/50 odds, permanent pools, featured windows, Zenless Custom Search |
 
-The signing private key belongs only in the repository's GitHub Actions secret; the verification public key is stored in the repository and embedded in the app. The local generated private-key file is ignored by Git. Until the repository secret is configured and the first candidate PR is reviewed and merged, the bundled catalog and legacy item mappings remain usable.
+The code lives in `crates/wishtory-core/src/catalog.rs` (the `Feed` trait, `FeedStore`, `Catalog`, `BannerSet`, `BannerStore`) and `rules.rs`. `Feed` is the one implementation of "bundled copy plus signed, versioned, cached updates".
 
-## Constraints and validation
+### Rules every feed follows
 
-- Existing SQLite records, import/export formats, and mechanics remain compatible.
-- No third-party catalog request occurs at runtime; only a versioned Wishtory feed is contacted.
-- Catalog schema is versioned; unknown schema versions, invalid signatures, oversized responses, duplicate IDs, invalid games/traits, and stale versions are rejected.
-- Rust tests cover validation, signature rejection, offline cache behavior, cache-write recovery, and new Paimon mappings; generator tests cover all three upstream shapes, known-key preservation, and malformed/incomplete data.
+- `verify_envelope` checks the signature against the pinned key before anything is parsed. The document is then validated against its schema and size limit.
+- A copy is installed only if its version is higher than the current one. Verified envelopes are cached as `<version>.json`; the newest valid cache wins unless the bundled copy is newer.
+- The app asks at most once a day, or when the person presses an update button. A failed or offline check counts as a check, a failure keeps the current copy, and requests have fixed hosts and short timeouts.
+- Releases stamp the published versions into the bundled files (`scripts/prepare-catalog.mjs --stamp`), so a fresh install is never outranked by older cached content.
+- Installed apps are old apps too: published asset names, envelope shapes and the banner list's shape do not change in ways older apps cannot read. `rules.json` rejects unknown fields, so a new rules field needs an app release first. Legacy copies (`catalog.json`, `banners.json`) are kept for 0.0.2 apps.
 
-## Remaining implementation calls
+### Publishing
 
-- Keep the first release data limited to fields already useful in the UI and Paimon conversion: game, stable item ID, English name/aliases, rarity, item type, and game-specific trait.
-- Use HTTPS on GitHub Releases as the Wishtory-controlled asset host; pin owner/repository in app code.
-- Keep updates quiet and non-blocking, with no account identifiers in request URLs, headers, or telemetry.
+`catalog-proposal.yml` runs weekly: it builds a candidate from EnkaNetwork and Paimon.moe data, drafts banner events (`scripts/track-banners.mjs`) and opens a review PR (or the "Banner list needs review" issue). `catalog-release.yml` runs after a merge: it fetches what is published (`scripts/fetch-published.sh`), sets versions with `scripts/prepare-catalog.mjs` (published plus one, only for files whose content changed), signs with the `CATALOG_SIGNING_KEY` secret and uploads the assets. The details and conventions (banner windows, rerun channels, pity rules) are in `docs/game-catalog-updates.md`.
+
+### How catalog data touches saved history
+
+Raw pulls (the `pulls` table) are never rewritten by a catalog update. Everything below is derived and can change when the data changes:
+
+| Derived fact | Derived from | Where |
+| :--- | :--- | :--- |
+| Which banner a pull was made on | Pull time, `gacha_type`, `gacha_id`, banner list | `pity::resolve_banner(s)`, cached in the `pull_banners` table |
+| Won, lost or guaranteed for a 5-star (50/50, 75/25) | Banner list (`featured_5`), rules (permanent pools, featured windows) | `pity::compute_with_banners`, `listed_as_featured` |
+| Pity numbers, averages, hard and soft pity | Pull order, rules | `pity::compute_with_banners`, `pull_pities` |
+| Name, rarity, kind and traits shown for a pull | Item catalog, with the raw record as fallback | Catalog lookups, `pity::display_rank` |
+
+Today `ops::refresh_banners` installs a newer banner list and immediately clears and re-resolves `pull_banners`, so the person is told what changed in the list (`BannerUpdate`: added, changed, removed) but not what it did to their pulls.
+
+## Catalog revisions (planned)
+
+### One catalog, one version
+
+The person sees one **Game catalog** with one version number and one **Check for updates** action. Underneath it stays three signed feeds, so installed apps keep working.
+
+A new signed feed, the **manifest** (`manifest.envelope.json`, `manifest_version`), describes a catalog release:
+
+- `manifest_version`: the single, monotonic, user-visible catalog version.
+- `components`: the exact versions the release is made of (`catalog`, `banners`, `rules`).
+- `changes`: the change log for this release and the releases since the previous manifest (see below).
+- `generated_at`, `schema_version`.
+
+Older apps ignore the manifest. Publishing uploads the three component feeds first and the manifest last, so a manifest never points at a missing component. The app treats a manifest whose components are not all available and valid as "not ready yet" and keeps what it has.
+
+### The change log
+
+Each change is one entry with a stable `id`, a `scope` (`items`, `banners`, `rules`), a `game`, the ids it concerns, a short plain-language `summary`, and a `severity`:
+
+| Severity | Meaning | Examples |
+| :--- | :--- | :--- |
+| `major` | Can change how many existing pulls are read, or changes the rules the numbers rest on | A banner window or featured character corrected, a banner removed, pity or 50/50 rules changed, an item's rarity changed |
+| `minor` | A small correction with a narrow effect | A name or alias fix, a trait fix, a `gacha_id` added to an existing banner |
+| `info` | Additions that cannot alter an existing pull | New characters, weapons or banners |
+
+`scripts/prepare-catalog.mjs` generates the entries by comparing the new feeds with what is published, and assigns severity by fixed rules. A maintainer can add notes or raise a severity in `catalog/changes.json`, which is part of the review PR; the review PR description lists the generated entries so the reviewer sees what users will be told.
+
+### Staging, impact and applying
+
+The app handles a release in three states:
+
+1. **Current**: what the app uses now.
+2. **Staged**: a release whose manifest and components have all been downloaded and verified, and kept on disk, but not used. A staged release is re-verified when loaded and dropped if a newer release replaces it.
+3. **Applied**: the staged release becomes current in one step, and saved banner assignments are re-derived.
+
+When a release is staged, the app computes the **impact** on the person's own history, on their PC (never on a server): for every saved pull, it derives the facts in the table above under the current data and under the staged data, and lists each pull where something differs, with the reason and the change entry that caused it. Per pull it records: the pull (time, item, rarity), the banner before and after, the 50/50 result before and after, the pity number before and after, and the display name or rarity if those change.
+
+| Impact | What happens |
+| :--- | :--- |
+| No pull is affected | Applied automatically (a setting can turn this off), and recorded in the catalog history with its change log |
+| At least one pull is affected, any severity | Not applied. The person is notified and can review the affected pulls, then **Apply** or **Not now** |
+
+### What the person sees
+
+- A **Game catalog** card in Settings: installed version, last check, **Check for updates**, and a clear state when an update is waiting.
+- A notice when a staged release needs review: a Settings badge and a message at startup. It says the version, the number of changes by severity, and how many pulls and accounts are affected.
+- A **review page**: the change log grouped by severity, then the affected pulls per account (time, item, banner before and after, result before and after, why). Nothing changes until **Apply** is pressed.
+- A **catalog history** of applied releases with their change logs.
+
+Notifications are in-app only. Wishtory has no background service, so a check happens while the app is open.
+
+## Invariants (reviewers: check these)
+
+1. A catalog update never writes to `pulls`. Only derived data (`pull_banners`) is re-derived, in one transaction, and only after the release is applied.
+2. Impact is computed locally. Nothing about the person's history is in a request, a header, a log line or a bug report.
+3. A feed or manifest is used only after its signature, schema, size and version checks pass. A failure at any point keeps the current data.
+4. Installing a release is all or nothing across its components. A crash or a failed re-derivation leaves the previous release in place.
+5. Versions only go up. Corrections and rollbacks are published as newer versions.
+6. Published asset names and envelope shapes that installed apps read do not change.
+7. The review page shows exactly what Apply will do. If the data changes between review and Apply (a newer release arrives), the impact is recomputed before anything is applied.
+8. Every user-visible string avoids blame and jargon, and nothing relies on colour alone.
+
+## Decisions
+
+| Question | Decision | Why |
+| :--- | :--- | :--- |
+| One merged feed or a manifest over the three? | Manifest over three feeds | Older apps keep reading the feeds they know; no envelope shape changes |
+| Who classifies severity? | Generated by fixed rules, optionally annotated in `catalog/changes.json` | Consistent and reviewable, with a human override |
+| Auto-apply when nothing is affected? | Yes, with a setting | Quiet by default, and honest when it matters |
+| Notify on any affected pull, or only major? | Any severity | The person decides what is worth applying |
+| Where to keep staged releases and history? | Files in the app data folder next to the feed caches | No database migration for data that is only a cache of signed files |
+| Listing size | All affected pulls, paged in the UI, with a hard cap and a count beyond it | Keeps memory and the screen bounded |
+
+## Testing
+
+- Rust: impact derivation (a moved window re-places specific pulls, a featured change flips a 50/50 result, a rules change moves a pity number), staging and apply atomicity, stale or lower versions, a manifest whose components are missing or mismatched, tampered signatures, no change to `pulls`, and a request that carries no history.
+- Node: change-log generation and severity rules, and publishing order.
+- Dart: the review page's grouping and counts, and the notice states.
+- Everything in CI (`cargo fmt --all --check`, `cargo test --locked --workspace`, `npm run catalog:test`, regenerated bridge code with no diff, `flutter analyze`, `flutter test`).
