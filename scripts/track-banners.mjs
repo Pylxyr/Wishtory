@@ -44,24 +44,33 @@ export function parsePaimonCharacters(text) {
   return rows;
 }
 
-const dayBefore = (date) => {
+const shiftDay = (date, days) => {
   const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
+const dayBefore = (date) => shiftDay(date, -1);
+const isLaunch = (row) => row.start.split(' ')[1]?.startsWith('06:00') ?? false;
 
 // Paimon.moe opens an update's first phase at 06:00 (the maintenance) and the second at 18:00. The list
 // uses the conventions in docs/game-catalog-updates.md: the first phase is listed from 15:00 the day
-// before, and every phase ends at 17:59:59 or 14:59:59.
-export function toWindow(row) {
+// before, and a phase ends at 17:59:59 (the next phase opens at 18:00) or 14:59:59.
+//
+// `launchDates` holds the days on which Paimon.moe opens an update's first phase. Some updates (3.8, 6.1)
+// end their last phase at 17:59:59 on the day before the next launch, where the others end at 14:59:59.
+// The next update's first phase is listed from 15:00 that day, so a phase ending at 17:59:59 would
+// overlap it: the list ends it at 14:59:59 instead, exactly as it does for the other updates.
+export function toWindow(row, launchDates = new Set()) {
   const [startDate, startTime] = row.start.split(' ');
   const [endDate, endTime] = row.end.split(' ');
   const launch = startTime.startsWith('06:00');
   if (!launch && !startTime.startsWith('18:00')) return null;
   if (!/^(14|17):59:/.test(endTime)) return null;
+  let end = `${endDate} ${endTime.slice(0, 6)}59`;
+  if (end.endsWith('17:59:59') && launchDates.has(shiftDay(endDate, 1))) end = `${endDate} 14:59:59`;
   return {
     start: launch ? `${dayBefore(startDate)} 15:00:00` : `${startDate} 18:00:00`,
-    end: `${endDate} ${endTime.slice(0, 6)}59`,
+    end,
   };
 }
 
@@ -73,12 +82,13 @@ export function trackBanners(upstream, ours, items) {
   const lastStart = [...have.values()].map((b) => b.start).sort().at(-1) ?? '';
   const added = [];
   const problems = [];
+  const launchDates = new Set(upstream.filter(isLaunch).map((row) => row.start.slice(0, 10)));
   for (const row of upstream) {
     const date = row.start.slice(0, 10);
     if (date < FROM) continue;
     const id = `hk4e-character-${date}`;
     const label = `${row.name} (${date})`;
-    const window = toWindow(row);
+    const window = toWindow(row, launchDates);
     if (!window) {
       problems.push(`${label}: Paimon.moe lists times this check does not recognise (${row.start} to ${row.end}).`);
       continue;
