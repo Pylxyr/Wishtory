@@ -1,85 +1,142 @@
-# Live game catalog Implementation Plan
+# Live game catalog: implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Goal:** Independently updateable, signed game data with offline fallback and a reviewed publishing workflow (phase 1, done), and a single versioned catalog that explains each update and previews its effect on saved history before applying it (phase 2).
 
-**Goal:** Deliver independently updateable, signed game metadata with offline fallback and a validated source-update workflow.
+**Spec:** `docs/superpowers/specs/2026-10-24-live-game-catalog-design.md` is the source of truth. Change it in the same pull request as any behaviour it describes.
 
-**Architecture:** Embed a bundled catalog and expose a Rust-managed catalog store to imports, exports, and the UI. Fetch a Wishtory-hosted signed JSON catalog in the background no more than once daily, verify and atomically replace the cached data, and open PRs from a scheduled upstream-data generator.
+**Architecture:** A Rust core (`crates/wishtory-core`) owns the data, the database and the network. `crates/wishtory-bridge` exposes it to the Flutter app (`app/`) through flutter_rust_bridge. Node 22 scripts (`scripts/`) and GitHub Actions (`.github/workflows/`) build, review and publish the signed feeds.
 
-**Tech Stack:** Rust/Tauri, `ring` Ed25519 verification, Svelte 5, Node 22 scripts, GitHub Actions.
+**Tech stack:** Rust 1.91 (`rust-toolchain.toml`), `ring` Ed25519, `rusqlite`, `reqwest`; Flutter (`flutter-toolchain.txt`), Riverpod, flutter_rust_bridge 2.13; Node 22; GitHub Actions.
 
-**Spec:** `docs/superpowers/specs/2026-10-24-live-game-catalog-design.md`
+## Global constraints
 
-## Global Constraints
+- Existing SQLite records and UIGF, SRGF and Paimon formats stay compatible. Catalog updates never write to the `pulls` table.
+- Runtime requests go only to the repository's fixed HTTPS release assets, and contain no history, UID or identifier. Impact on saved pulls is computed on the PC.
+- Only signed, supported-schema data is used. Any failure keeps the current or bundled data.
+- Published asset names and envelope shapes that installed apps read do not change. A new field in `rules.json` needs an app release first.
+- Unknown item names, rarities and kinds keep being shown from the raw record.
+- Follow the conventions in `docs/game-catalog-updates.md` (banner windows, rerun channels, pity rules).
 
-- Existing SQLite records and UIGF/SRGF/Paimon formats remain compatible.
-- Runtime requests go only to a Wishtory-controlled HTTPS asset; they contain no user history or identifiers.
-- Only signed, supported-schema catalogs are installed; failure always preserves the last-known-good or bundled catalog.
-- Unknown pull name, rarity, and type continue to be displayed from the raw record.
-- Banner mechanics are not remotely changed.
+## Review focus
 
-## Review Focus
+Reviewers, human or automated, should check:
 
-- Invalid or forged signatures must never replace the catalog; test valid and tampered assets.
-- Offline, timeout, and malformed feeds must preserve current/bundled metadata; test update outcomes.
-- Duplicate or malformed catalog entries must be rejected without partial application; test validation.
-- New Paimon item mappings must not guess a key or rarity; test native import/export lookups.
-- Incomplete upstream data must not erase existing catalog items; test generator merge behavior.
+- Forged, tampered or downgraded feeds and manifests are rejected; tests cover valid and tampered input.
+- Offline, timeout and malformed responses preserve the current data.
+- Duplicate or malformed entries are rejected without a partial install.
+- `pulls` is never written by an update, and `pull_banners` is re-derived only in one transaction, after Apply.
+- The impact shown on the review page is what Apply does; it is recomputed if the data changed.
+- Nothing about the person's history appears in a request, header, log line or error message.
+- Incomplete upstream data never erases known items.
+- Published feeds stay readable by installed apps (legacy assets, shapes, rules field policy).
 
----
+## Phase 1: signed feeds (done)
 
-### Task 1: Catalog schema, validation, signature verification
+### Task 1: Schema, validation, signature verification
 
-**Files:** Create `src-tauri/src/catalog.rs`, `catalog/catalog.json`; modify `src-tauri/Cargo.toml`, `Cargo.lock`, `src-tauri/src/main.rs`.
+**Files:** `crates/wishtory-core/src/catalog.rs`, `catalog/catalog.json`, `catalog/catalog-public-key.txt`.
 
-**Interfaces:** `Catalog::bundled()`, `Catalog::parse_and_validate(bytes)`, `Catalog::verify_signature(bytes, signature)`, plus serializable `CatalogItem` and `Catalog`.
-
-- [x] Add tests for valid multi-game data, duplicate keys, invalid rarity/trait, unsupported schema, oversized content, valid Ed25519 signatures, and modified bytes.
-- [x] Run the focused Rust tests and observe failures for missing catalog implementation.
-- [x] Implement strict catalog parsing and pinned-key signature verification using the `ring` crate.
-- [x] Seed a small bundled catalog and retain the existing offline item maps as fallback; full initial source refresh runs in the network-enabled scheduled workflow.
-- [x] Run focused tests and `cargo test --locked --manifest-path src-tauri/Cargo.toml`.
+- [x] `Catalog::parse_and_validate`, `verify_envelope` with the pinned Ed25519 key, size and schema limits.
+- [x] Tests for valid data, duplicates, invalid rarity or traits, unsupported schema, oversized input, valid and tampered signatures.
 
 ### Task 2: Cached store and background refresh
 
-**Files:** Modify `src-tauri/src/catalog.rs`, `src-tauri/src/main.rs`, `src-tauri/src/commands.rs`, `src/lib/api.ts`, `src/App.svelte`; tests in `catalog.rs`.
+**Files:** `catalog.rs` (`Feed`, `FeedStore`), `crates/wishtory-core/src/ops.rs`, `crates/wishtory-bridge/src/api/core_api.rs`, `app/lib/state/refresh.dart`.
 
-**Interfaces:** Managed `CatalogStore`, `get_catalog`, `refresh_catalog` commands; frontend returns only catalog version/items and a non-sensitive update status.
+- [x] Versioned cache, newest valid copy wins, once-a-day gate, failed checks counted, monotonic versions.
+- [x] Daily refresh after the app starts; the status string the UI knows (`updated`, `up-to-date`, `already-checking`).
 
-- [x] Add tests for current cache preference, invalid cache fallback, daily check gating, invalid-feed preservation, and cache-write recovery.
-- [x] Implement per-app-data versioned cache with an 8 MiB payload cap, HTTPS-only fixed release endpoint, short timeout, signature/schema checks, and monotonic versions.
-- [x] Initialize from the highest valid cache or embedded catalog; trigger the daily refresh asynchronously after app mount.
-- [x] Verify tests and run frontend checks/build.
+### Task 3: Banner list and pity rules as feeds
 
-### Task 3: Use catalog in Paimon import/export and UI traits
+**Files:** `catalog.rs` (`BannerSet`, `BannerStore`), `crates/wishtory-core/src/rules.rs`, `catalog/banners.json`, `catalog/rules.json`, `crates/wishtory-core/src/pity.rs`.
 
-**Files:** Modify `src-tauri/src/uigf.rs`, `src-tauri/src/commands.rs`, `src/lib/elements.ts`, `src/lib/types.ts`, `src/lib/state.svelte.ts`, `src/pages/Dashboard.svelte`, `src/lib/components/PityRing.svelte`.
+- [x] Banner windows and featured items as data; game rules (pity, odds, permanent pools, featured windows) as data.
+- [x] `pull_banners` caches the banner each pull was made on, re-resolved when the list changes.
+- [x] Item catalog used for Paimon import and export and for UI traits, with raw-record fallback.
 
-**Interfaces:** Catalog-aware import/export helpers and a frontend catalog store; exact existing commands/formats remain intact.
+### Task 4: Source review and publishing
 
-- [x] Add tests proving newly cataloged Paimon keys import/export and existing unknown-item behavior remains explicit.
-- [x] Pass managed catalog to Paimon import/export; retain test-only bundled wrappers.
-- [x] Use current catalog traits for Genshin/HSR/ZZZ five-star styling, with neutral fallback for unknown names.
-- [x] Run full Rust tests, Svelte check, and production build.
+**Files:** `scripts/update-catalog.mjs`, `scripts/track-banners.mjs`, `scripts/prepare-catalog.mjs`, `scripts/sign-catalog.mjs`, `scripts/fetch-published.sh`, `.github/workflows/catalog-proposal.yml`, `.github/workflows/catalog-release.yml`.
 
-### Task 4: Automated source review and catalog publishing
+- [x] Weekly review PR from EnkaNetwork and Paimon.moe data; incomplete data fails closed and known rows are retained.
+- [x] Versions set automatically (published plus one when content changed), signing with `CATALOG_SIGNING_KEY`, legacy asset copies kept.
+- [x] Banner tracker drafts new Genshin events, reports differences, and corrects Paimon.moe's end time for the last phase of an update (HoYoverse's notices end it at `14:59` the day before the next update; Paimon.moe lists two as `17:59:59`).
 
-**Files:** Create `scripts/update-catalog.mjs`, `scripts/sign-catalog.mjs`, fixture tests, `.github/workflows/catalog-proposal.yml`, `.github/workflows/catalog-release.yml`; modify `package.json`, README.
+### Task 5: Safety review
 
-**Interfaces:** Deterministic script downloads public Enka stores, normalizes recognized three-game item fields and localization hashes into the Wishtory schema, validates non-regression, and writes a candidate. Signing workflow reads `CATALOG_SIGNING_KEY` only from Actions secrets.
+- [x] Host pinning, size and shape validation, secret handling, raw-data fallbacks.
 
-- [x] Add fixtures/tests for Genshin, HSR, and ZZZ upstream shapes; missing traits and incomplete feeds fail closed, and absent upstream records do not delete known rows.
-- [x] Implement candidate generation and secure signing without logging secrets.
-- [x] Add weekly scheduled PR workflow and post-merge catalog asset publication workflow with least-privilege permissions.
-- [x] Document one-time secret setup, provenance, manual review, and catalog rollback.
-- [x] Run script tests and CI-equivalent checks.
+## Phase 2: one catalog, change log and history impact (planned)
 
-### Task 5: Final safety review
+### Task 6: Manifest feed and change log generation
 
-- [x] Review network host pinning, command registration, catalog size/shape validation, secret handling, and raw-data fallbacks.
-- [x] Run `npm run check`, `npm run build`, `cargo test --locked --manifest-path src-tauri/Cargo.toml`, and `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`.
-- [x] Report the one-time GitHub secret setup requirement and limits of local network access for live-source validation.
+**Files:** `crates/wishtory-core/src/catalog.rs` (a `CatalogManifest` feed), a new `catalog/changes.json` (optional curated notes), `scripts/prepare-catalog.mjs` or a new `scripts/changelog.mjs`, `scripts/*.test.mjs`.
 
-## Verification note
+- [ ] Define the manifest schema (`manifest_version`, `components`, `changes`, `generated_at`, `schema_version`) with strict validation and a size cap.
+- [ ] Generate `changes` by comparing the new feeds with the published ones; assign `major`, `minor` or `info` by the rules in the spec; merge notes from `catalog/changes.json`.
+- [ ] Tests: each severity rule, a banner window move, a removed banner, a rules change, an item rarity change, additions only, and no change.
 
-The fixture tests pass, but the local environment could not resolve `raw.githubusercontent.com`, so the live-source generator could not be dry-run locally. The scheduled GitHub Action has network access and will be the first full upstream integration run. The full-catalog candidate must still be reviewed and merged, and GitHub Actions needs the `CATALOG_SIGNING_KEY` secret before it can publish the signed feed.
+### Task 7: Publishing order and the review PR
+
+**Files:** `.github/workflows/catalog-release.yml`, `.github/workflows/catalog-proposal.yml`, `scripts/prepare-catalog.mjs`, `docs/game-catalog-updates.md`.
+
+- [ ] Upload component feeds first and the manifest last; sign the manifest with the same key; keep every existing asset.
+- [ ] Stamp the bundled manifest version in release builds like the other feeds.
+- [ ] Put the generated change list (with severities) in the review PR description.
+
+### Task 8: Staging in the Rust core
+
+**Files:** `catalog.rs` (`FeedStore` gains check-and-stage without install), `crates/wishtory-core/src/ops.rs`, `crates/wishtory-core/src/lib.rs`.
+
+- [ ] Download and verify the manifest and every component; keep the staged release on disk; re-verify on load; drop it when superseded.
+- [ ] Refuse a manifest whose components are missing, lower or mismatched; keep the current data and retry later.
+- [ ] Apply installs all components together and re-derives `pull_banners` in one transaction; a failure leaves the previous release in place.
+- [ ] Tests: tampered or downgraded manifests, partial publishes, crash safety, repeated checks, offline.
+
+### Task 9: Impact analysis
+
+**Files:** a new `crates/wishtory-core/src/impact.rs`, `pity.rs` (shared derivation), `db.rs` (read pulls).
+
+- [ ] Derive each saved pull's banner, 50/50 result, pity number and display facts under the current and the staged data; list pulls where they differ, with the reason and the change entry behind it.
+- [ ] Bound memory and size; page the result; report counts beyond the cap.
+- [ ] Tests: a moved window re-places specific pulls, a featured change flips a result, a rules change moves a pity number, an unchanged history reports nothing, and `pulls` is untouched.
+
+### Task 10: Bridge API and generated code
+
+**Files:** `crates/wishtory-bridge/src/api/core_api.rs`, `types.rs`, `convert.rs`, `app/lib/bridge/generated/**`, `app/lib/bridge/wishtory_api.dart`.
+
+- [ ] Expose catalog status, check, staged-release review (change log and impact pages), apply, dismiss and history.
+- [ ] Regenerate with `flutter_rust_bridge_codegen generate`; CI fails on any diff.
+
+### Task 11: Settings card, notice and review page
+
+**Files:** `app/lib/features/settings/settings_page.dart`, new files under `app/lib/features/settings/` (catalog card, review page), `app/lib/state/refresh.dart`, `app/lib/state/providers.dart`.
+
+- [ ] One **Game catalog** card with the single version and **Check for updates**; replace the separate catalog and banner buttons.
+- [ ] A startup notice and Settings badge when a release needs review.
+- [ ] A review page: change log by severity, affected pulls per account (before and after, why), **Apply** and **Not now**; a catalog history list.
+- [ ] Tests for grouping, counts and notice states; accessible labels and keyboard use.
+
+### Task 12: Documentation and privacy
+
+**Files:** `docs/game-catalog-updates.md`, this plan, the spec, `PRIVACY.md` (only if behaviour that it describes changes), `README.md` (one line).
+
+- [ ] Describe the manifest, severities, `catalog/changes.json`, publish order, and how to read the review page.
+
+### Task 13: Final review
+
+- [ ] Check every invariant in the spec, and that no history leaves the PC.
+- [ ] Run the verification commands below.
+
+## Verification
+
+```text
+cargo fmt --all --check
+cargo test --locked --workspace
+npm run catalog:test
+flutter_rust_bridge_codegen generate   (no diff afterwards)
+flutter analyze --no-fatal-infos
+flutter test
+```
+
+Run what the environment allows and say which checks could not be run.
