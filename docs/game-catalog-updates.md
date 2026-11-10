@@ -35,6 +35,7 @@ App versions up to 0.0.2 asked for `catalog.json` and `banners.json`, names the 
 The weekly workflow runs `npm run banners:track`. Paimon.moe publishes Genshin Impact's schedule as data, so for Genshin character events the script:
 
 - **drafts** events that are newer than the list, with windows converted to the conventions above (the draft has only the first banner's title, so add the second before merging);
+- applies the no-overlap rule above to Paimon.moe's times. A few updates (3.8, 6.1) end their last phase at `17:59:59` on the day before the next update opens, where the others end at `14:59:59`; the list ends them all at `14:59:59`, so the tracker converts that end time instead of reporting it as a difference;
 - **reports** existing events that differ from Paimon.moe, without changing them, because the list was checked by hand against HoYoverse's notices;
 - **reports** 5★ characters that are new in the item catalog, for every game. Honkai: Star Rail and Zenless Zone Zero have no public schedule, so this is how their new characters get noticed.
 
