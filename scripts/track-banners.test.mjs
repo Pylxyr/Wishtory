@@ -44,6 +44,30 @@ test('turns Paimon.moe times into the list conventions', () => {
   assert.equal(toWindow({ start: '2026-10-13 09:00:00', end: '2026-10-14 17:59:59' }), null);
 });
 
+test('ends a 17:59:59 phase at 14:59:59 when the next update opens the following day', () => {
+  const lastPhase = { name: 'Last', start: '2026-10-13 18:00:00', end: '2026-11-03 17:59:59', featured: ['x'] };
+  const launches = new Set(['2026-11-04']);
+  assert.equal(toWindow(lastPhase, launches).end, '2026-11-03 14:59:59');
+  // Without a launch the next day, or at 14:59, nothing changes.
+  assert.equal(toWindow(lastPhase, new Set(['2026-11-10'])).end, '2026-11-03 17:59:59');
+  assert.equal(toWindow(lastPhase).end, '2026-11-03 17:59:59');
+  assert.equal(toWindow({ ...lastPhase, end: '2026-11-03 14:59:00' }, launches).end, '2026-11-03 14:59:59');
+  // Paimon.moe's 17:59:00 typo is normalised first, then follows the same rule.
+  assert.equal(toWindow({ ...lastPhase, end: '2026-11-03 17:59:00' }, launches).end, '2026-11-03 14:59:59');
+});
+
+test('does not report the convention as a difference from Paimon.moe', () => {
+  const upstream = [
+    { name: 'Phase II', start: '2026-10-13 18:00:00', end: '2026-11-03 17:59:59', version: '7.1', featured: ['venti'] },
+    { name: 'Next update', start: '2026-11-04 06:00:00', end: '2026-11-24 17:59:59', version: '7.2', featured: ['skirk'] },
+  ];
+  const mine = [
+    { id: 'hk4e-character-2026-10-13', game: 'hk4e', pool: 'character', name: 'Phase II', start: '2026-10-13 18:00:00', end: '2026-11-03 14:59:59', featured_5: ['3'] },
+    { id: 'hk4e-character-2026-11-04', game: 'hk4e', pool: 'character', name: 'Next', start: '2026-11-03 15:00:00', end: '2026-11-24 17:59:59', featured_5: ['1'] },
+  ];
+  assert.deepEqual(trackBanners(upstream, mine, items).problems, []);
+});
+
 const items = [
   { game: 'hk4e', id: '1', kind: 'character', rarity: 5, name: 'Skirk', paimon_key: 'skirk' },
   { game: 'hk4e', id: '2', kind: 'character', rarity: 5, name: 'Escoffier', paimon_key: 'escoffier' },
