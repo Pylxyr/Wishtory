@@ -90,6 +90,9 @@ jobs:
               node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.json" "published/$name.envelope.json" --stamp
             fi
           done
+          # The bundled manifest names the bundled component versions and carries the version the
+          # release workflow publishes (the app starts from it and asks for newer ones).
+          node scripts/changelog.mjs --new catalog --published published --out catalog/manifest.json --stamp
 
       - name: Check versions
         id: ver
