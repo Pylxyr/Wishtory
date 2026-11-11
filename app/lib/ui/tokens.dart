@@ -109,7 +109,7 @@ class Ty {
   );
 }
 
-ThemeData buildTheme(Brightness brightness) {
+ThemeData buildTheme(Brightness brightness, {bool comfortable = false}) {
   final c = brightness == Brightness.dark ? WishColors.dark : WishColors.light;
   final scheme = ColorScheme(
     brightness: brightness,
@@ -133,7 +133,7 @@ ThemeData buildTheme(Brightness brightness) {
     canvasColor: c.panel,
     dividerColor: c.line,
     splashFactory: NoSplash.splashFactory,
-    visualDensity: VisualDensity.compact,
+    visualDensity: comfortable ? VisualDensity.standard : VisualDensity.compact,
     extensions: [c],
   );
 }

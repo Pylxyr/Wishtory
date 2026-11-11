@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/shell/shell.dart';
 import 'state/settings.dart';
+import 'ui/density.dart';
 import 'ui/tokens.dart';
 
 class WishtoryApp extends ConsumerWidget {
@@ -11,12 +12,14 @@ class WishtoryApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
+    final comfortable = ref.watch(settingsProvider.select((s) => s.comfortable));
     return MaterialApp(
       title: 'Wishtory',
       debugShowCheckedModeBanner: false,
       themeMode: mode,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
+      theme: buildTheme(Brightness.light, comfortable: comfortable),
+      darkTheme: buildTheme(Brightness.dark, comfortable: comfortable),
+      builder: (context, child) => DensityScope(comfortable: comfortable, child: child ?? const SizedBox.shrink()),
       home: const AppShell(),
     );
   }

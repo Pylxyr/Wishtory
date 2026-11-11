@@ -1,8 +1,19 @@
 # Cloud backup
 
+## For users
+
+Back up your history to **your own Google Drive**: sign in once in **Settings, then Cloud backup**, then press **Back up now** or let it run once a day. Restore on any PC with the same Google account and passphrase. It is off until you set it up.
+
+- **Encrypted on your PC first.** You choose a passphrase, and Google only ever stores a file it cannot read. **If you forget the passphrase, the backups cannot be opened**, and nobody can recover them.
+- **Wishtory sees nothing else in your Drive.** It asks Google for a single permission: access to its own hidden app folder.
+- **Your Google password never reaches Wishtory**, and the sign-in and passphrase are kept in Windows Credential Manager or the Linux Secret Service, never in a file.
+- **Restoring only adds.** It never removes a pull. **Disconnect** revokes access and can delete your backups from Drive.
+
+Cloud backup needs a build that includes a Google client ID. If your copy has none, Settings says so and nothing is sent. The rest of this page is for developers.
+
 Optional backup of the wish history to the person's own Google Drive. The code is in
 `crates/wishtory-core/src/cloud/`; the Settings panel is `app/lib/features/settings/cloud_backup.dart`.
-For what users are told, see the README section "Cloud backup (optional)".
+For what users are told, see the "For users" section above.
 
 ## How it works
 
@@ -22,7 +33,7 @@ For what users are told, see the README section "Cloud backup (optional)".
 | Concern | What is done |
 | :--- | :--- |
 | Google can read the data | It cannot. Backups are encrypted on the PC (`cloud/vault.rs`): Argon2id (64 MiB, 3 passes, 1 lane, fresh 16-byte salt per backup) derives a 256-bit key, ChaCha20-Poly1305 (via `ring`) encrypts, and the whole header is authenticated as associated data. |
-| Weak passphrase | At least 10 characters is enforced. A copied file can be attacked offline, so the passphrase is the only protection, and the README says so. |
+| Weak passphrase | At least 10 characters is enforced. A copied file can be attacked offline, so the passphrase is the only protection, and the "For users" section above says so. |
 | Malicious backup file | The Argon2 cost in a file is read before hashing, so it is capped (256 MiB, 10 passes, 4 lanes); downloads are capped at 64 MiB; ids from Drive must match `[A-Za-z0-9_-]{6,128}` before they enter a URL. |
 | Token theft from disk | Nothing secret is written to a file. The refresh token and the passphrase live in the OS credential store (`keyring`: Windows Credential Manager, or the Secret Service on Linux). If there is none, cloud backup refuses to run instead of falling back to a file. The short-lived access token is kept in memory only. |
 | Access beyond Wishtory's files | The `drive.appdata` scope cannot see any other Drive file. |

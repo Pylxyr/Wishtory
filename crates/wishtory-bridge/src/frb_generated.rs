@@ -2780,10 +2780,12 @@ impl SseDecode for crate::api::types::FourStar {
         let mut var_name = <String>::sse_decode(deserializer);
         let mut var_pity = <u32>::sse_decode(deserializer);
         let mut var_time = <String>::sse_decode(deserializer);
+        let mut var_isCharacter = <bool>::sse_decode(deserializer);
         return crate::api::types::FourStar {
             name: var_name,
             pity: var_pity,
             time: var_time,
+            is_character: var_isCharacter,
         };
     }
 }
@@ -4407,6 +4409,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::types::FourStar {
             self.name.into_into_dart().into_dart(),
             self.pity.into_into_dart().into_dart(),
             self.time.into_into_dart().into_dart(),
+            self.is_character.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5161,6 +5164,7 @@ impl SseEncode for crate::api::types::FourStar {
         <String>::sse_encode(self.name, serializer);
         <u32>::sse_encode(self.pity, serializer);
         <String>::sse_encode(self.time, serializer);
+        <bool>::sse_encode(self.is_character, serializer);
     }
 }
 

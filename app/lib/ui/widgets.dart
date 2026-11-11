@@ -6,14 +6,16 @@ import '../domain/game_info.dart';
 import '../domain/icon_cache.dart';
 import '../domain/recovery.dart';
 import '../state/providers.dart';
+import 'density.dart';
 import 'tokens.dart';
 
 /// A bordered surface. Structure comes from hairlines, not shadows.
 class Panel extends StatelessWidget {
-  const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.tint, this.onTap, this.selected = false});
+  const Panel({super.key, required this.child, this.padding, this.tint, this.onTap, this.selected = false});
 
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  /// Defaults to the density setting's card padding.
+  final EdgeInsetsGeometry? padding;
   final Color? tint;
   final VoidCallback? onTap;
   final bool selected;
@@ -22,7 +24,7 @@ class Panel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.wc;
     final box = Container(
-      padding: padding,
+      padding: padding ?? EdgeInsets.all(Density.of(context).pad),
       decoration: BoxDecoration(
         color: tint ?? c.panel,
         borderRadius: BorderRadius.circular(12),

@@ -114,7 +114,7 @@ plan=()
 if [ "${#missing_tools[@]}" -gt 0 ] || [ "$rust_source" = pacman ]; then
   if [ -z "$manager" ]; then
     echo "Wishtory needs these tools, and this script does not know your package manager: ${missing_tools[*]}" >&2
-    echo "Install them (and Rust ${minimum_rust}+), then run the script again. The README lists package names." >&2
+    echo "Install them (and Rust ${minimum_rust}+), then run the script again. docs/linux.md lists package names." >&2
     exit 1
   fi
   plan+=("install build packages with sudo and $manager: ${packages[*]}")

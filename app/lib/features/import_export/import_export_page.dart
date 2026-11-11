@@ -133,7 +133,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
           const SizedBox(height: 6),
           SegmentedButton<GameId>(
             showSelectedIcon: false,
-            segments: [for (final g in GameId.values) ButtonSegment(value: g, label: Text(GameInfo.of(g).short))],
+            segments: [for (final g in GameId.values) ButtonSegment(value: g, label: Text(GameInfo.of(g).name))],
             selected: {game},
             onSelectionChanged: (v) => ref.read(navProvider.notifier).selectGame(v.first),
           ),
@@ -150,7 +150,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
                   contentPadding: EdgeInsets.zero,
                   title: Text(f.label, style: Ty.h3),
                   subtitle: Text(
-                    f.game != null && !usable(f) ? '${f.note} Choose ${GameInfo.of(f.game!).short} above to use it.' : f.note,
+                    f.game != null && !usable(f) ? '${f.note} Choose ${GameInfo.of(f.game!).name} above to use it.' : f.note,
                     style: Ty.small.copyWith(color: c.muted),
                   ),
                 ),

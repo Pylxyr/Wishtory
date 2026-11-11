@@ -140,6 +140,7 @@ impl From<CoreFourStar> for FourStar {
             name: f.name,
             pity: f.pity,
             time: f.time,
+            is_character: f.is_character,
         }
     }
 }

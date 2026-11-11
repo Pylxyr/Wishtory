@@ -88,6 +88,8 @@ pub struct FourStar {
     pub name: String,
     pub pity: u32,
     pub time: String,
+    /// A character or agent rather than a weapon, Light Cone or W-Engine.
+    pub is_character: bool,
 }
 
 /// Pity state of one banner of one account. The numbers come from the Rust pity engine.

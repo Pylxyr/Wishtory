@@ -386,6 +386,8 @@ pub struct FourStar {
     pub name: String,
     pub pity: u32,
     pub time: String,
+    /// A character or agent rather than a weapon, Light Cone or W-Engine.
+    pub is_character: bool,
 }
 
 #[derive(Serialize)]
@@ -447,6 +449,7 @@ pub fn compute_with_banners(
                             name: p.name.clone(),
                             pity: step.four,
                             time: p.time.clone(),
+                            is_character: matches!(p.item_type.as_str(), "Character" | "Agent"),
                         });
                     }
                     5 => {
@@ -552,6 +555,19 @@ mod tests {
         assert_eq!((c.pity, c.total, c.five_stars, c.four_stars), (2, 5, 1, 1));
         assert_eq!(c.guaranteed, Some(true));
         assert_eq!(c.avg_five_pity, Some(3.0));
+    }
+
+    #[test]
+    fn four_stars_say_whether_they_are_characters() {
+        let mut weapon = p(2, 4, "w");
+        weapon.item_type = "Weapon".into();
+        let pulls = vec![p(1, 4, "c"), weapon];
+        let r = compute(Game::Hk4e, &pulls);
+        let fours = &find(&r, "character").recent_fours;
+        assert_eq!(
+            fours.iter().map(|f| f.is_character).collect::<Vec<_>>(),
+            [true, false]
+        );
     }
 
     #[test]

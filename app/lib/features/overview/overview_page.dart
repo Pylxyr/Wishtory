@@ -9,9 +9,11 @@ import '../../state/loadable.dart';
 import '../../state/nav.dart';
 import '../../state/providers.dart';
 import '../../state/refresh.dart';
+import '../../ui/density.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
+import 'banner_stats.dart';
 
 /// Which banner's detail is open; null means the first one.
 class SelectedBanner extends Notifier<String?> {
@@ -43,7 +45,7 @@ class OverviewPage extends ConsumerWidget {
           height: 420,
           child: EmptyState(
             icon: Icons.inbox_outlined,
-            title: 'No ${info.short} history yet',
+            title: 'No ${info.name} history yet',
             body: 'Two steps: ${info.howTo} Then come back here and press Refresh. '
                 'Wishtory reads the link the game saved on this PC. Nothing is sent anywhere but HoYoverse.',
             actions: [
@@ -143,9 +145,10 @@ class _StatusStrip extends StatelessWidget {
       _Stat('Latest ${info.r5}', latest?.name ?? '–', sub: latest == null ? null : '${latest.pity} pulls · ${latest.time.substring(0, 10)}', text: true),
     ];
     return LayoutBuilder(builder: (context, box) {
+      final gap = Density.of(context).gap;
       final cols = box.maxWidth >= 900 ? 4 : 2;
-      final w = (box.maxWidth - (cols - 1) * 12) / cols;
-      return Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
+      final w = (box.maxWidth - (cols - 1) * gap) / cols;
+      return Wrap(spacing: gap, runSpacing: gap, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
     });
   }
 }
@@ -216,9 +219,10 @@ class _BannerGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(builder: (context, box) {
+      final gap = Density.of(context).gap;
       final cols = box.maxWidth >= 900 ? 3 : (box.maxWidth >= 600 ? 2 : 1);
-      final w = (box.maxWidth - (cols - 1) * 12) / cols;
-      return Wrap(spacing: 12, runSpacing: 12, children: [
+      final w = (box.maxWidth - (cols - 1) * gap) / cols;
+      return Wrap(spacing: gap, runSpacing: gap, children: [
         for (final p in list)
           SizedBox(
             width: w,
@@ -288,8 +292,6 @@ class _BannerDetail extends StatelessWidget {
     String worth(int pulls) => '${groupDigits(pulls * info.pullCost)} ${info.currency.toLowerCase()}';
     final odds = p.guaranteeOdds;
     final inSoft = p.softPity != null && p.pity >= p.softPity!;
-    final fives = p.recentFives.reversed.toList();
-    final fours = p.recentFours.reversed.toList();
 
     String guarantee() {
       if (odds == null) return 'The featured item cannot be told from the history on this banner, so no guarantee is tracked.';
@@ -321,68 +323,19 @@ class _BannerDetail extends StatelessWidget {
           Text(planText(), style: Ty.body.copyWith(color: c.muted)),
         ],
         const SizedBox(height: 18),
-        Row(children: [
-          Expanded(child: Text('Recent ${info.fives}', style: Ty.h3)),
-          if (p.avgFivePity != null) Text('Average ${p.avgFivePity!.toStringAsFixed(1)} pulls', style: Ty.small.copyWith(color: c.muted)),
-        ]),
-        const SizedBox(height: 10),
-        if (fives.isEmpty)
-          Text('No ${info.r5} on this banner yet.', style: Ty.body.copyWith(color: c.muted))
-        else
-          for (final f in fives) _FiveRow(f: f, p: p, game: game),
-        if (fours.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Row(children: [
-            Expanded(child: Text('Recent ${info.r4}', style: Ty.h3)),
-            if (p.avgFourPity != null) Text('Average ${p.avgFourPity!.toStringAsFixed(1)} pulls', style: Ty.small.copyWith(color: c.muted)),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final f in fours.take(12))
-              StatusChip('${f.name} · ${f.pity}', color: c.purple),
-          ]),
-        ],
+        LayoutBuilder(builder: (context, box) {
+          final stats = StatsTable(p: p, game: game);
+          final chips = PullChips(key: ValueKey(p.banner), p: p, game: game);
+          if (box.maxWidth < 820) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [stats, const SizedBox(height: 22), chips]);
+          }
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 380, child: stats),
+            const SizedBox(width: 28),
+            Expanded(child: chips),
+          ]);
+        }),
       ]),
-    );
-  }
-}
-
-/// One 5★: icon, name and date on the left, a bar whose length is the pity, the result as text.
-class _FiveRow extends StatelessWidget {
-  const _FiveRow({required this.f, required this.p, required this.game});
-  final FiveStar f;
-  final BannerPity p;
-  final GameId game;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.wc;
-    final tint = switch (f.outcome) {
-      PullOutcome.win => c.ok,
-      PullOutcome.loss => c.err,
-      PullOutcome.guaranteed => c.blue,
-      null => c.accent,
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Semantics(
-        label: '${f.name}, pity ${f.pity} of ${p.hardPity}, ${f.time.substring(0, 10)}',
-        child: Row(children: [
-          ItemIcon(game: game, name: f.name, rank: 5, size: 34),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 170,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.h3),
-              Text(f.time.substring(0, 10), style: Ty.small.copyWith(color: c.faint)),
-            ]),
-          ),
-          Expanded(child: PityBar(value: f.pity, hard: p.hardPity, soft: p.softPity, color: tint, height: 10)),
-          SizedBox(width: 44, child: Text('${f.pity}', textAlign: TextAlign.right, style: Ty.num.copyWith(fontWeight: FontWeight.w600))),
-          const SizedBox(width: 10),
-          SizedBox(width: 128, child: Align(alignment: Alignment.centerLeft, child: p.guaranteeOdds == null ? const SizedBox.shrink() : OutcomeChip(outcome: f.outcome, odds: p.guaranteeOdds))),
-        ]),
-      ),
     );
   }
 }

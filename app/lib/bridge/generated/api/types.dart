@@ -962,10 +962,19 @@ class FourStar {
   final int pity;
   final String time;
 
-  const FourStar({required this.name, required this.pity, required this.time});
+  /// A character or agent rather than a weapon, Light Cone or W-Engine.
+  final bool isCharacter;
+
+  const FourStar({
+    required this.name,
+    required this.pity,
+    required this.time,
+    required this.isCharacter,
+  });
 
   @override
-  int get hashCode => name.hashCode ^ pity.hashCode ^ time.hashCode;
+  int get hashCode =>
+      name.hashCode ^ pity.hashCode ^ time.hashCode ^ isCharacter.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -974,7 +983,8 @@ class FourStar {
           runtimeType == other.runtimeType &&
           name == other.name &&
           pity == other.pity &&
-          time == other.time;
+          time == other.time &&
+          isCharacter == other.isCharacter;
 }
 
 class GameCatalog {

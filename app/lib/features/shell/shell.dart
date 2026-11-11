@@ -149,7 +149,7 @@ class AppRail extends ConsumerWidget {
               for (final g in GameId.values)
                 _RailItem(
                   abbr: GameInfo.of(g).abbr,
-                  label: GameInfo.of(g).short,
+                  label: GameInfo.of(g).name,
                   wide: wide,
                   selected: nav.page.isGamePage && nav.game == g,
                   count: wide ? counts.where((a) => a.game == g).length : null,
@@ -447,7 +447,7 @@ class RefreshPanel extends ConsumerWidget {
               Row(children: [
                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(width: 10),
-                Text('Refreshing ${s.game == null ? '' : GameInfo.of(s.game!).short}…', style: Ty.h3),
+                Text('Refreshing ${s.game == null ? '' : GameInfo.of(s.game!).name}…', style: Ty.h3),
               ]),
               const SizedBox(height: 8),
               for (final line in s.lines) Text(line, style: Ty.small.copyWith(color: c.muted)),

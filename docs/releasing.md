@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are built by GitHub Actions and contain the Windows setup installer (`Wishtory_<version>_x64-setup.exe`, built with Inno Setup from `packaging/windows/wishtory.iss`), a portable zip and `SHA256SUMS.txt`. When the repository allows it, the installer and the zip also carry signed build provenance. There is no Linux download: Linux users build from source with `packaging/linux/install.sh` (see the README), and CI still builds and tests the Linux app on every change.
+Releases are built by GitHub Actions and contain the Windows setup installer (`Wishtory_<version>_x64-setup.exe`, built with Inno Setup from `packaging/windows/wishtory.iss`), a portable zip and `SHA256SUMS.txt`. When the repository allows it, the installer and the zip also carry signed build provenance. There is no Linux download: Linux users build from source with `packaging/linux/install.sh` (see [docs/linux.md](linux.md)), and CI still builds and tests the Linux app on every change.
 
 ## One click
 

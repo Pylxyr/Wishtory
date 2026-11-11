@@ -2240,12 +2240,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   FourStar dco_decode_four_star(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return FourStar(
       name: dco_decode_String(arr[0]),
       pity: dco_decode_u_32(arr[1]),
       time: dco_decode_String(arr[2]),
+      isCharacter: dco_decode_bool(arr[3]),
     );
   }
 
@@ -3308,7 +3309,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_name = sse_decode_String(deserializer);
     var var_pity = sse_decode_u_32(deserializer);
     var var_time = sse_decode_String(deserializer);
-    return FourStar(name: var_name, pity: var_pity, time: var_time);
+    var var_isCharacter = sse_decode_bool(deserializer);
+    return FourStar(
+      name: var_name,
+      pity: var_pity,
+      time: var_time,
+      isCharacter: var_isCharacter,
+    );
   }
 
   @protected
@@ -4454,6 +4461,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.name, serializer);
     sse_encode_u_32(self.pity, serializer);
     sse_encode_String(self.time, serializer);
+    sse_encode_bool(self.isCharacter, serializer);
   }
 
   @protected

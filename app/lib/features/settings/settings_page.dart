@@ -45,7 +45,9 @@ class SettingsPage extends ConsumerWidget {
             onSelectionChanged: (v) => prefs.setTheme(v.first),
           ),
           const SizedBox(height: 16),
-          const Text('History table density', style: Ty.h3),
+          const Text('Density', style: Ty.h3),
+          const SizedBox(height: 2),
+          Text('Compact fits more on screen. Comfortable uses larger text, more space around everything and taller table rows.', style: Ty.small.copyWith(color: context.wc.muted)),
           const SizedBox(height: 8),
           SegmentedButton<bool>(
             showSelectedIcon: false,
@@ -179,7 +181,7 @@ class _GameLocationsState extends ConsumerState<_GameLocations> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.auto_awesome_outlined, size: 18),
             title: Text(p.path, style: Ty.small.copyWith(fontFamily: Ty.mono)),
-            subtitle: Text('Found automatically · ${p.games.map((g) => GameInfo.of(g).short).join(', ')}'),
+            subtitle: Text('Found automatically · ${p.games.map((g) => GameInfo.of(g).name).join(', ')}'),
           ),
         for (final path in l.locations)
           ListTile(

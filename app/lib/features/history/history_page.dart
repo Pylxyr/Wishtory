@@ -9,6 +9,7 @@ import '../../state/providers.dart';
 import '../../state/refresh.dart';
 import '../../state/settings.dart';
 import '../../state/toasts.dart';
+import '../../ui/density.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
@@ -493,8 +494,7 @@ class _AllTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.wc;
     final filter = ref.watch(historyFilterProvider);
-    final comfortable = ref.watch(settingsProvider.select((s) => s.comfortable));
-    final rowHeight = comfortable ? 44.0 : 32.0;
+    final rowHeight = Density.of(context).tableRow;
     final flat = flatten(rows, filter.group);
     return Column(children: [
       _TableHeader(filter: filter),
