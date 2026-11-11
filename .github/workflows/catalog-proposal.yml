@@ -100,8 +100,27 @@ jobs:
             exit 0
           fi
 
+          # What the people who update will be told: the change log this candidate would publish,
+          # compared with the feeds published now. A failure here only leaves the list out.
+          changes="$RUNNER_TEMP/changes.md"
+          if bash scripts/fetch-published.sh "$RUNNER_TEMP/published" \
+            && mkdir -p "$RUNNER_TEMP/new" \
+            && cp catalog/catalog.json catalog/banners.json catalog/rules.json catalog/manifest.json "$RUNNER_TEMP/new/" \
+            && node scripts/changelog.mjs --new "$RUNNER_TEMP/new" --published "$RUNNER_TEMP/published" \
+              --out "$RUNNER_TEMP/manifest.json" --notes catalog/changes.json --summary "$changes" > /dev/null; then
+            :
+          else
+            echo "The change list could not be generated for this run." > "$changes"
+          fi
+
           {
             echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published. CI has been started on this branch; when it is green, use Rebase and merge."
+            echo
+            echo "## Change log users will see"
+            echo
+            echo "Each entry is marked major, minor or info by fixed rules (docs/game-catalog-updates.md). Add notes or change a severity in \`catalog/changes.json\` in this PR. People whose saved pulls would be read differently are asked to review before the update is applied."
+            echo
+            cat "$changes"
             echo
             if [ -s "$report" ]; then cat "$report"; fi
           } > "$RUNNER_TEMP/pr-body.md"
