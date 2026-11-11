@@ -10,7 +10,7 @@ The matching task list is `docs/superpowers/plans/2026-10-24-live-game-catalog.m
 | :--- | :--- |
 | Three signed feeds (item catalog, banner list, pity rules), bundled copy, cache, daily check | Implemented |
 | Weekly source review (Enka, Paimon.moe) and signed publishing | Implemented |
-| One catalog version, a change log, and a preview of what an update does to saved history | **Planned** (see "Catalog revisions") |
+| One catalog version, a change log, and a preview of what an update does to saved history | Implemented (see "Catalog revisions") |
 
 ## Intent
 
@@ -64,12 +64,12 @@ Raw pulls (the `pulls` table) are never rewritten by a catalog update. Everythin
 | :--- | :--- | :--- |
 | Which banner a pull was made on | Pull time, `gacha_type`, `gacha_id`, banner list | `pity::resolve_banner(s)`, cached in the `pull_banners` table |
 | Won, lost or guaranteed for a 5-star (50/50, 75/25) | Banner list (`featured_5`), rules (permanent pools, featured windows) | `pity::compute_with_banners`, `listed_as_featured` |
-| Pity numbers, averages, hard and soft pity | Pull order, rules | `pity::compute_with_banners`, `pull_pities` |
+| Pity numbers, averages, hard and soft pity | Pull order and each pull's pool (`pull_pities` ignores the rules), rules only for the hard and soft limits shown beside them | `pity::compute_with_banners`, `pull_pities` |
 | Name, rarity, kind and traits shown for a pull | Item catalog, with the raw record as fallback | Catalog lookups, `pity::display_rank` |
 
-Today `ops::refresh_banners` installs a newer banner list and immediately clears and re-resolves `pull_banners`, so the person is told what changed in the list (`BannerUpdate`: added, changed, removed) but not what it did to their pulls.
+Before catalog revisions, a newer banner list was installed at once and `pull_banners` was cleared and re-resolved, so the person was told what changed in the list but not what it did to their pulls. `ops::refresh_banners`, `ops::refresh_catalog` and `BannerUpdate` are gone: every update now goes through a release.
 
-## Catalog revisions (planned)
+## Catalog revisions (implemented)
 
 ### One catalog, one version
 
@@ -94,7 +94,17 @@ Each change is one entry with a stable `id`, a `scope` (`items`, `banners`, `rul
 | `minor` | A small correction with a narrow effect | A name or alias fix, a trait fix, a `gacha_id` added to an existing banner |
 | `info` | Additions that cannot alter an existing pull | New characters, weapons or banners |
 
-`scripts/prepare-catalog.mjs` generates the entries by comparing the new feeds with what is published, and assigns severity by fixed rules. A maintainer can add notes or raise a severity in `catalog/changes.json`, which is part of the review PR; the review PR description lists the generated entries so the reviewer sees what users will be told.
+`scripts/changelog.mjs` generates the entries by comparing the new feeds with what is published, and assigns severity by fixed rules. A maintainer can add notes or raise a severity in `catalog/changes.json`, which is part of the review PR; the review PR description lists the generated entries so the reviewer sees what users will be told.
+
+The fixed rules, as implemented in `scripts/changelog.mjs`:
+
+| Severity | Entries |
+| :--- | :--- |
+| `major` | Banner removed, dates changed, featured 5-stars changed, pool changed, `gacha_id`s replaced or removed; item removed or its rarity changed; any change to a banner rule's hard pity, soft pity or odds; a banner rule added or removed; the permanent pool changed; the featured windows changed; Custom Search changed |
+| `minor` | Item name, alias, kind, trait or Paimon key corrected; `gacha_id`s only added to a banner; a banner's name or 4-star list changed; a banner rule's label changed; changes published earlier without a list ("unlisted") |
+| `info` | New items; new banners |
+
+Entry ids are stable (`<scope>:<kind>:<game>[:<id>]`). Up to 40 items or banners of one kind per game get one entry each; beyond that they are grouped into one entry whose `ids` holds the first 100. `catalog/changes.json` is `{ "schema_version": 1, "notes": [{ "id", "note"?, "severity"? }] }`; a note applies to the generated entry with that id and a note whose id is not in the release is ignored. The manifest is published only when a component is newer than the one the published manifest names (or none is published yet). Components that were published without a manifest are reported as `unlisted` minor entries. At most 2,000 entries, 2 MiB.
 
 ### Staging, impact and applying
 
@@ -141,10 +151,20 @@ Notifications are in-app only. Wishtory has no background service, so a check ha
 | Notify on any affected pull, or only major? | Any severity | The person decides what is worth applying |
 | Where to keep staged releases and history? | Files in the app data folder next to the feed caches | No database migration for data that is only a cache of signed files |
 | Listing size | All affected pulls, paged in the UI, with a hard cap and a count beyond it | Keeps memory and the screen bounded |
+| Which copy of each feed is in use? | The version the current manifest names, exactly. If any part cannot be loaded, the whole bundled release is used | A release is only ever used whole; a stray newer cache can never be half adopted |
+| Does a pulled pity number ever change with a release? | It is derived and compared like the other facts, but no release can move it today: `pull_pities` depends on pull order and pool, not on the rules | The code, not the first draft of this spec, is the truth. The tests show a rules change flipping a 50/50 result and leaving the pity number alone |
+| What counts as "displayed item facts"? | The name and rarity shown for the pull: the catalog's, or the saved record's own when the item is not in the catalog | Kind and traits do not change how a pull is read |
+| Component newer than the manifest names | "Not ready": nothing is staged, the next check tries again | The manifest for the newer release has not been published yet |
+| Check flow | A request names one fixed public asset and nothing else (`Source::get(asset, max_bytes)`); a failed attempt counts as a check | No history can reach a request, and an offline start is not retried on every launch |
+| Stored marker for derived banners | `derived_state` table (`CREATE TABLE IF NOT EXISTS`, no migration) holds the banner list version `pull_banners` was derived from | Written in the same transaction as the re-derivation; at start a mismatch clears the cache, which repairs a crash between the release becoming current and the database commit |
+| Commit order | Component caches, then the manifest cache (this is what makes the release current), then the database commit; a database failure removes the manifest cache and restores the previous release in memory | The manifest is the single commit point, so a crash leaves the old release or the new one |
+| "Not now" | The release stays staged, the start-up notice stops for that version, the Settings badge stays | The person can still review it any time |
+| History kept | The last 20 applied releases, each with its 100 most important entries and the total | Bounded file size |
+| Catalog request and history | Stage, apply and history are files `catalog-staged/`, `catalog-history.json`, `catalog-dismissed`, `manifest-last-check`, `manifest-cache/` in the app data folder | No migration |
 
 ## Testing
 
-- Rust: impact derivation (a moved window re-places specific pulls, a featured change flips a 50/50 result, a rules change moves a pity number), staging and apply atomicity, stale or lower versions, a manifest whose components are missing or mismatched, tampered signatures, no change to `pulls`, and a request that carries no history.
+- Rust: impact derivation (a moved window re-places specific pulls, a featured change flips a 50/50 result, a rules change flips a 50/50 result and moves no pity number), staging and apply atomicity, stale or lower versions, a manifest whose components are missing or mismatched, tampered signatures, no change to `pulls`, and a request that carries no history.
 - Node: change-log generation and severity rules, and publishing order.
 - Dart: the review page's grouping and counts, and the notice states.
 - Everything in CI (`cargo fmt --all --check`, `cargo test --locked --workspace`, `npm run catalog:test`, regenerated bridge code with no diff, `flutter analyze`, `flutter test`).

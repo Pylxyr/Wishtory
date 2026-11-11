@@ -165,22 +165,160 @@ pub struct BannerList {
     pub banners: Vec<BannerEntry>,
 }
 
+/// What a "Check for updates" did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UpdateStatus {
-    Updated,
+pub enum CheckStatus {
     UpToDate,
     AlreadyChecking,
+    /// A newer release exists but is not completely published yet; nothing changed.
+    NotReady,
+    /// A release that changes no saved pull was applied.
+    Applied,
+    /// A release is downloaded and waits for the person's review.
+    NeedsReview,
 }
 
 #[derive(Debug, Clone)]
-pub struct BannerUpdate {
-    pub status: UpdateStatus,
-    pub banners_version: i64,
-    /// Unix seconds; 0 when nothing was installed.
-    pub installed_at: i64,
-    pub added: Vec<String>,
-    pub changed: Vec<String>,
-    pub removed: Vec<String>,
+pub struct CatalogCheck {
+    pub status: CheckStatus,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeSeverity {
+    Major,
+    Minor,
+    Info,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeScope {
+    Items,
+    Banners,
+    Rules,
+}
+
+/// One line of a release's change log.
+#[derive(Debug, Clone)]
+pub struct ChangeEntry {
+    pub id: String,
+    pub scope: ChangeScope,
+    pub game: GameId,
+    pub ids: Vec<String>,
+    pub summary: String,
+    pub severity: ChangeSeverity,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogComponents {
+    pub catalog: i64,
+    pub banners: i64,
+    pub rules: i64,
+}
+
+/// A downloaded release that has not been applied.
+#[derive(Debug, Clone)]
+pub struct WaitingRelease {
+    pub version: i64,
+    pub generated_at: String,
+    pub major: i64,
+    pub minor: i64,
+    pub info: i64,
+    /// "Not now" was chosen: no start-up notice, but the Settings badge stays.
+    pub dismissed: bool,
+    pub affected_pulls: i64,
+    pub affected_accounts: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogStatus {
+    /// The one catalog version.
+    pub version: i64,
+    pub components: CatalogComponents,
+    pub generated_at: String,
+    /// Unix seconds; `None` when it was never checked.
+    pub last_check: Option<i64>,
+    pub auto_apply: bool,
+    pub waiting: Option<WaitingRelease>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShownItem {
+    pub name: String,
+    pub rarity: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ImpactReason {
+    pub text: String,
+    pub change_ids: Vec<String>,
+}
+
+/// A saved pull the waiting release would read differently.
+#[derive(Debug, Clone)]
+pub struct AffectedPull {
+    pub game: GameId,
+    pub uid: String,
+    pub pull_id: String,
+    /// Server-local `YYYY-MM-DD HH:MM:SS`.
+    pub time: String,
+    pub item_id: String,
+    pub name: String,
+    pub rank: i64,
+    pub banner_before: Option<String>,
+    pub banner_after: Option<String>,
+    pub result_before: Option<PullOutcome>,
+    pub result_after: Option<PullOutcome>,
+    pub pity_before: Option<i64>,
+    pub pity_after: Option<i64>,
+    pub shown_before: ShownItem,
+    pub shown_after: ShownItem,
+    pub reasons: Vec<ImpactReason>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountImpact {
+    pub game: GameId,
+    pub uid: String,
+    pub nickname: String,
+    pub pulls: i64,
+    pub affected: i64,
+    /// How many affected pulls can be listed (the rest are only counted).
+    pub listed: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogReview {
+    pub version: i64,
+    pub current_version: i64,
+    pub generated_at: String,
+    /// Major first.
+    pub changes: Vec<ChangeEntry>,
+    /// Pass it to `apply_catalog` so a change since this review is noticed.
+    pub fingerprint: String,
+    pub accounts: Vec<AccountImpact>,
+    pub total_affected: i64,
+    pub not_listed: i64,
+    pub dismissed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplyResult {
+    pub applied: bool,
+    /// The saved pulls or the waiting release changed since the review; a fresh one is ready.
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogHistoryEntry {
+    pub version: i64,
+    /// Unix seconds.
+    pub applied_at: i64,
+    pub automatic: bool,
+    pub affected_pulls: i64,
+    pub changes_total: i64,
+    pub changes: Vec<ChangeEntry>,
 }
 
 #[derive(Debug, Clone)]

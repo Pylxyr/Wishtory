@@ -3,11 +3,15 @@
 
 use crate::{
     authkey,
-    catalog::{BannerEntry, BannerSet, BannerStore, BannerUpdate, Catalog, CatalogStore},
+    catalog::{
+        BannerEntry, BannerSet, BannerStore, Catalog, CatalogStore, ChangeEntry, CheckOutcome,
+        Components, HistoryEntry, HttpSource, ReleaseStore, Source, StagedRelease,
+    },
     db::Db,
     discover,
     error::AppError,
     fetch,
+    impact::{self, AccountImpact, AffectedPull, Data, Impact, MAX_LISTED},
     logging::Level,
     models::{Account, Game, GameInstall, GameLocations, Pull},
     pity::{self, BannerPity},
@@ -114,11 +118,7 @@ fn assign_banners(db: &Db, banners: &BannerSet, game: Game, uid: &str) -> Result
 
 fn assign_all_banners(db: &Db, banners: &BannerSet) -> Result<(), AppError> {
     for account in db.list_accounts()? {
-        if let Some(game) = Game::ALL
-            .iter()
-            .copied()
-            .find(|g| g.as_str() == account.game)
-        {
+        if let Some(game) = parse_game(&account.game) {
             assign_banners(db, banners, game, &account.uid)?;
         }
     }
@@ -293,70 +293,335 @@ pub async fn get_catalog(catalog: &CatalogStore) -> Result<Arc<Catalog>, AppErro
     Ok(catalog.current())
 }
 
-/// Updates the signed game catalog and the signed pity rules (two independent feeds). The status
-/// is "updated" when either changed; a failure is only reported when nothing could be updated.
-pub async fn refresh_catalog(
-    catalog: &CatalogStore,
-    rules: &RulesStore,
-    force: bool,
-) -> Result<String, AppError> {
-    let outcomes = [
-        ("catalog", catalog.refresh(force).await.map(|r| r.status())),
-        ("rules", rules.refresh(force).await.map(|r| r.status())),
-    ];
-    let mut status = "up-to-date";
-    let mut failure = None;
-    for (name, outcome) in outcomes {
-        match outcome {
-            Ok(s) => {
-                wlog!(Level::Debug, "{name} refresh: {s}");
-                if s == "updated" || (s == "already-checking" && status != "updated") {
-                    status = s;
-                }
-            }
-            Err(e) => {
-                wlog!(Level::Warn, "{name} refresh failed: {e}");
-                failure.get_or_insert(e);
-            }
-        }
-    }
-    match failure {
-        Some(e) if status != "updated" => Err(AppError::Message(e)),
-        _ => Ok(status.into()),
-    }
-}
-
 pub async fn get_banners(banners: &BannerStore) -> Result<Arc<BannerSet>, AppError> {
     Ok(banners.current())
 }
 
-/// The last installed banner update, so the app can show what changed after a restart.
-pub async fn get_banner_update(banners: &BannerStore) -> Result<Option<BannerUpdate>, AppError> {
-    Ok(banners.last_update())
+// ---------------------------------------------------------------------------------------------
+// Game catalog releases: check, review, apply
+// ---------------------------------------------------------------------------------------------
+
+/// Cheap to clone; everything a catalog operation needs. `auto_apply` is the person's setting
+/// as it was when the operation started.
+#[derive(Clone)]
+pub struct CatalogCtx {
+    pub db: Db,
+    pub release: Arc<ReleaseStore>,
+    pub catalog: Arc<CatalogStore>,
+    pub banners: Arc<BannerStore>,
+    pub rules: Arc<RulesStore>,
+    pub auto_apply: bool,
 }
 
-/// `force` skips the once-a-day gate (the "Update banners" button).
-pub async fn refresh_banners(
-    db: &Db,
-    banners: &BannerStore,
-    force: bool,
-) -> Result<BannerUpdate, AppError> {
-    let update = banners
-        .refresh(force)
-        .await
-        .inspect_err(|e| wlog!(Level::Warn, "banner refresh failed: {e}"))
-        .map_err(AppError::Message)?;
-    wlog!(Level::Debug, "banner refresh: {}", update.status);
-    // A newer list can move windows, so every saved pull is matched against it again.
-    if update.status == "updated" {
-        let list = banners.current();
-        db.run(move |db| {
-            db.clear_pull_banners()?;
-            assign_all_banners(db, &list)
+/// A release that is downloaded and verified but not applied.
+#[derive(Debug, Clone)]
+pub struct WaitingRelease {
+    pub manifest_version: u64,
+    pub generated_at: String,
+    pub major: u32,
+    pub minor: u32,
+    pub info: u32,
+    /// "Not now" was chosen: no start-up notice, but the Settings badge stays.
+    pub dismissed: bool,
+    pub affected_pulls: u64,
+    pub affected_accounts: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogStatus {
+    /// The one catalog version.
+    pub version: u64,
+    pub components: Components,
+    pub generated_at: String,
+    /// Unix seconds of the last check.
+    pub last_check: Option<u64>,
+    pub auto_apply: bool,
+    pub waiting: Option<WaitingRelease>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogCheck {
+    /// "up-to-date", "already-checking", "not-ready", "applied" or "needs-review".
+    pub status: String,
+    /// Set for "not-ready": which part is not published yet.
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogReview {
+    pub manifest_version: u64,
+    pub current_version: u64,
+    pub generated_at: String,
+    pub changes: Vec<ChangeEntry>,
+    /// Pass it back to `apply_catalog`: it says which analysis the person looked at.
+    pub fingerprint: String,
+    pub accounts: Vec<AccountImpact>,
+    pub total_affected: u64,
+    pub not_listed: u64,
+    pub dismissed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApplyResult {
+    pub applied: bool,
+    /// The saved pulls or the waiting release changed since the review; nothing was applied and
+    /// a fresh review is ready.
+    pub stale: bool,
+}
+
+fn parse_game(text: &str) -> Option<Game> {
+    Game::ALL.iter().copied().find(|g| g.as_str() == text)
+}
+
+/// The impact of the staged release on the saved pulls, reused while nothing has changed.
+async fn impact_for(
+    ctx: &CatalogCtx,
+    staged: &Arc<StagedRelease>,
+) -> Result<Arc<Impact>, AppError> {
+    let current = ctx.release.current().manifest_version;
+    let staged_version = staged.manifest.manifest_version;
+    let fingerprint = ctx
+        .db
+        .run(move |db| impact::fingerprint(db, current, staged_version))
+        .await?;
+    let memo = ctx
+        .release
+        .impact
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Some(memo) = memo.filter(|m| m.fingerprint == fingerprint) {
+        return Ok(memo);
+    }
+    let (catalog, banners, rules) = (
+        ctx.catalog.current(),
+        ctx.banners.current(),
+        ctx.rules.current(),
+    );
+    let staged = staged.clone();
+    let computed = ctx
+        .db
+        .run(move |db| {
+            impact::compute(
+                db,
+                Data {
+                    version: current,
+                    catalog: &catalog,
+                    banners: &banners,
+                    rules: &rules,
+                },
+                Data {
+                    version: staged.manifest.manifest_version,
+                    catalog: &staged.catalog,
+                    banners: &staged.banners,
+                    rules: &staged.rules,
+                },
+                &staged.manifest.changes,
+                MAX_LISTED,
+            )
         })
         .await?;
+    let computed = Arc::new(computed);
+    *ctx.release.impact.lock().unwrap_or_else(|e| e.into_inner()) = Some(computed.clone());
+    Ok(computed)
+}
+
+pub async fn get_catalog_status(ctx: &CatalogCtx) -> Result<CatalogStatus, AppError> {
+    let current = ctx.release.current();
+    let waiting = match ctx.release.staged() {
+        Some(staged) => {
+            let impact = impact_for(ctx, &staged).await?;
+            let (major, minor, info) = staged.manifest.counts();
+            Some(WaitingRelease {
+                manifest_version: staged.manifest.manifest_version,
+                generated_at: staged.manifest.generated_at.clone(),
+                major,
+                minor,
+                info,
+                dismissed: ctx.release.dismissed() == Some(staged.manifest.manifest_version),
+                affected_pulls: impact.total_affected,
+                affected_accounts: impact.affected_accounts(),
+            })
+        }
+        None => None,
+    };
+    Ok(CatalogStatus {
+        version: current.manifest_version,
+        components: current.components,
+        generated_at: current.generated_at.clone(),
+        last_check: ctx.release.last_check(),
+        auto_apply: ctx.auto_apply,
+        waiting,
+    })
+}
+
+/// Asks for a newer release. A complete one is downloaded and verified but not installed. When
+/// it would change no saved pull and the setting allows, it is applied; otherwise it waits for
+/// the person. `force` skips the once-a-day gate (the Check for updates button).
+pub async fn check_catalog(ctx: &CatalogCtx, force: bool) -> Result<CatalogCheck, AppError> {
+    check_catalog_with(ctx, &HttpSource, force).await
+}
+
+pub(crate) async fn check_catalog_with(
+    ctx: &CatalogCtx,
+    source: &impl Source,
+    force: bool,
+) -> Result<CatalogCheck, AppError> {
+    let outcome = ctx
+        .release
+        .check(source, force)
+        .await
+        .inspect_err(|e| wlog!(Level::Warn, "catalog check failed: {e}"))
+        .map_err(AppError::Message)?;
+    wlog!(Level::Debug, "catalog check: {}", outcome.status());
+    let mut check = CatalogCheck {
+        status: outcome.status().into(),
+        message: None,
+    };
+    match &outcome {
+        CheckOutcome::Busy => return Ok(check),
+        CheckOutcome::NotReady(why) => {
+            wlog!(Level::Info, "catalog release not ready: {why}");
+            check.message = Some(why.clone());
+        }
+        _ => {}
     }
-    Ok(update)
+    // Whatever the check found, a release staged earlier (even before a restart) is looked at.
+    if let Some(staged) = ctx.release.staged() {
+        let impact = impact_for(ctx, &staged).await?;
+        if impact.total_affected == 0 && ctx.auto_apply {
+            apply_staged(ctx, &staged, true, 0).await?;
+            check.status = "applied".into();
+        } else {
+            check.status = "needs-review".into();
+        }
+    }
+    Ok(check)
+}
+
+/// Installs the staged release and re-derives every saved pull's banner in ONE database
+/// transaction. If any step fails the previous release stays in use.
+async fn apply_staged(
+    ctx: &CatalogCtx,
+    staged: &Arc<StagedRelease>,
+    automatic: bool,
+    affected: u64,
+) -> Result<(), AppError> {
+    let (c, st) = (ctx.clone(), staged.clone());
+    c.db.clone()
+        .run(move |db| {
+            let mut rows = Vec::new();
+            for account in db.list_accounts()? {
+                let Some(game) = parse_game(&account.game) else {
+                    continue;
+                };
+                let pulls = db.pulls_for(&account.game, &account.uid)?;
+                let placed = pity::resolve_banners(&st.banners.banners, game, &pulls);
+                rows.extend(pulls.iter().zip(placed).filter_map(|(p, b)| {
+                    b.map(|b| (p.game.clone(), p.uid.clone(), p.id.clone(), b.id.clone()))
+                }));
+            }
+            let marker = format!("banners:{}", st.banners.banners_version);
+            let mut installed = None;
+            let result = db.replace_pull_banners(&rows, &marker, || {
+                installed = Some(
+                    c.release
+                        .install(&st, &c.catalog, &c.banners, &c.rules)
+                        .map_err(AppError::Message)?,
+                );
+                Ok(())
+            });
+            if result.is_err() {
+                if let Some(applied) = installed.take() {
+                    c.release.revert(applied, &c.catalog, &c.banners, &c.rules);
+                }
+            }
+            result
+        })
+        .await
+        .inspect_err(|e| wlog!(Level::Warn, "applying the catalog release failed: {e}"))?;
+    wlog!(
+        Level::Info,
+        "applied catalog release {}",
+        staged.manifest.manifest_version
+    );
+    ctx.release.finish(staged, automatic, affected);
+    Ok(())
+}
+
+/// The change log and the affected pulls of the waiting release, for the review page.
+pub async fn get_catalog_review(ctx: &CatalogCtx) -> Result<Option<CatalogReview>, AppError> {
+    let Some(staged) = ctx.release.staged() else {
+        return Ok(None);
+    };
+    let impact = impact_for(ctx, &staged).await?;
+    let mut changes = staged.manifest.changes.clone();
+    changes.sort_by(|a, b| a.severity.cmp(&b.severity).then_with(|| a.id.cmp(&b.id)));
+    Ok(Some(CatalogReview {
+        manifest_version: staged.manifest.manifest_version,
+        current_version: impact.current_version,
+        generated_at: staged.manifest.generated_at.clone(),
+        changes,
+        fingerprint: impact.fingerprint.clone(),
+        accounts: impact.accounts.clone(),
+        total_affected: impact.total_affected,
+        not_listed: impact.not_listed,
+        dismissed: ctx.release.dismissed() == Some(staged.manifest.manifest_version),
+    }))
+}
+
+/// One page of the affected pulls of one account.
+pub async fn get_impact_page(
+    ctx: &CatalogCtx,
+    game: Game,
+    uid: String,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<AffectedPull>, AppError> {
+    let Some(staged) = ctx.release.staged() else {
+        return Ok(Vec::new());
+    };
+    let impact = impact_for(ctx, &staged).await?;
+    Ok(impact.page(game.as_str(), &uid, offset, limit.min(200)))
+}
+
+/// Applies the waiting release after the person confirmed. `reviewed` is the version and
+/// fingerprint of the review they saw: when the saved pulls or the waiting release changed since,
+/// nothing is applied and `stale` is set.
+pub async fn apply_catalog(
+    ctx: &CatalogCtx,
+    reviewed: Option<(u64, String)>,
+) -> Result<ApplyResult, AppError> {
+    let staged = ctx
+        .release
+        .staged()
+        .ok_or_else(|| AppError::Message("There is no game data update waiting.".into()))?;
+    let impact = impact_for(ctx, &staged).await?;
+    if let Some((version, fingerprint)) = reviewed {
+        if version != staged.manifest.manifest_version || fingerprint != impact.fingerprint {
+            return Ok(ApplyResult {
+                applied: false,
+                stale: true,
+            });
+        }
+    }
+    apply_staged(ctx, &staged, false, impact.total_affected).await?;
+    Ok(ApplyResult {
+        applied: true,
+        stale: false,
+    })
+}
+
+/// "Not now": keeps the release staged and stops the start-up notice for it.
+pub async fn dismiss_catalog(ctx: &CatalogCtx) -> Result<(), AppError> {
+    if let Some(staged) = ctx.release.staged() {
+        ctx.release.dismiss(staged.manifest.manifest_version);
+    }
+    Ok(())
+}
+
+pub async fn get_catalog_history(ctx: &CatalogCtx) -> Result<Vec<HistoryEntry>, AppError> {
+    Ok(ctx.release.history())
 }
 
 /// Static, per-game UI naming that the backend already owns (so the frontend keeps no copy).
@@ -806,5 +1071,285 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"new content");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod catalog_tests {
+    use super::*;
+    use crate::catalog::testkit::*;
+    use crate::models::Pull;
+    use crate::rules::RuleSet;
+
+    fn pull(id: u32, time: &str) -> Pull {
+        Pull {
+            id: id.to_string(),
+            game: "hk4e".into(),
+            uid: "1".into(),
+            gacha_type: "301".into(),
+            gacha_id: String::new(),
+            item_id: "x".into(),
+            name: "Item".into(),
+            item_type: "Character".into(),
+            rank_type: 3,
+            time: time.into(),
+            lang: "en".into(),
+            count: 1,
+        }
+    }
+
+    fn banners(version: u64, end: &str) -> BannerSet {
+        let text = format!(
+            r#"{{"schema_version":1,"banners_version":{version},"generated_at":"2026-01-01T00:00:00Z","banners":[{{"id":"e1","game":"hk4e","pool":"character","name":"Event","start":"2026-01-01 18:00:00","end":"{end}","featured_5":["10000022"]}}]}}"#
+        );
+        BannerSet::parse_and_validate(text.as_bytes()).unwrap()
+    }
+
+    struct World {
+        ctx: CatalogCtx,
+        dir: std::path::PathBuf,
+        source: Fake,
+    }
+
+    impl World {
+        fn new(tag: &str, auto_apply: bool) -> World {
+            let dir = scratch(&format!("ops-{tag}"));
+            let feeds = open_with_banners(&dir, banners(1, "2026-01-20 17:59:59"));
+            let db = Db::open(&dir.join("wishtory.db")).unwrap();
+            db.merge(
+                "hk4e",
+                "1",
+                8,
+                &[
+                    pull(1, "2026-01-05 12:00:00"),
+                    pull(2, "2026-01-25 12:00:00"),
+                ],
+            )
+            .unwrap();
+            let ctx = CatalogCtx {
+                db,
+                release: Arc::new(feeds.release),
+                catalog: Arc::new(feeds.catalog),
+                banners: Arc::new(feeds.banners),
+                rules: Arc::new(feeds.rules),
+                auto_apply,
+            };
+            World {
+                ctx,
+                dir,
+                source: Fake::default(),
+            }
+        }
+
+        /// Release 2 with a banner list ending at `end` (pull 2, on 25 January, is inside only
+        /// when the window was stretched).
+        fn publish(&self, end: &str) {
+            let mut c = Catalog::bundled();
+            c.catalog_version = 5;
+            let mut r = RuleSet::bundled();
+            r.rules_version = 3;
+            self.source.publish(&envelopes_of(2, c, banners(6, end), r));
+        }
+
+        fn check(&self, force: bool) -> CatalogCheck {
+            run(check_catalog_with(&self.ctx, &self.source, force)).unwrap()
+        }
+
+        fn versions(&self) -> (u64, u64, u64, u64) {
+            (
+                self.ctx.release.current().manifest_version,
+                self.ctx.catalog.current().catalog_version,
+                self.ctx.banners.current().banners_version,
+                self.ctx.rules.current().rules_version,
+            )
+        }
+
+        fn pulls(&self) -> Vec<String> {
+            self.ctx
+                .db
+                .pulls_for("hk4e", "1")
+                .unwrap()
+                .iter()
+                .map(|p| format!("{p:?}"))
+                .collect()
+        }
+    }
+
+    impl Drop for World {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn a_release_that_changes_no_pull_is_applied_by_itself_and_recorded() {
+        let w = World::new("auto", true);
+        let before = w.pulls();
+        w.publish("2026-01-20 17:59:59"); // same dates, new versions
+        assert_eq!(w.check(true).status, "applied");
+        assert_eq!(w.versions(), (2, 5, 6, 3));
+        assert!(w.ctx.release.staged().is_none());
+        let history = run(get_catalog_history(&w.ctx)).unwrap();
+        assert_eq!(history.len(), 1);
+        assert!(history[0].automatic);
+        assert_eq!(history[0].affected_pulls, 0);
+        assert_eq!(w.pulls(), before, "saved pulls are never rewritten");
+        assert_eq!(
+            w.ctx
+                .db
+                .pull_banners_for("hk4e", "1")
+                .unwrap()
+                .get("1")
+                .map(String::as_str),
+            Some("e1")
+        );
+        let status = run(get_catalog_status(&w.ctx)).unwrap();
+        assert_eq!((status.version, status.waiting.is_none()), (2, true));
+    }
+
+    #[test]
+    fn the_setting_can_turn_automatic_updates_off() {
+        let w = World::new("manual", false);
+        w.publish("2026-01-20 17:59:59");
+        assert_eq!(w.check(true).status, "needs-review");
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        let status = run(get_catalog_status(&w.ctx)).unwrap();
+        let waiting = status.waiting.unwrap();
+        assert_eq!((waiting.manifest_version, waiting.affected_pulls), (2, 0));
+        assert!(run(apply_catalog(&w.ctx, None)).unwrap().applied);
+        assert_eq!(w.versions(), (2, 5, 6, 3));
+    }
+
+    #[test]
+    fn a_release_that_would_change_a_pull_waits_and_nothing_is_applied_silently() {
+        let w = World::new("review", true);
+        let before = w.pulls();
+        w.publish("2026-01-31 17:59:59"); // stretches the banner over pull 2
+        assert_eq!(w.check(true).status, "needs-review");
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        // Even the next, unforced check (the gate holds) never applies it.
+        assert_eq!(w.check(false).status, "needs-review");
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        let review = run(get_catalog_review(&w.ctx)).unwrap().unwrap();
+        assert_eq!(review.total_affected, 1);
+        assert_eq!(review.accounts[0].affected, 1);
+        let page = run(get_impact_page(&w.ctx, Game::Hk4e, "1".into(), 0, 50)).unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].pull_id, "2");
+        assert_eq!(page[0].banner_before, None);
+        assert_eq!(page[0].banner_after.as_deref(), Some("Event"));
+        assert_eq!(w.pulls(), before);
+        // "Not now" keeps it waiting.
+        run(dismiss_catalog(&w.ctx)).unwrap();
+        let status = run(get_catalog_status(&w.ctx)).unwrap();
+        assert!(status.waiting.as_ref().unwrap().dismissed);
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        // Apply with the review the person saw.
+        let result = run(apply_catalog(
+            &w.ctx,
+            Some((review.manifest_version, review.fingerprint)),
+        ))
+        .unwrap();
+        assert!(result.applied && !result.stale);
+        assert_eq!(w.versions(), (2, 5, 6, 3));
+        let rows = w.ctx.db.pull_banners_for("hk4e", "1").unwrap();
+        assert_eq!(rows.get("2").map(String::as_str), Some("e1"));
+        assert_eq!(w.pulls(), before);
+        let history = run(get_catalog_history(&w.ctx)).unwrap();
+        assert!(!history[0].automatic);
+        assert_eq!(history[0].affected_pulls, 1);
+    }
+
+    #[test]
+    fn if_the_pulls_changed_after_the_review_the_impact_is_recomputed_first() {
+        let w = World::new("stale", true);
+        w.publish("2026-01-31 17:59:59");
+        w.check(true);
+        let review = run(get_catalog_review(&w.ctx)).unwrap().unwrap();
+        // A sync adds a pull the review did not include.
+        w.ctx
+            .db
+            .merge("hk4e", "1", 8, &[pull(3, "2026-01-26 12:00:00")])
+            .unwrap();
+        let result = run(apply_catalog(
+            &w.ctx,
+            Some((review.manifest_version, review.fingerprint.clone())),
+        ))
+        .unwrap();
+        assert!(result.stale && !result.applied);
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        let fresh = run(get_catalog_review(&w.ctx)).unwrap().unwrap();
+        assert_eq!(fresh.total_affected, 2);
+        assert_ne!(fresh.fingerprint, review.fingerprint);
+        assert!(
+            run(apply_catalog(
+                &w.ctx,
+                Some((fresh.manifest_version, fresh.fingerprint))
+            ))
+            .unwrap()
+            .applied
+        );
+    }
+
+    #[test]
+    fn a_failed_apply_leaves_the_previous_release_and_the_saved_banners() {
+        let w = World::new("fail", true);
+        w.publish("2026-01-31 17:59:59");
+        w.check(true);
+        // Seed the stored banners as the previous release left them.
+        run(async {
+            w.ctx
+                .db
+                .clone()
+                .run(|db| db.set_pull_banners("hk4e", "1", &[("1".into(), "e1".into())]))
+                .await
+        })
+        .unwrap();
+        // Keeping the banner list on disk fails (its cache folder is a file).
+        std::fs::write(w.dir.join("banners-cache"), b"in the way").unwrap();
+        assert!(run(apply_catalog(&w.ctx, None)).is_err());
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        let rows = w.ctx.db.pull_banners_for("hk4e", "1").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows.get("1").map(String::as_str), Some("e1"));
+        assert!(
+            w.ctx.release.staged().is_some(),
+            "still waiting, nothing lost"
+        );
+        assert_eq!(w.pulls().len(), 2);
+        assert_eq!(run(get_catalog_history(&w.ctx)).unwrap().len(), 0);
+        // After the obstacle goes away the same release applies.
+        std::fs::remove_file(w.dir.join("banners-cache")).unwrap();
+        assert!(run(apply_catalog(&w.ctx, None)).unwrap().applied);
+    }
+
+    #[test]
+    fn a_staged_release_left_by_a_crash_is_picked_up_without_a_download() {
+        let w = World::new("resume", true);
+        w.publish("2026-01-20 17:59:59");
+        // Stage only (as if the app stopped right after downloading).
+        run(w.ctx.release.check(&w.source, true)).unwrap();
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        w.source
+            .offline
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let check = w.check(false); // gate says not due; nothing is downloaded
+        assert_eq!(check.status, "applied");
+        assert_eq!(w.versions(), (2, 5, 6, 3));
+    }
+
+    #[test]
+    fn saved_banners_are_forgotten_when_they_belong_to_another_banner_list() {
+        let w = World::new("marker", true);
+        w.ctx.db.ensure_derived("banners:1").unwrap();
+        w.ctx
+            .db
+            .set_pull_banners("hk4e", "1", &[("1".into(), "e1".into())])
+            .unwrap();
+        w.ctx.db.ensure_derived("banners:1").unwrap();
+        assert_eq!(w.ctx.db.pull_banners_for("hk4e", "1").unwrap().len(), 1);
+        w.ctx.db.ensure_derived("banners:2").unwrap();
+        assert!(w.ctx.db.pull_banners_for("hk4e", "1").unwrap().is_empty());
+        assert_eq!(w.pulls().len(), 2);
     }
 }

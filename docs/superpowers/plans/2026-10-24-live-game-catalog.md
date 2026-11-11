@@ -72,61 +72,61 @@ Reviewers, human or automated, should check:
 
 **Files:** `crates/wishtory-core/src/catalog.rs` (a `CatalogManifest` feed), a new `catalog/changes.json` (optional curated notes), `scripts/prepare-catalog.mjs` or a new `scripts/changelog.mjs`, `scripts/*.test.mjs`.
 
-- [ ] Define the manifest schema (`manifest_version`, `components`, `changes`, `generated_at`, `schema_version`) with strict validation and a size cap.
-- [ ] Generate `changes` by comparing the new feeds with the published ones; assign `major`, `minor` or `info` by the rules in the spec; merge notes from `catalog/changes.json`.
-- [ ] Tests: each severity rule, a banner window move, a removed banner, a rules change, an item rarity change, additions only, and no change.
+- [x] Define the manifest schema (`manifest_version`, `components`, `changes`, `generated_at`, `schema_version`) with strict validation and a size cap.
+- [x] Generate `changes` by comparing the new feeds with the published ones; assign `major`, `minor` or `info` by the rules in the spec; merge notes from `catalog/changes.json`.
+- [x] Tests: each severity rule, a banner window move, a removed banner, a rules change, an item rarity change, additions only, and no change.
 
 ### Task 7: Publishing order and the review PR
 
 **Files:** `.github/workflows/catalog-release.yml`, `.github/workflows/catalog-proposal.yml`, `scripts/prepare-catalog.mjs`, `docs/game-catalog-updates.md`.
 
-- [ ] Upload component feeds first and the manifest last; sign the manifest with the same key; keep every existing asset.
-- [ ] Stamp the bundled manifest version in release builds like the other feeds.
-- [ ] Put the generated change list (with severities) in the review PR description.
+- [x] Upload component feeds first and the manifest last; sign the manifest with the same key; keep every existing asset.
+- [x] Stamp the bundled manifest version in release builds like the other feeds.
+- [x] Put the generated change list (with severities) in the review PR description.
 
 ### Task 8: Staging in the Rust core
 
 **Files:** `catalog.rs` (`FeedStore` gains check-and-stage without install), `crates/wishtory-core/src/ops.rs`, `crates/wishtory-core/src/lib.rs`.
 
-- [ ] Download and verify the manifest and every component; keep the staged release on disk; re-verify on load; drop it when superseded.
-- [ ] Refuse a manifest whose components are missing, lower or mismatched; keep the current data and retry later.
-- [ ] Apply installs all components together and re-derives `pull_banners` in one transaction; a failure leaves the previous release in place.
-- [ ] Tests: tampered or downgraded manifests, partial publishes, crash safety, repeated checks, offline.
+- [x] Download and verify the manifest and every component; keep the staged release on disk; re-verify on load; drop it when superseded.
+- [x] Refuse a manifest whose components are missing, lower or mismatched; keep the current data and retry later.
+- [x] Apply installs all components together and re-derives `pull_banners` in one transaction; a failure leaves the previous release in place.
+- [x] Tests: tampered or downgraded manifests, partial publishes, crash safety, repeated checks, offline.
 
 ### Task 9: Impact analysis
 
 **Files:** a new `crates/wishtory-core/src/impact.rs`, `pity.rs` (shared derivation), `db.rs` (read pulls).
 
-- [ ] Derive each saved pull's banner, 50/50 result, pity number and display facts under the current and the staged data; list pulls where they differ, with the reason and the change entry behind it.
-- [ ] Bound memory and size; page the result; report counts beyond the cap.
-- [ ] Tests: a moved window re-places specific pulls, a featured change flips a result, a rules change moves a pity number, an unchanged history reports nothing, and `pulls` is untouched.
+- [x] Derive each saved pull's banner, 50/50 result, pity number and display facts under the current and the staged data; list pulls where they differ, with the reason and the change entry behind it.
+- [x] Bound memory and size; page the result; report counts beyond the cap.
+- [x] Tests: a moved window re-places specific pulls, a featured change flips a result, a rules change moves a pity number, an unchanged history reports nothing, and `pulls` is untouched.
 
 ### Task 10: Bridge API and generated code
 
 **Files:** `crates/wishtory-bridge/src/api/core_api.rs`, `types.rs`, `convert.rs`, `app/lib/bridge/generated/**`, `app/lib/bridge/wishtory_api.dart`.
 
-- [ ] Expose catalog status, check, staged-release review (change log and impact pages), apply, dismiss and history.
-- [ ] Regenerate with `flutter_rust_bridge_codegen generate`; CI fails on any diff.
+- [x] Expose catalog status, check, staged-release review (change log and impact pages), apply, dismiss and history.
+- [x] Regenerate with `flutter_rust_bridge_codegen generate`; CI fails on any diff.
 
 ### Task 11: Settings card, notice and review page
 
 **Files:** `app/lib/features/settings/settings_page.dart`, new files under `app/lib/features/settings/` (catalog card, review page), `app/lib/state/refresh.dart`, `app/lib/state/providers.dart`.
 
-- [ ] One **Game catalog** card with the single version and **Check for updates**; replace the separate catalog and banner buttons.
-- [ ] A startup notice and Settings badge when a release needs review.
-- [ ] A review page: change log by severity, affected pulls per account (before and after, why), **Apply** and **Not now**; a catalog history list.
-- [ ] Tests for grouping, counts and notice states; accessible labels and keyboard use.
+- [x] One **Game catalog** card with the single version and **Check for updates**; replace the separate catalog and banner buttons.
+- [x] A startup notice and Settings badge when a release needs review.
+- [x] A review page: change log by severity, affected pulls per account (before and after, why), **Apply** and **Not now**; a catalog history list.
+- [ ] Tests for grouping, counts and notice states; accessible labels and keyboard use. (Written in `app/test/catalog_logic_test.dart`; not yet run: the Dart and Flutter checks could not run where this was built.)
 
 ### Task 12: Documentation and privacy
 
 **Files:** `docs/game-catalog-updates.md`, this plan, the spec, `PRIVACY.md` (only if behaviour that it describes changes), `README.md` (one line).
 
-- [ ] Describe the manifest, severities, `catalog/changes.json`, publish order, and how to read the review page.
+- [x] Describe the manifest, severities, `catalog/changes.json`, publish order, and how to read the review page.
 
 ### Task 13: Final review
 
-- [ ] Check every invariant in the spec, and that no history leaves the PC.
-- [ ] Run the verification commands below.
+- [x] Check every invariant in the spec, and that no history leaves the PC.
+- [ ] Run the verification commands below. (Rust, Node, bridge generation and the banner tracker ran clean; `flutter analyze` and `flutter test` still need a Flutter machine.)
 
 ## Verification
 

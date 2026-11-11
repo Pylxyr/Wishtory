@@ -2,7 +2,6 @@
 //! the cached feeds; a few app-level helpers are free functions.
 
 use super::{error::ApiError, types::*};
-use crate::convert::update_status;
 use crate::frb_generated::StreamSink;
 use std::{path::PathBuf, sync::Arc};
 use wishtory_core::{about, logging, models::Game, ops, update, Core};
@@ -155,19 +154,73 @@ impl WishtoryCore {
         let catalog = self.inner.get_catalog().await?;
         Ok(GameCatalog::from(&*catalog))
     }
-    /// Updates the signed catalog and pity rules. `force` skips the once-a-day gate.
-    pub async fn refresh_catalog(&self, force: bool) -> Result<UpdateStatus, ApiError> {
-        Ok(update_status(&self.inner.refresh_catalog(force).await?))
-    }
     pub async fn get_banners(&self) -> Result<BannerList, ApiError> {
         let banners = self.inner.get_banners().await?;
         Ok(BannerList::from(&*banners))
     }
-    pub async fn get_banner_update(&self) -> Result<Option<BannerUpdate>, ApiError> {
-        Ok(self.inner.get_banner_update().await?.map(Into::into))
+    // ---- Game catalog: one version, checked, reviewed and applied as a whole ----
+
+    pub async fn get_catalog_status(&self) -> Result<CatalogStatus, ApiError> {
+        Ok(self.inner.get_catalog_status().await?.into())
     }
-    pub async fn refresh_banners(&self, force: bool) -> Result<BannerUpdate, ApiError> {
-        Ok(self.inner.refresh_banners(force).await?.into())
+    /// Asks for a newer release. One that changes no saved pull is applied by itself (when the
+    /// setting allows); any other waits for `apply_catalog`. `force` skips the once-a-day gate.
+    pub async fn check_catalog(&self, force: bool) -> Result<CatalogCheck, ApiError> {
+        Ok(self.inner.check_catalog(force).await?.into())
+    }
+    pub async fn get_catalog_review(&self) -> Result<Option<CatalogReview>, ApiError> {
+        Ok(self.inner.get_catalog_review().await?.map(Into::into))
+    }
+    /// A page of the saved pulls of one account that the waiting release would read differently.
+    pub async fn get_impact_page(
+        &self,
+        game: GameId,
+        uid: String,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<AffectedPull>, ApiError> {
+        let pulls = self
+            .inner
+            .get_impact_page(
+                game.into(),
+                uid,
+                offset.max(0) as usize,
+                limit.clamp(0, 200) as usize,
+            )
+            .await?;
+        Ok(pulls
+            .into_iter()
+            .filter_map(AffectedPull::from_core)
+            .collect())
+    }
+    /// Applies the waiting release. `version` and `fingerprint` come from the review the person
+    /// saw; if the saved pulls changed since, nothing is applied and `stale` is set.
+    pub async fn apply_catalog(
+        &self,
+        version: i64,
+        fingerprint: String,
+    ) -> Result<ApplyResult, ApiError> {
+        Ok(self
+            .inner
+            .apply_catalog(Some((version.max(0) as u64, fingerprint)))
+            .await?
+            .into())
+    }
+    /// "Not now": keeps the release waiting but stops the start-up notice for it.
+    pub async fn dismiss_catalog(&self) -> Result<(), ApiError> {
+        Ok(self.inner.dismiss_catalog().await?)
+    }
+    pub async fn get_catalog_history(&self) -> Result<Vec<CatalogHistoryEntry>, ApiError> {
+        Ok(self
+            .inner
+            .get_catalog_history()
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+    pub fn set_catalog_auto_apply(&self, enabled: bool) -> Result<bool, ApiError> {
+        Ok(self.inner.set_catalog_auto_apply(enabled)?)
     }
 
     // ---- Cloud backup: the person's own Google Drive, encrypted on this PC ----

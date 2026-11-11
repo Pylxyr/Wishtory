@@ -72,6 +72,11 @@ class BannersLoader extends OnceLoader<BannerList> {
   Future<BannerList> load(WishtoryApi api) => api.getBanners();
 }
 
+class CatalogStatusLoader extends OnceLoader<CatalogStatus> {
+  @override
+  Future<CatalogStatus> load(WishtoryApi api) => api.getCatalogStatus();
+}
+
 class MetaLoader extends OnceLoader<List<GameMeta>> {
   @override
   Future<List<GameMeta>> load(WishtoryApi api) => api.gameMeta();
@@ -80,6 +85,7 @@ class MetaLoader extends OnceLoader<List<GameMeta>> {
 final accountsProvider = NotifierProvider<AccountsLoader, Loadable<List<Account>>>(AccountsLoader.new);
 final catalogProvider = NotifierProvider<CatalogLoader, Loadable<GameCatalog>>(CatalogLoader.new);
 final bannersProvider = NotifierProvider<BannersLoader, Loadable<BannerList>>(BannersLoader.new);
+final catalogStatusProvider = NotifierProvider<CatalogStatusLoader, Loadable<CatalogStatus>>(CatalogStatusLoader.new);
 final metaProvider = NotifierProvider<MetaLoader, Loadable<List<GameMeta>>>(MetaLoader.new);
 
 /// Item name → catalog entry, rebuilt when the catalog changes.

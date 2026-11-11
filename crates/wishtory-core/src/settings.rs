@@ -47,12 +47,33 @@ pub struct CloudSettings {
     pub account: Option<String>,
 }
 
+/// How game data updates are applied.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogSettings {
+    /// Apply a release by itself when it would change no saved pull. A release that would
+    /// change any pull always waits for the person, whatever this says.
+    #[serde(default = "yes")]
+    pub auto_apply: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Default for CatalogSettings {
+    fn default() -> Self {
+        Self { auto_apply: true }
+    }
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct SettingsFile {
     #[serde(default)]
     game_locations: Vec<String>,
     #[serde(default)]
     cloud: CloudSettings,
+    #[serde(default)]
+    catalog: CatalogSettings,
 }
 
 pub struct SettingsStore {
@@ -104,6 +125,19 @@ impl SettingsStore {
         change(&mut file.cloud);
         self.write(&file)?;
         Ok(file.cloud)
+    }
+
+    /// How game data updates are applied (defaults when nothing was saved).
+    pub fn catalog(&self) -> CatalogSettings {
+        self.load_file().catalog
+    }
+
+    pub fn set_catalog_auto_apply(&self, auto_apply: bool) -> Result<CatalogSettings, AppError> {
+        let _guard = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let mut file = self.load_file();
+        file.catalog.auto_apply = auto_apply;
+        self.write(&file)?;
+        Ok(file.catalog)
     }
 
     /// The saved extra folders, as text for the interface.

@@ -21,6 +21,7 @@ import '../help/tutorial.dart';
 import '../history/history_page.dart';
 import '../import_export/import_export_page.dart';
 import '../overview/overview_page.dart';
+import '../settings/catalog_review.dart';
 import '../settings/logs_page.dart';
 import '../settings/settings_page.dart';
 
@@ -74,6 +75,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               AppRail(wide: wide),
               Expanded(
                 child: Column(children: [
+                  const CatalogUpdateNotice(),
                   if (nav.page.isGamePage) const PageBar(),
                   Expanded(child: _page(nav.page)),
                   const StatusBar(),
@@ -96,6 +98,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         AppPage.help => const HelpPage(),
         AppPage.about => const AboutPage(),
         AppPage.logs => const LogsPage(),
+        AppPage.catalogReview => const CatalogReviewPage(),
       };
 }
 
@@ -111,15 +114,17 @@ class AppRail extends ConsumerWidget {
     final nav = ref.watch(navProvider);
     final counts = ref.watch(accountsProvider).data ?? const <Account>[];
     final update = ref.watch(appUpdateProvider).data;
+    final catalogWaiting = ref.watch(catalogStatusProvider.select((s) => s.data?.waiting != null));
     final logging = ref.watch(settingsProvider.select((s) => s.loggingEnabled));
     final width = wide ? 224.0 : 68.0;
 
-    Widget item(AppPage page, IconData icon, {bool dot = false}) => _RailItem(
+    Widget item(AppPage page, IconData icon, {bool dot = false, String dotLabel = 'Update'}) => _RailItem(
           icon: icon,
           label: page.title,
           wide: wide,
           selected: nav.page == page,
           dot: dot,
+          dotLabel: dotLabel,
           onTap: () => ref.read(navProvider.notifier).goTo(page),
         );
 
@@ -157,7 +162,7 @@ class AppRail extends ConsumerWidget {
           ),
           // The rest of the app stays at the bottom, out of the way.
           const _RailDivider(),
-          item(AppPage.settings, Icons.settings_outlined, dot: update?.available == true),
+          item(AppPage.settings, Icons.settings_outlined, dot: update?.available == true || catalogWaiting, dotLabel: catalogWaiting ? 'Review' : 'Update'),
           if (logging) item(AppPage.logs, Icons.receipt_long_outlined),
           item(AppPage.help, Icons.help_outline),
           item(AppPage.about, Icons.info_outline),
@@ -198,6 +203,7 @@ class _RailItem extends StatelessWidget {
     required this.onTap,
     this.count,
     this.dot = false,
+    this.dotLabel = 'Update',
   });
 
   final IconData? icon;
@@ -208,6 +214,7 @@ class _RailItem extends StatelessWidget {
   final VoidCallback onTap;
   final int? count;
   final bool dot;
+  final String dotLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -231,13 +238,13 @@ class _RailItem extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(color: fg, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
         if (count != null && count! > 0) Text('$count', style: Ty.small.copyWith(fontFamily: Ty.mono, color: c.faint)),
-        if (dot) Text('Update', style: Ty.small.copyWith(color: c.accent)),
+        if (dot) Text(dotLabel, style: Ty.small.copyWith(color: c.accent)),
       ],
     ]);
     return Semantics(
       button: true,
       selected: selected,
-      label: label,
+      label: dot ? '$label, $dotLabel' : label,
       child: Tooltip(
         message: wide ? '' : label,
         child: Padding(

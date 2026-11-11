@@ -16,11 +16,13 @@ if (rawPublicKey !== pinned) throw new Error('Signing key does not match the pub
 
 const payload = await readFile(inputPath);
 const parsed = JSON.parse(payload);
-// Three payload kinds share this signing key: the item catalog, the banner list and the pity rules.
+// Four payload kinds share this signing key: the item catalog, the banner list, the pity rules and
+// the manifest that names a release.
 const validCatalog = Number.isSafeInteger(parsed.catalog_version) && Array.isArray(parsed.items);
 const validBanners = Number.isSafeInteger(parsed.banners_version) && Array.isArray(parsed.banners);
 const validRules = Number.isSafeInteger(parsed.rules_version) && parsed.games && typeof parsed.games === 'object';
-if (parsed.schema_version !== 1 || !(validCatalog || validBanners || validRules)) {
+const validManifest = Number.isSafeInteger(parsed.manifest_version) && parsed.components && Array.isArray(parsed.changes);
+if (parsed.schema_version !== 1 || !(validCatalog || validBanners || validRules || validManifest)) {
   throw new Error('Catalog schema validation failed.');
 }
 const signature = sign(null, payload, privateKey).toString('base64');

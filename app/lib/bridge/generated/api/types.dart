@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `hash`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `hash`
 
 class AboutInfo {
   final String name;
@@ -101,6 +101,129 @@ class Account {
           pullCount == other.pullCount;
 }
 
+class AccountImpact {
+  final GameId game;
+  final String uid;
+  final String nickname;
+  final PlatformInt64 pulls;
+  final PlatformInt64 affected;
+
+  /// How many affected pulls can be listed (the rest are only counted).
+  final PlatformInt64 listed;
+
+  const AccountImpact({
+    required this.game,
+    required this.uid,
+    required this.nickname,
+    required this.pulls,
+    required this.affected,
+    required this.listed,
+  });
+
+  @override
+  int get hashCode =>
+      game.hashCode ^
+      uid.hashCode ^
+      nickname.hashCode ^
+      pulls.hashCode ^
+      affected.hashCode ^
+      listed.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AccountImpact &&
+          runtimeType == other.runtimeType &&
+          game == other.game &&
+          uid == other.uid &&
+          nickname == other.nickname &&
+          pulls == other.pulls &&
+          affected == other.affected &&
+          listed == other.listed;
+}
+
+/// A saved pull the waiting release would read differently.
+class AffectedPull {
+  final GameId game;
+  final String uid;
+  final String pullId;
+
+  /// Server-local `YYYY-MM-DD HH:MM:SS`.
+  final String time;
+  final String itemId;
+  final String name;
+  final PlatformInt64 rank;
+  final String? bannerBefore;
+  final String? bannerAfter;
+  final PullOutcome? resultBefore;
+  final PullOutcome? resultAfter;
+  final PlatformInt64? pityBefore;
+  final PlatformInt64? pityAfter;
+  final ShownItem shownBefore;
+  final ShownItem shownAfter;
+  final List<ImpactReason> reasons;
+
+  const AffectedPull({
+    required this.game,
+    required this.uid,
+    required this.pullId,
+    required this.time,
+    required this.itemId,
+    required this.name,
+    required this.rank,
+    this.bannerBefore,
+    this.bannerAfter,
+    this.resultBefore,
+    this.resultAfter,
+    this.pityBefore,
+    this.pityAfter,
+    required this.shownBefore,
+    required this.shownAfter,
+    required this.reasons,
+  });
+
+  @override
+  int get hashCode =>
+      game.hashCode ^
+      uid.hashCode ^
+      pullId.hashCode ^
+      time.hashCode ^
+      itemId.hashCode ^
+      name.hashCode ^
+      rank.hashCode ^
+      bannerBefore.hashCode ^
+      bannerAfter.hashCode ^
+      resultBefore.hashCode ^
+      resultAfter.hashCode ^
+      pityBefore.hashCode ^
+      pityAfter.hashCode ^
+      shownBefore.hashCode ^
+      shownAfter.hashCode ^
+      reasons.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AffectedPull &&
+          runtimeType == other.runtimeType &&
+          game == other.game &&
+          uid == other.uid &&
+          pullId == other.pullId &&
+          time == other.time &&
+          itemId == other.itemId &&
+          name == other.name &&
+          rank == other.rank &&
+          bannerBefore == other.bannerBefore &&
+          bannerAfter == other.bannerAfter &&
+          resultBefore == other.resultBefore &&
+          resultAfter == other.resultAfter &&
+          pityBefore == other.pityBefore &&
+          pityAfter == other.pityAfter &&
+          shownBefore == other.shownBefore &&
+          shownAfter == other.shownAfter &&
+          reasons == other.reasons;
+}
+
 class AppUpdate {
   final String current;
   final String latest;
@@ -140,6 +263,26 @@ class AppUpdate {
           url == other.url &&
           prerelease == other.prerelease &&
           publishedAt == other.publishedAt;
+}
+
+class ApplyResult {
+  final bool applied;
+
+  /// The saved pulls or the waiting release changed since the review; a fresh one is ready.
+  final bool stale;
+
+  const ApplyResult({required this.applied, required this.stale});
+
+  @override
+  int get hashCode => applied.hashCode ^ stale.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ApplyResult &&
+          runtimeType == other.runtimeType &&
+          applied == other.applied &&
+          stale == other.stale;
 }
 
 class BannerEntry {
@@ -318,45 +461,87 @@ class BannerPity {
           recentFours == other.recentFours;
 }
 
-class BannerUpdate {
-  final UpdateStatus status;
-  final PlatformInt64 bannersVersion;
+class CatalogCheck {
+  final CheckStatus status;
+  final String? message;
 
-  /// Unix seconds; 0 when nothing was installed.
-  final PlatformInt64 installedAt;
-  final List<String> added;
-  final List<String> changed;
-  final List<String> removed;
-
-  const BannerUpdate({
-    required this.status,
-    required this.bannersVersion,
-    required this.installedAt,
-    required this.added,
-    required this.changed,
-    required this.removed,
-  });
+  const CatalogCheck({required this.status, this.message});
 
   @override
-  int get hashCode =>
-      status.hashCode ^
-      bannersVersion.hashCode ^
-      installedAt.hashCode ^
-      added.hashCode ^
-      changed.hashCode ^
-      removed.hashCode;
+  int get hashCode => status.hashCode ^ message.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BannerUpdate &&
+      other is CatalogCheck &&
           runtimeType == other.runtimeType &&
           status == other.status &&
-          bannersVersion == other.bannersVersion &&
-          installedAt == other.installedAt &&
-          added == other.added &&
-          changed == other.changed &&
-          removed == other.removed;
+          message == other.message;
+}
+
+class CatalogComponents {
+  final PlatformInt64 catalog;
+  final PlatformInt64 banners;
+  final PlatformInt64 rules;
+
+  const CatalogComponents({
+    required this.catalog,
+    required this.banners,
+    required this.rules,
+  });
+
+  @override
+  int get hashCode => catalog.hashCode ^ banners.hashCode ^ rules.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CatalogComponents &&
+          runtimeType == other.runtimeType &&
+          catalog == other.catalog &&
+          banners == other.banners &&
+          rules == other.rules;
+}
+
+class CatalogHistoryEntry {
+  final PlatformInt64 version;
+
+  /// Unix seconds.
+  final PlatformInt64 appliedAt;
+  final bool automatic;
+  final PlatformInt64 affectedPulls;
+  final PlatformInt64 changesTotal;
+  final List<ChangeEntry> changes;
+
+  const CatalogHistoryEntry({
+    required this.version,
+    required this.appliedAt,
+    required this.automatic,
+    required this.affectedPulls,
+    required this.changesTotal,
+    required this.changes,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      appliedAt.hashCode ^
+      automatic.hashCode ^
+      affectedPulls.hashCode ^
+      changesTotal.hashCode ^
+      changes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CatalogHistoryEntry &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          appliedAt == other.appliedAt &&
+          automatic == other.automatic &&
+          affectedPulls == other.affectedPulls &&
+          changesTotal == other.changesTotal &&
+          changes == other.changes;
 }
 
 class CatalogItem {
@@ -400,6 +585,166 @@ class CatalogItem {
           rarity == other.rarity &&
           kind == other.kind &&
           paimonKey == other.paimonKey;
+}
+
+class CatalogReview {
+  final PlatformInt64 version;
+  final PlatformInt64 currentVersion;
+  final String generatedAt;
+
+  /// Major first.
+  final List<ChangeEntry> changes;
+
+  /// Pass it to `apply_catalog` so a change since this review is noticed.
+  final String fingerprint;
+  final List<AccountImpact> accounts;
+  final PlatformInt64 totalAffected;
+  final PlatformInt64 notListed;
+  final bool dismissed;
+
+  const CatalogReview({
+    required this.version,
+    required this.currentVersion,
+    required this.generatedAt,
+    required this.changes,
+    required this.fingerprint,
+    required this.accounts,
+    required this.totalAffected,
+    required this.notListed,
+    required this.dismissed,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      currentVersion.hashCode ^
+      generatedAt.hashCode ^
+      changes.hashCode ^
+      fingerprint.hashCode ^
+      accounts.hashCode ^
+      totalAffected.hashCode ^
+      notListed.hashCode ^
+      dismissed.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CatalogReview &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          currentVersion == other.currentVersion &&
+          generatedAt == other.generatedAt &&
+          changes == other.changes &&
+          fingerprint == other.fingerprint &&
+          accounts == other.accounts &&
+          totalAffected == other.totalAffected &&
+          notListed == other.notListed &&
+          dismissed == other.dismissed;
+}
+
+class CatalogStatus {
+  /// The one catalog version.
+  final PlatformInt64 version;
+  final CatalogComponents components;
+  final String generatedAt;
+
+  /// Unix seconds; `None` when it was never checked.
+  final PlatformInt64? lastCheck;
+  final bool autoApply;
+  final WaitingRelease? waiting;
+
+  const CatalogStatus({
+    required this.version,
+    required this.components,
+    required this.generatedAt,
+    this.lastCheck,
+    required this.autoApply,
+    this.waiting,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      components.hashCode ^
+      generatedAt.hashCode ^
+      lastCheck.hashCode ^
+      autoApply.hashCode ^
+      waiting.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CatalogStatus &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          components == other.components &&
+          generatedAt == other.generatedAt &&
+          lastCheck == other.lastCheck &&
+          autoApply == other.autoApply &&
+          waiting == other.waiting;
+}
+
+/// One line of a release's change log.
+class ChangeEntry {
+  final String id;
+  final ChangeScope scope;
+  final GameId game;
+  final List<String> ids;
+  final String summary;
+  final ChangeSeverity severity;
+  final String? note;
+
+  const ChangeEntry({
+    required this.id,
+    required this.scope,
+    required this.game,
+    required this.ids,
+    required this.summary,
+    required this.severity,
+    this.note,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      scope.hashCode ^
+      game.hashCode ^
+      ids.hashCode ^
+      summary.hashCode ^
+      severity.hashCode ^
+      note.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChangeEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          scope == other.scope &&
+          game == other.game &&
+          ids == other.ids &&
+          summary == other.summary &&
+          severity == other.severity &&
+          note == other.note;
+}
+
+enum ChangeScope { items, banners, rules }
+
+enum ChangeSeverity { major, minor, info }
+
+/// What a "Check for updates" did.
+enum CheckStatus {
+  upToDate,
+  alreadyChecking,
+
+  /// A newer release exists but is not completely published yet; nothing changed.
+  notReady,
+
+  /// A release that changes no saved pull was applied.
+  applied,
+
+  /// A release is downloaded and waits for the person's review.
+  needsReview,
 }
 
 /// One backup file in the person's Drive.
@@ -817,6 +1162,24 @@ class HistoryPull {
           pity == other.pity;
 }
 
+class ImpactReason {
+  final String text;
+  final List<String> changeIds;
+
+  const ImpactReason({required this.text, required this.changeIds});
+
+  @override
+  int get hashCode => text.hashCode ^ changeIds.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ImpactReason &&
+          runtimeType == other.runtimeType &&
+          text == other.text &&
+          changeIds == other.changeIds;
+}
+
 class ImportSummary {
   final String format;
   final PlatformInt64 accounts;
@@ -882,4 +1245,70 @@ class LogEntry {
 
 enum PullOutcome { win, loss, guaranteed }
 
-enum UpdateStatus { updated, upToDate, alreadyChecking }
+class ShownItem {
+  final String name;
+  final PlatformInt64 rarity;
+
+  const ShownItem({required this.name, required this.rarity});
+
+  @override
+  int get hashCode => name.hashCode ^ rarity.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ShownItem &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          rarity == other.rarity;
+}
+
+/// A downloaded release that has not been applied.
+class WaitingRelease {
+  final PlatformInt64 version;
+  final String generatedAt;
+  final PlatformInt64 major;
+  final PlatformInt64 minor;
+  final PlatformInt64 info;
+
+  /// "Not now" was chosen: no start-up notice, but the Settings badge stays.
+  final bool dismissed;
+  final PlatformInt64 affectedPulls;
+  final PlatformInt64 affectedAccounts;
+
+  const WaitingRelease({
+    required this.version,
+    required this.generatedAt,
+    required this.major,
+    required this.minor,
+    required this.info,
+    required this.dismissed,
+    required this.affectedPulls,
+    required this.affectedAccounts,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^
+      generatedAt.hashCode ^
+      major.hashCode ^
+      minor.hashCode ^
+      info.hashCode ^
+      dismissed.hashCode ^
+      affectedPulls.hashCode ^
+      affectedAccounts.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WaitingRelease &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          generatedAt == other.generatedAt &&
+          major == other.major &&
+          minor == other.minor &&
+          info == other.info &&
+          dismissed == other.dismissed &&
+          affectedPulls == other.affectedPulls &&
+          affectedAccounts == other.affectedAccounts;
+}

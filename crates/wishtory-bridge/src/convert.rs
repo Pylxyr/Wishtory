@@ -3,13 +3,23 @@
 use crate::api::types::*;
 use wishtory_core::{
     about::{About as CoreAbout, Credit as CoreCredit, CreditGroup as CoreCreditGroup},
-    catalog::{BannerEntry as CoreBanner, BannerSet, BannerUpdate as CoreBannerUpdate, Catalog},
+    catalog::{
+        BannerEntry as CoreBanner, BannerSet, Catalog, ChangeEntry as CoreChange,
+        ChangeScope as CoreScope, HistoryEntry as CoreHistory, Severity as CoreSeverity,
+    },
     cloud::{BackupFile as CoreBackup, CloudStatus as CoreCloudStatus},
+    impact::{
+        AccountImpact as CoreAccountImpact, AffectedPull as CoreAffected, Shown as CoreShown,
+    },
     logging::LogEntry as CoreLogEntry,
     models::{
         Account as CoreAccount, Game, GameInstall as CoreInstall, GameLocations as CoreLocations,
     },
-    ops::{FetchSummary as CoreFetch, GameMeta as CoreGameMeta, HistoryPull as CoreHistoryPull},
+    ops::{
+        ApplyResult as CoreApply, CatalogCheck as CoreCheck, CatalogReview as CoreReview,
+        CatalogStatus as CoreStatus, FetchSummary as CoreFetch, GameMeta as CoreGameMeta,
+        HistoryPull as CoreHistoryPull,
+    },
     pity::{BannerPity as CoreBannerPity, FiveStar as CoreFiveStar, FourStar as CoreFourStar},
     uigf::ImportSummary as CoreImport,
     update::AppUpdate as CoreAppUpdate,
@@ -223,24 +233,176 @@ impl From<&BannerSet> for BannerList {
     }
 }
 
-impl From<CoreBannerUpdate> for BannerUpdate {
-    fn from(u: CoreBannerUpdate) -> Self {
+fn outcome(text: Option<&str>) -> Option<PullOutcome> {
+    match text? {
+        "win" => Some(PullOutcome::Win),
+        "loss" => Some(PullOutcome::Loss),
+        "guaranteed" => Some(PullOutcome::Guaranteed),
+        _ => None,
+    }
+}
+
+impl ChangeEntry {
+    /// `None` for a game this app does not know (a newer manifest than the app).
+    fn from_core(c: &CoreChange) -> Option<Self> {
+        Some(Self {
+            id: c.id.clone(),
+            scope: match c.scope {
+                CoreScope::Items => ChangeScope::Items,
+                CoreScope::Banners => ChangeScope::Banners,
+                CoreScope::Rules => ChangeScope::Rules,
+            },
+            game: game_from_str(&c.game)?,
+            ids: c.ids.clone(),
+            summary: c.summary.clone(),
+            severity: match c.severity {
+                CoreSeverity::Major => ChangeSeverity::Major,
+                CoreSeverity::Minor => ChangeSeverity::Minor,
+                CoreSeverity::Info => ChangeSeverity::Info,
+            },
+            note: c.note.clone(),
+        })
+    }
+}
+
+impl From<CoreCheck> for CatalogCheck {
+    fn from(c: CoreCheck) -> Self {
         Self {
-            status: update_status(&u.status),
-            banners_version: u.banners_version as i64,
-            installed_at: u.installed_at as i64,
-            added: u.added,
-            changed: u.changed,
-            removed: u.removed,
+            status: match c.status.as_str() {
+                "already-checking" => CheckStatus::AlreadyChecking,
+                "not-ready" => CheckStatus::NotReady,
+                "applied" => CheckStatus::Applied,
+                "needs-review" => CheckStatus::NeedsReview,
+                _ => CheckStatus::UpToDate,
+            },
+            message: c.message,
         }
     }
 }
 
-pub(crate) fn update_status(s: &str) -> UpdateStatus {
-    match s {
-        "updated" => UpdateStatus::Updated,
-        "already-checking" => UpdateStatus::AlreadyChecking,
-        _ => UpdateStatus::UpToDate,
+impl From<CoreStatus> for CatalogStatus {
+    fn from(s: CoreStatus) -> Self {
+        Self {
+            version: s.version as i64,
+            components: CatalogComponents {
+                catalog: s.components.catalog as i64,
+                banners: s.components.banners as i64,
+                rules: s.components.rules as i64,
+            },
+            generated_at: s.generated_at,
+            last_check: s.last_check.map(|v| v as i64),
+            auto_apply: s.auto_apply,
+            waiting: s.waiting.map(|w| WaitingRelease {
+                version: w.manifest_version as i64,
+                generated_at: w.generated_at,
+                major: w.major as i64,
+                minor: w.minor as i64,
+                info: w.info as i64,
+                dismissed: w.dismissed,
+                affected_pulls: w.affected_pulls as i64,
+                affected_accounts: w.affected_accounts as i64,
+            }),
+        }
+    }
+}
+
+impl AccountImpact {
+    fn from_core(a: CoreAccountImpact) -> Option<Self> {
+        Some(Self {
+            game: game_from_str(&a.game)?,
+            uid: a.uid,
+            nickname: a.nickname,
+            pulls: a.pulls as i64,
+            affected: a.affected as i64,
+            listed: a.listed as i64,
+        })
+    }
+}
+
+impl From<CoreReview> for CatalogReview {
+    fn from(r: CoreReview) -> Self {
+        Self {
+            version: r.manifest_version as i64,
+            current_version: r.current_version as i64,
+            generated_at: r.generated_at,
+            changes: r
+                .changes
+                .iter()
+                .filter_map(ChangeEntry::from_core)
+                .collect(),
+            fingerprint: r.fingerprint,
+            accounts: r
+                .accounts
+                .into_iter()
+                .filter_map(AccountImpact::from_core)
+                .collect(),
+            total_affected: r.total_affected as i64,
+            not_listed: r.not_listed as i64,
+            dismissed: r.dismissed,
+        }
+    }
+}
+
+fn shown(s: CoreShown) -> ShownItem {
+    ShownItem {
+        name: s.name,
+        rarity: s.rarity as i64,
+    }
+}
+
+impl AffectedPull {
+    pub(crate) fn from_core(p: CoreAffected) -> Option<Self> {
+        Some(Self {
+            game: game_from_str(&p.game)?,
+            uid: p.uid,
+            pull_id: p.pull_id,
+            time: p.time,
+            item_id: p.item_id,
+            name: p.name,
+            rank: p.rank as i64,
+            banner_before: p.banner_before,
+            banner_after: p.banner_after,
+            result_before: outcome(p.result_before.as_deref()),
+            result_after: outcome(p.result_after.as_deref()),
+            pity_before: p.pity_before.map(i64::from),
+            pity_after: p.pity_after.map(i64::from),
+            shown_before: shown(p.shown_before),
+            shown_after: shown(p.shown_after),
+            reasons: p
+                .reasons
+                .into_iter()
+                .map(|r| ImpactReason {
+                    text: r.text,
+                    change_ids: r.change_ids,
+                })
+                .collect(),
+        })
+    }
+}
+
+impl From<CoreApply> for ApplyResult {
+    fn from(a: CoreApply) -> Self {
+        Self {
+            applied: a.applied,
+            stale: a.stale,
+        }
+    }
+}
+
+impl From<CoreHistory> for CatalogHistoryEntry {
+    fn from(h: CoreHistory) -> Self {
+        Self {
+            version: h.manifest_version as i64,
+            applied_at: h.applied_at as i64,
+            automatic: h.automatic,
+            affected_pulls: h.affected_pulls as i64,
+            changes_total: i64::from(h.changes_total),
+            changes: h
+                .changes
+                .iter()
+                .filter_map(ChangeEntry::from_core)
+                .collect(),
+        }
     }
 }
 

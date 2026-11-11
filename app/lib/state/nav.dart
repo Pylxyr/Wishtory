@@ -6,7 +6,7 @@ import '../bridge/wishtory_api.dart';
 import '../domain/game_info.dart';
 import 'providers.dart';
 
-enum AppPage { overview, history, importExport, accounts, settings, help, about, logs }
+enum AppPage { overview, history, importExport, accounts, settings, help, about, logs, catalogReview }
 
 extension AppPageInfo on AppPage {
   String get title => switch (this) {
@@ -18,6 +18,7 @@ extension AppPageInfo on AppPage {
         AppPage.help => 'Help',
         AppPage.about => 'About',
         AppPage.logs => 'Logs',
+        AppPage.catalogReview => 'Game catalog update',
       };
 
   /// Pages about one game's data show the game and account bar.
@@ -59,7 +60,7 @@ class NavController extends Notifier<NavState> {
     try {
       uids = (jsonDecode(p.getString(_kUids) ?? '{}') as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String));
     } catch (_) {}
-    final shown = page == AppPage.logs ? AppPage.overview : page;
+    final shown = page == AppPage.logs || page == AppPage.catalogReview ? AppPage.overview : page;
     return NavState(
       page: shown,
       game: gameFromKey(p.getString(_kGame)) ?? GameId.genshin,

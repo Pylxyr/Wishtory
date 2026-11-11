@@ -26,10 +26,27 @@ abstract class WishtoryApi {
   Future<List<BannerPity>> getPity(GameId game, String uid);
 
   Future<GameCatalog> getCatalog();
-  Future<UpdateStatus> refreshCatalog({bool force = false});
   Future<BannerList> getBanners();
-  Future<BannerUpdate?> getBannerUpdate();
-  Future<BannerUpdate> refreshBanners({bool force = false});
+
+  /// The game catalog as one thing: its single version, the last check and a release waiting for review.
+  Future<CatalogStatus> getCatalogStatus();
+
+  /// Asks for a newer release. One that changes none of the saved pulls is applied by itself (when the setting allows);
+  /// any other is kept and waits for [applyCatalog]. [force] skips the once-a-day gate.
+  Future<CatalogCheck> checkCatalog({bool force = false});
+  Future<CatalogReview?> getCatalogReview();
+
+  /// A page of the saved pulls of one account that the waiting release would read differently.
+  Future<List<AffectedPull>> getImpactPage(GameId game, String uid, {required int offset, required int limit});
+
+  /// Applies the waiting release. The version and fingerprint come from the review the person saw; when the
+  /// saved pulls changed since, nothing is applied and [ApplyResult.stale] is set.
+  Future<ApplyResult> applyCatalog({required int version, required String fingerprint});
+  Future<void> dismissCatalog();
+
+  /// Newest first.
+  Future<List<CatalogHistoryEntry>> getCatalogHistory();
+  Future<bool> setCatalogAutoApply(bool enabled);
 
   Future<ImportSummary> importFile(String path);
   Future<void> exportFile(String path, String format, {GameId? game, String? uid});
@@ -96,13 +113,25 @@ class RustWishtoryApi implements WishtoryApi {
   @override
   Future<GameCatalog> getCatalog() => _core.getCatalog();
   @override
-  Future<UpdateStatus> refreshCatalog({bool force = false}) => _core.refreshCatalog(force: force);
-  @override
   Future<BannerList> getBanners() => _core.getBanners();
   @override
-  Future<BannerUpdate?> getBannerUpdate() => _core.getBannerUpdate();
+  Future<CatalogStatus> getCatalogStatus() => _core.getCatalogStatus();
   @override
-  Future<BannerUpdate> refreshBanners({bool force = false}) => _core.refreshBanners(force: force);
+  Future<CatalogCheck> checkCatalog({bool force = false}) => _core.checkCatalog(force: force);
+  @override
+  Future<CatalogReview?> getCatalogReview() => _core.getCatalogReview();
+  @override
+  Future<List<AffectedPull>> getImpactPage(GameId game, String uid, {required int offset, required int limit}) =>
+      _core.getImpactPage(game: game, uid: uid, offset: offset, limit: limit);
+  @override
+  Future<ApplyResult> applyCatalog({required int version, required String fingerprint}) =>
+      _core.applyCatalog(version: version, fingerprint: fingerprint);
+  @override
+  Future<void> dismissCatalog() => _core.dismissCatalog();
+  @override
+  Future<List<CatalogHistoryEntry>> getCatalogHistory() => _core.getCatalogHistory();
+  @override
+  Future<bool> setCatalogAutoApply(bool enabled) => _core.setCatalogAutoApply(enabled: enabled);
 
   @override
   Future<ImportSummary> importFile(String path) => _core.importFile(path: path);

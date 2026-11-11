@@ -63,10 +63,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Account dco_decode_account(dynamic raw);
 
   @protected
+  AccountImpact dco_decode_account_impact(dynamic raw);
+
+  @protected
+  AffectedPull dco_decode_affected_pull(dynamic raw);
+
+  @protected
   ApiError dco_decode_api_error(dynamic raw);
 
   @protected
   AppUpdate dco_decode_app_update(dynamic raw);
+
+  @protected
+  ApplyResult dco_decode_apply_result(dynamic raw);
 
   @protected
   BannerEntry dco_decode_banner_entry(dynamic raw);
@@ -81,19 +90,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BannerPity dco_decode_banner_pity(dynamic raw);
 
   @protected
-  BannerUpdate dco_decode_banner_update(dynamic raw);
-
-  @protected
   bool dco_decode_bool(dynamic raw);
 
   @protected
   ApiError dco_decode_box_autoadd_api_error(dynamic raw);
 
   @protected
-  BannerUpdate dco_decode_box_autoadd_banner_update(dynamic raw);
+  bool dco_decode_box_autoadd_bool(dynamic raw);
 
   @protected
-  bool dco_decode_box_autoadd_bool(dynamic raw);
+  CatalogReview dco_decode_box_autoadd_catalog_review(dynamic raw);
 
   @protected
   CloudBackup dco_decode_box_autoadd_cloud_backup(dynamic raw);
@@ -108,6 +114,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GameId dco_decode_box_autoadd_game_id(dynamic raw);
 
   @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+
+  @protected
   PullOutcome dco_decode_box_autoadd_pull_outcome(dynamic raw);
 
   @protected
@@ -117,7 +126,37 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_8(dynamic raw);
 
   @protected
+  WaitingRelease dco_decode_box_autoadd_waiting_release(dynamic raw);
+
+  @protected
+  CatalogCheck dco_decode_catalog_check(dynamic raw);
+
+  @protected
+  CatalogComponents dco_decode_catalog_components(dynamic raw);
+
+  @protected
+  CatalogHistoryEntry dco_decode_catalog_history_entry(dynamic raw);
+
+  @protected
   CatalogItem dco_decode_catalog_item(dynamic raw);
+
+  @protected
+  CatalogReview dco_decode_catalog_review(dynamic raw);
+
+  @protected
+  CatalogStatus dco_decode_catalog_status(dynamic raw);
+
+  @protected
+  ChangeEntry dco_decode_change_entry(dynamic raw);
+
+  @protected
+  ChangeScope dco_decode_change_scope(dynamic raw);
+
+  @protected
+  ChangeSeverity dco_decode_change_severity(dynamic raw);
+
+  @protected
+  CheckStatus dco_decode_check_status(dynamic raw);
 
   @protected
   CloudBackup dco_decode_cloud_backup(dynamic raw);
@@ -174,6 +213,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  ImpactReason dco_decode_impact_reason(dynamic raw);
+
+  @protected
   ImportSummary dco_decode_import_summary(dynamic raw);
 
   @protected
@@ -181,6 +223,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Account> dco_decode_list_account(dynamic raw);
+
+  @protected
+  List<AccountImpact> dco_decode_list_account_impact(dynamic raw);
+
+  @protected
+  List<AffectedPull> dco_decode_list_affected_pull(dynamic raw);
 
   @protected
   List<BannerEntry> dco_decode_list_banner_entry(dynamic raw);
@@ -192,7 +240,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BannerPity> dco_decode_list_banner_pity(dynamic raw);
 
   @protected
+  List<CatalogHistoryEntry> dco_decode_list_catalog_history_entry(dynamic raw);
+
+  @protected
   List<CatalogItem> dco_decode_list_catalog_item(dynamic raw);
+
+  @protected
+  List<ChangeEntry> dco_decode_list_change_entry(dynamic raw);
 
   @protected
   List<CloudBackup> dco_decode_list_cloud_backup(dynamic raw);
@@ -225,6 +279,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<HistoryPull> dco_decode_list_history_pull(dynamic raw);
 
   @protected
+  List<ImpactReason> dco_decode_list_impact_reason(dynamic raw);
+
+  @protected
   List<LogEntry> dco_decode_list_log_entry(dynamic raw);
 
   @protected
@@ -240,10 +297,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError? dco_decode_opt_box_autoadd_api_error(dynamic raw);
 
   @protected
-  BannerUpdate? dco_decode_opt_box_autoadd_banner_update(dynamic raw);
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
 
   @protected
-  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+  CatalogReview? dco_decode_opt_box_autoadd_catalog_review(dynamic raw);
 
   @protected
   CloudBackup? dco_decode_opt_box_autoadd_cloud_backup(dynamic raw);
@@ -258,6 +315,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GameId? dco_decode_opt_box_autoadd_game_id(dynamic raw);
 
   @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
   PullOutcome? dco_decode_opt_box_autoadd_pull_outcome(dynamic raw);
 
   @protected
@@ -265,6 +325,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? dco_decode_opt_box_autoadd_u_8(dynamic raw);
+
+  @protected
+  WaitingRelease? dco_decode_opt_box_autoadd_waiting_release(dynamic raw);
 
   @protected
   PullOutcome dco_decode_pull_outcome(dynamic raw);
@@ -276,6 +339,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RefreshEventKind dco_decode_refresh_event_kind(dynamic raw);
 
   @protected
+  ShownItem dco_decode_shown_item(dynamic raw);
+
+  @protected
   int dco_decode_u_32(dynamic raw);
 
   @protected
@@ -285,10 +351,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
-  UpdateStatus dco_decode_update_status(dynamic raw);
+  BigInt dco_decode_usize(dynamic raw);
 
   @protected
-  BigInt dco_decode_usize(dynamic raw);
+  WaitingRelease dco_decode_waiting_release(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -326,10 +392,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Account sse_decode_account(SseDeserializer deserializer);
 
   @protected
+  AccountImpact sse_decode_account_impact(SseDeserializer deserializer);
+
+  @protected
+  AffectedPull sse_decode_affected_pull(SseDeserializer deserializer);
+
+  @protected
   ApiError sse_decode_api_error(SseDeserializer deserializer);
 
   @protected
   AppUpdate sse_decode_app_update(SseDeserializer deserializer);
+
+  @protected
+  ApplyResult sse_decode_apply_result(SseDeserializer deserializer);
 
   @protected
   BannerEntry sse_decode_banner_entry(SseDeserializer deserializer);
@@ -344,21 +419,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BannerPity sse_decode_banner_pity(SseDeserializer deserializer);
 
   @protected
-  BannerUpdate sse_decode_banner_update(SseDeserializer deserializer);
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
   ApiError sse_decode_box_autoadd_api_error(SseDeserializer deserializer);
 
   @protected
-  BannerUpdate sse_decode_box_autoadd_banner_update(
-    SseDeserializer deserializer,
-  );
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
-  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+  CatalogReview sse_decode_box_autoadd_catalog_review(
+    SseDeserializer deserializer,
+  );
 
   @protected
   CloudBackup sse_decode_box_autoadd_cloud_backup(SseDeserializer deserializer);
@@ -375,6 +447,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GameId sse_decode_box_autoadd_game_id(SseDeserializer deserializer);
 
   @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
   PullOutcome sse_decode_box_autoadd_pull_outcome(SseDeserializer deserializer);
 
   @protected
@@ -384,7 +459,41 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_box_autoadd_u_8(SseDeserializer deserializer);
 
   @protected
+  WaitingRelease sse_decode_box_autoadd_waiting_release(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  CatalogCheck sse_decode_catalog_check(SseDeserializer deserializer);
+
+  @protected
+  CatalogComponents sse_decode_catalog_components(SseDeserializer deserializer);
+
+  @protected
+  CatalogHistoryEntry sse_decode_catalog_history_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   CatalogItem sse_decode_catalog_item(SseDeserializer deserializer);
+
+  @protected
+  CatalogReview sse_decode_catalog_review(SseDeserializer deserializer);
+
+  @protected
+  CatalogStatus sse_decode_catalog_status(SseDeserializer deserializer);
+
+  @protected
+  ChangeEntry sse_decode_change_entry(SseDeserializer deserializer);
+
+  @protected
+  ChangeScope sse_decode_change_scope(SseDeserializer deserializer);
+
+  @protected
+  ChangeSeverity sse_decode_change_severity(SseDeserializer deserializer);
+
+  @protected
+  CheckStatus sse_decode_check_status(SseDeserializer deserializer);
 
   @protected
   CloudBackup sse_decode_cloud_backup(SseDeserializer deserializer);
@@ -441,6 +550,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  ImpactReason sse_decode_impact_reason(SseDeserializer deserializer);
+
+  @protected
   ImportSummary sse_decode_import_summary(SseDeserializer deserializer);
 
   @protected
@@ -448,6 +560,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Account> sse_decode_list_account(SseDeserializer deserializer);
+
+  @protected
+  List<AccountImpact> sse_decode_list_account_impact(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  List<AffectedPull> sse_decode_list_affected_pull(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<BannerEntry> sse_decode_list_banner_entry(SseDeserializer deserializer);
@@ -461,7 +583,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<BannerPity> sse_decode_list_banner_pity(SseDeserializer deserializer);
 
   @protected
+  List<CatalogHistoryEntry> sse_decode_list_catalog_history_entry(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<CatalogItem> sse_decode_list_catalog_item(SseDeserializer deserializer);
+
+  @protected
+  List<ChangeEntry> sse_decode_list_change_entry(SseDeserializer deserializer);
 
   @protected
   List<CloudBackup> sse_decode_list_cloud_backup(SseDeserializer deserializer);
@@ -496,6 +626,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<HistoryPull> sse_decode_list_history_pull(SseDeserializer deserializer);
 
   @protected
+  List<ImpactReason> sse_decode_list_impact_reason(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<LogEntry> sse_decode_list_log_entry(SseDeserializer deserializer);
 
   @protected
@@ -511,12 +646,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ApiError? sse_decode_opt_box_autoadd_api_error(SseDeserializer deserializer);
 
   @protected
-  BannerUpdate? sse_decode_opt_box_autoadd_banner_update(
-    SseDeserializer deserializer,
-  );
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
-  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+  CatalogReview? sse_decode_opt_box_autoadd_catalog_review(
+    SseDeserializer deserializer,
+  );
 
   @protected
   CloudBackup? sse_decode_opt_box_autoadd_cloud_backup(
@@ -535,6 +670,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   GameId? sse_decode_opt_box_autoadd_game_id(SseDeserializer deserializer);
 
   @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
   PullOutcome? sse_decode_opt_box_autoadd_pull_outcome(
     SseDeserializer deserializer,
   );
@@ -546,6 +684,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_8(SseDeserializer deserializer);
 
   @protected
+  WaitingRelease? sse_decode_opt_box_autoadd_waiting_release(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   PullOutcome sse_decode_pull_outcome(SseDeserializer deserializer);
 
   @protected
@@ -553,6 +696,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   RefreshEventKind sse_decode_refresh_event_kind(SseDeserializer deserializer);
+
+  @protected
+  ShownItem sse_decode_shown_item(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
@@ -564,10 +710,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  UpdateStatus sse_decode_update_status(SseDeserializer deserializer);
+  BigInt sse_decode_usize(SseDeserializer deserializer);
 
   @protected
-  BigInt sse_decode_usize(SseDeserializer deserializer);
+  WaitingRelease sse_decode_waiting_release(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -612,10 +758,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_account(Account self, SseSerializer serializer);
 
   @protected
+  void sse_encode_account_impact(AccountImpact self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_affected_pull(AffectedPull self, SseSerializer serializer);
+
+  @protected
   void sse_encode_api_error(ApiError self, SseSerializer serializer);
 
   @protected
   void sse_encode_app_update(AppUpdate self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_apply_result(ApplyResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_banner_entry(BannerEntry self, SseSerializer serializer);
@@ -630,9 +785,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_banner_pity(BannerPity self, SseSerializer serializer);
 
   @protected
-  void sse_encode_banner_update(BannerUpdate self, SseSerializer serializer);
-
-  @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
@@ -642,13 +794,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_box_autoadd_banner_update(
-    BannerUpdate self,
-    SseSerializer serializer,
-  );
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
-  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+  void sse_encode_box_autoadd_catalog_review(
+    CatalogReview self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_cloud_backup(
@@ -669,6 +821,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_game_id(GameId self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_pull_outcome(
     PullOutcome self,
     SseSerializer serializer,
@@ -681,7 +839,49 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_u_8(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_waiting_release(
+    WaitingRelease self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_catalog_check(CatalogCheck self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_catalog_components(
+    CatalogComponents self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_catalog_history_entry(
+    CatalogHistoryEntry self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_catalog_item(CatalogItem self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_catalog_review(CatalogReview self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_catalog_status(CatalogStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_change_entry(ChangeEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_change_scope(ChangeScope self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_change_severity(
+    ChangeSeverity self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_check_status(CheckStatus self, SseSerializer serializer);
 
   @protected
   void sse_encode_cloud_backup(CloudBackup self, SseSerializer serializer);
@@ -741,6 +941,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_impact_reason(ImpactReason self, SseSerializer serializer);
+
+  @protected
   void sse_encode_import_summary(ImportSummary self, SseSerializer serializer);
 
   @protected
@@ -748,6 +951,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_account(List<Account> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_account_impact(
+    List<AccountImpact> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_affected_pull(
+    List<AffectedPull> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_banner_entry(
@@ -768,8 +983,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_catalog_history_entry(
+    List<CatalogHistoryEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_catalog_item(
     List<CatalogItem> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_change_entry(
+    List<ChangeEntry> self,
     SseSerializer serializer,
   );
 
@@ -819,6 +1046,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_impact_reason(
+    List<ImpactReason> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_log_entry(List<LogEntry> self, SseSerializer serializer);
 
   @protected
@@ -840,13 +1073,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
-  void sse_encode_opt_box_autoadd_banner_update(
-    BannerUpdate? self,
-    SseSerializer serializer,
-  );
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
 
   @protected
-  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+  void sse_encode_opt_box_autoadd_catalog_review(
+    CatalogReview? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_cloud_backup(
@@ -870,6 +1103,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_pull_outcome(
     PullOutcome? self,
     SseSerializer serializer,
@@ -880,6 +1119,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_8(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_waiting_release(
+    WaitingRelease? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_pull_outcome(PullOutcome self, SseSerializer serializer);
@@ -894,6 +1139,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_shown_item(ShownItem self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -903,10 +1151,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
-  void sse_encode_update_status(UpdateStatus self, SseSerializer serializer);
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
 
   @protected
-  void sse_encode_usize(BigInt self, SseSerializer serializer);
+  void sse_encode_waiting_release(
+    WaitingRelease self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class

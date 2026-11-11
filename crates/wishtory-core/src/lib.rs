@@ -25,6 +25,7 @@ pub mod discover;
 pub mod error;
 pub mod fetch;
 pub mod fsutil;
+pub mod impact;
 pub mod models;
 pub mod net;
 pub mod ops;
@@ -37,7 +38,7 @@ pub mod update;
 #[cfg(unix)]
 mod wine;
 
-use catalog::{BannerSet, BannerStore, BannerUpdate, Catalog, CatalogStore};
+use catalog::{BannerSet, BannerStore, Catalog, CatalogStore, ReleaseStore};
 use db::Db;
 use error::AppError;
 use models::{Account, Game, GameInstall, GameLocations};
@@ -63,9 +64,11 @@ pub fn default_data_dir() -> Result<PathBuf, AppError> {
 /// Everything the app needs, opened once at start-up.
 pub struct Core {
     pub db: Db,
-    pub catalog: CatalogStore,
-    pub banners: BannerStore,
-    pub rules: RulesStore,
+    /// The release in use, a staged one and the catalog history.
+    pub release: Arc<ReleaseStore>,
+    pub catalog: Arc<CatalogStore>,
+    pub banners: Arc<BannerStore>,
+    pub rules: Arc<RulesStore>,
     pub settings: SettingsStore,
     pub cloud: cloud::Cloud,
 }
@@ -76,11 +79,20 @@ pub type Progress = Arc<dyn Fn(String) + Send + Sync>;
 impl Core {
     pub fn open(dir: &Path) -> Result<Self, AppError> {
         std::fs::create_dir_all(dir)?;
+        let feeds = ReleaseStore::open(dir);
+        let db = Db::open(&dir.join("wishtory.db"))?;
+        // Saved banners always belong to the banner list in use (this also repairs a crash
+        // between a release becoming current and its banners being re-derived).
+        db.ensure_derived(&format!(
+            "banners:{}",
+            feeds.banners.current().banners_version
+        ))?;
         Ok(Self {
-            db: Db::open(&dir.join("wishtory.db"))?,
-            catalog: CatalogStore::open(dir),
-            banners: BannerStore::open(dir),
-            rules: RulesStore::open(dir),
+            db,
+            release: Arc::new(feeds.release),
+            catalog: Arc::new(feeds.catalog),
+            banners: Arc::new(feeds.banners),
+            rules: Arc::new(feeds.rules),
             settings: SettingsStore::open(dir),
             cloud: cloud::Cloud::new(),
         })
@@ -132,17 +144,54 @@ impl Core {
     pub async fn get_catalog(&self) -> Result<Arc<Catalog>, AppError> {
         ops::get_catalog(&self.catalog).await
     }
-    pub async fn refresh_catalog(&self, force: bool) -> Result<String, AppError> {
-        ops::refresh_catalog(&self.catalog, &self.rules, force).await
-    }
     pub async fn get_banners(&self) -> Result<Arc<BannerSet>, AppError> {
         ops::get_banners(&self.banners).await
     }
-    pub async fn get_banner_update(&self) -> Result<Option<BannerUpdate>, AppError> {
-        ops::get_banner_update(&self.banners).await
+    fn catalog_ctx(&self) -> ops::CatalogCtx {
+        ops::CatalogCtx {
+            db: self.db.clone(),
+            release: self.release.clone(),
+            catalog: self.catalog.clone(),
+            banners: self.banners.clone(),
+            rules: self.rules.clone(),
+            auto_apply: self.settings.catalog().auto_apply,
+        }
     }
-    pub async fn refresh_banners(&self, force: bool) -> Result<BannerUpdate, AppError> {
-        ops::refresh_banners(&self.db, &self.banners, force).await
+    pub async fn get_catalog_status(&self) -> Result<ops::CatalogStatus, AppError> {
+        ops::get_catalog_status(&self.catalog_ctx()).await
+    }
+    pub async fn check_catalog(&self, force: bool) -> Result<ops::CatalogCheck, AppError> {
+        ops::check_catalog(&self.catalog_ctx(), force).await
+    }
+    pub async fn get_catalog_review(&self) -> Result<Option<ops::CatalogReview>, AppError> {
+        ops::get_catalog_review(&self.catalog_ctx()).await
+    }
+    pub async fn get_impact_page(
+        &self,
+        game: Game,
+        uid: String,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<impact::AffectedPull>, AppError> {
+        ops::get_impact_page(&self.catalog_ctx(), game, uid, offset, limit).await
+    }
+    pub async fn apply_catalog(
+        &self,
+        reviewed: Option<(u64, String)>,
+    ) -> Result<ops::ApplyResult, AppError> {
+        ops::apply_catalog(&self.catalog_ctx(), reviewed).await
+    }
+    pub async fn dismiss_catalog(&self) -> Result<(), AppError> {
+        ops::dismiss_catalog(&self.catalog_ctx()).await
+    }
+    pub async fn get_catalog_history(&self) -> Result<Vec<catalog::HistoryEntry>, AppError> {
+        ops::get_catalog_history(&self.catalog_ctx()).await
+    }
+    pub fn catalog_auto_apply(&self) -> bool {
+        self.settings.catalog().auto_apply
+    }
+    pub fn set_catalog_auto_apply(&self, enabled: bool) -> Result<bool, AppError> {
+        Ok(self.settings.set_catalog_auto_apply(enabled)?.auto_apply)
     }
     pub async fn get_history(
         &self,

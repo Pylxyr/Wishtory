@@ -15,6 +15,7 @@ import '../../state/toasts.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../help/tutorial.dart';
+import 'catalog_card.dart';
 import 'cloud_backup.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -66,6 +67,9 @@ class SettingsPage extends ConsumerWidget {
       const SectionLabel('Updates'),
       const _Updates(),
       const SizedBox(height: 24),
+      const SectionLabel('Game catalog'),
+      const CatalogCard(),
+      const SizedBox(height: 24),
       const SectionLabel('Cloud backup'),
       const CloudBackupPanel(),
       const SizedBox(height: 24),
@@ -103,7 +107,6 @@ class _Updates extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.wc;
     final update = ref.watch(appUpdateProvider);
-    final catalog = ref.watch(catalogProvider).data;
     final u = update.data;
     return Panel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -125,40 +128,8 @@ class _Updates extends ConsumerWidget {
           ),
           if (u != null && u.available) FilledButton(onPressed: () => ref.read(apiProvider).openExternal(u.url), child: const Text('View release')),
         ]),
-        const Divider(height: 32),
-        const Text('Game catalog and rules', style: Ty.h3),
-        const SizedBox(height: 4),
-        Text(
-          'Item names, banner windows and pity rules come from signed files. Wishtory checks once a day and keeps working offline with the bundled copy.'
-          '${catalog == null ? '' : ' Catalog version ${catalog.catalogVersion}, generated ${catalog.generatedAt}.'}',
-          style: Ty.body.copyWith(color: c.muted),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton(onPressed: () => _checkFeeds(context, ref), child: const Text('Check now')),
       ]),
     );
-  }
-
-  Future<void> _checkFeeds(BuildContext context, WidgetRef ref) async {
-    final api = ref.read(apiProvider);
-    final toast = ref.read(toastProvider.notifier);
-    var changed = false;
-    try {
-      final status = await api.refreshCatalog(force: true);
-      if (status == UpdateStatus.updated) {
-        changed = true;
-        await ref.read(catalogProvider.notifier).reload();
-      }
-      final banners = await api.refreshBanners(force: true);
-      if (banners.status == UpdateStatus.updated) {
-        changed = true;
-        await ref.read(bannersProvider.notifier).reload();
-      }
-      if (changed) ref.read(dataTickProvider.notifier).bump();
-      toast.ok(changed ? 'Catalog and banners updated.' : 'Everything is up to date.');
-    } catch (e) {
-      toast.error(recoveryFor(e).detail);
-    }
   }
 }
 

@@ -36,6 +36,17 @@ Future<void> clearLogs() => RustLib.instance.api.crateApiCoreApiClearLogs();
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<WishtoryCore>>
 abstract class WishtoryCore implements RustOpaqueInterface {
+  /// Applies the waiting release. `version` and `fingerprint` come from the review the person
+  /// saw; if the saved pulls changed since, nothing is applied and `stale` is set.
+  Future<ApplyResult> applyCatalog({
+    required PlatformInt64 version,
+    required String fingerprint,
+  });
+
+  /// Asks for a newer release. One that changes no saved pull is applied by itself (when the
+  /// setting allows); any other waits for `apply_catalog`. `force` skips the once-a-day gate.
+  Future<CatalogCheck> checkCatalog({required bool force});
+
   /// Returns how many pulls were removed.
   Future<PlatformInt64> clearAllHistory();
 
@@ -69,6 +80,9 @@ abstract class WishtoryCore implements RustOpaqueInterface {
 
   Future<List<GameInstall>> discoverGames();
 
+  /// "Not now": keeps the release waiting but stops the start-up notice for it.
+  Future<void> dismissCatalog();
+
   /// `format` is one of the ids the Import / Export page offers; `game` and `uid` select one
   /// account, or both `None` for everything.
   Future<void> exportFile({
@@ -85,11 +99,15 @@ abstract class WishtoryCore implements RustOpaqueInterface {
     required bool full,
   });
 
-  Future<BannerUpdate?> getBannerUpdate();
-
   Future<BannerList> getBanners();
 
   Future<GameCatalog> getCatalog();
+
+  Future<List<CatalogHistoryEntry>> getCatalogHistory();
+
+  Future<CatalogReview?> getCatalogReview();
+
+  Future<CatalogStatus> getCatalogStatus();
 
   Future<GameLocations> getGameLocations();
 
@@ -98,6 +116,14 @@ abstract class WishtoryCore implements RustOpaqueInterface {
     required GameId game,
     required String uid,
     String? banner,
+  });
+
+  /// A page of the saved pulls of one account that the waiting release would read differently.
+  Future<List<AffectedPull>> getImpactPage({
+    required GameId game,
+    required String uid,
+    required PlatformInt64 offset,
+    required PlatformInt64 limit,
   });
 
   Future<List<BannerPity>> getPity({required GameId game, required String uid});
@@ -111,17 +137,14 @@ abstract class WishtoryCore implements RustOpaqueInterface {
   static Future<WishtoryCore> open({String? dataDir}) =>
       RustLib.instance.api.crateApiCoreApiWishtoryCoreOpen(dataDir: dataDir);
 
-  Future<BannerUpdate> refreshBanners({required bool force});
-
-  /// Updates the signed catalog and pity rules. `force` skips the once-a-day gate.
-  Future<UpdateStatus> refreshCatalog({required bool force});
-
   /// Read-only: finds the history link the game already cached, then downloads.
   /// `full` downloads everything the server still keeps instead of stopping at what is saved.
   Stream<RefreshEvent> refreshFromGame({
     required GameId game,
     required bool full,
   });
+
+  Future<bool> setCatalogAutoApply({required bool enabled});
 
   Future<GameLocations> setGameLocations({required List<String> locations});
 }

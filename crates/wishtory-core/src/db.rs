@@ -54,7 +54,9 @@ const SCHEMA: &str = "PRAGMA journal_mode = WAL;
      CREATE INDEX IF NOT EXISTS idx_pulls_time ON pulls (game, uid, time);
      CREATE TABLE IF NOT EXISTS pull_banners (
         game TEXT NOT NULL, uid TEXT NOT NULL, pull_id TEXT NOT NULL, banner_id TEXT NOT NULL,
-        PRIMARY KEY (game, uid, pull_id));";
+        PRIMARY KEY (game, uid, pull_id));
+     CREATE TABLE IF NOT EXISTS derived_state (
+        name TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);";
 
 type Migration = fn(&Db) -> Result<(), AppError>;
 
@@ -313,6 +315,78 @@ impl Db {
     /// Forget every stored banner so they are resolved again against a newer banner list.
     pub fn clear_pull_banners(&self) -> Result<(), AppError> {
         self.conn().execute("DELETE FROM pull_banners", [])?;
+        Ok(())
+    }
+
+    /// One row per account: game, uid, pull count, newest time and newest id. Cheap, and changes
+    /// whenever pulls are added, so an impact review can tell its data went stale.
+    pub fn pull_fingerprints(
+        &self,
+    ) -> Result<Vec<(String, String, i64, String, String)>, AppError> {
+        let conn = self.conn();
+        let mut st = conn.prepare(
+            "SELECT game, uid, COUNT(*), COALESCE(MAX(time), ''), COALESCE(MAX(id), '')
+             FROM pulls GROUP BY game, uid ORDER BY game, uid",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Makes the stored banner of every pull match `marker` (the banner list version they were
+    /// derived from). When the stored marker differs they are forgotten, so they are resolved
+    /// again lazily; this also repairs a crash between a release being made current and its
+    /// banners being re-derived.
+    pub fn ensure_derived(&self, marker: &str) -> Result<(), AppError> {
+        let mut conn = self.conn();
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT value FROM derived_state WHERE name = 'pull_banners'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        if stored.as_deref() == Some(marker) {
+            return Ok(());
+        }
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM pull_banners", [])?;
+        tx.execute(
+            "INSERT OR REPLACE INTO derived_state (name, value) VALUES ('pull_banners', ?1)",
+            params![marker],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Replaces every stored banner with `rows` (game, uid, pull id, banner id) and records
+    /// `marker`, in ONE transaction. `commit_files` runs before the commit and decides the
+    /// outcome: if it fails nothing is written. Pulls themselves are never touched.
+    pub fn replace_pull_banners(
+        &self,
+        rows: &[(String, String, String, String)],
+        marker: &str,
+        commit_files: impl FnOnce() -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM pull_banners", [])?;
+        {
+            let mut insert = tx.prepare(
+                "INSERT OR REPLACE INTO pull_banners (game, uid, pull_id, banner_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for (game, uid, pull_id, banner_id) in rows {
+                insert.execute(params![game, uid, pull_id, banner_id])?;
+            }
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO derived_state (name, value) VALUES ('pull_banners', ?1)",
+            params![marker],
+        )?;
+        commit_files()?;
+        tx.commit()?;
         Ok(())
     }
 

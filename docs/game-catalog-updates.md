@@ -62,6 +62,20 @@ Exclusive Rescreening and W-Engine Reverberation are separate Signal Search chan
 - `custom_search.from` is the server-local time from which Custom Search applies; its `engines` map each W-Engine to its agent.
 - Changing a banner's `key` is an app change: keys must match what `pity.rs` derives from the game's gacha types (a test checks this).
 
+## Catalog releases, the manifest and the change log
+
+People see one **Game catalog** with one version. Underneath, the three feeds above are unchanged (`catalog.envelope.json`, `banners.envelope.json`, `rules.envelope.json`, plus the legacy `catalog.json` and `banners.json` copies). A fourth signed asset, `manifest.envelope.json`, names the exact version of each (`components`) and carries the change log (`changes`). Its `manifest_version` is the number users see. Older apps ignore it.
+
+- **Publishing order.** `catalog-release.yml` signs everything, uploads the component feeds first (step "Publish component feeds") and the manifest last (step "Publish manifest"). A manifest is published when a component is newer than the one the published manifest names, or when none is published yet. `manifest_version` is the published one plus one (never below the number in `catalog/manifest.json`). Run the workflow manually with `force` to republish.
+- **When something is missing.** An app that sees a manifest whose component is missing, older or newer than named treats the release as not ready: it changes nothing and asks again later. If a run stops after the components but before the manifest, run the workflow again.
+- **Change log.** `scripts/changelog.mjs` compares the new feeds with the published ones and writes one entry per change with a severity: `major` (can change how saved pulls are read: banner removed or its dates, featured 5-stars or pool changed, a pity or 50/50 rule, the permanent pool or featured windows, an item's rarity), `minor` (small corrections: names, aliases, traits, `gacha_id`s added, 4-star lists) or `info` (new items and banners). The review PR description lists the generated entries, so you see what users will be told.
+- **Notes and overrides.** Add `catalog/changes.json` in the same PR: `{ "schema_version": 1, "notes": [{ "id": "banners:window:hk4e:<banner id>", "note": "Plain words for users.", "severity": "minor" }] }`. Ids are shown in the generated list's source (`node scripts/changelog.mjs --new <dir> --published <dir> --out <file> --summary <file>`); a note whose id is not in the release is ignored. Notes only apply when a manifest is built, so keep them in the PR that changes the data.
+- **Bundled manifest.** `catalog/manifest.json` names the bundled component versions and gives the lowest manifest version. `release.yml` stamps it with the published versions, like the feeds.
+
+### What users see
+
+Wishtory downloads and verifies a newer release but does not use it yet, then checks on the person's own PC which saved pulls it would read differently (banner, 50/50 result, pity number, displayed name or rarity). A release that affects no pull is applied by itself (a setting turns that off) and noted in the catalog history. A release that affects even one pull waits: a notice at start-up and a badge on Settings, and a review page with the change log by severity and the affected pulls per account, with **Apply** and **Not now**. Severity does not decide this; any affected pull needs a review. Nothing about the person's history leaves the PC: the check is a plain request for the fixed public files.
+
 ## One-time setup
 
 1. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.

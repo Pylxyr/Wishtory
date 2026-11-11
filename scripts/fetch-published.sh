@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Downloads the signed feeds that the rolling `catalog-v1` release publishes now into <dir>
-# (<name>.envelope.json for catalog, banners and rules) and lists every asset name in
+# (<name>.envelope.json for catalog, banners, rules and the manifest) and lists every asset name in
 # <dir>/assets.txt. Needs the GitHub CLI with GH_TOKEN and GITHUB_REPOSITORY set.
 #
 # "The release does not exist yet" is the only case treated as nothing published. Any other
@@ -20,7 +20,7 @@ if ! out="$(gh api "repos/${GITHUB_REPOSITORY:?}/releases/tags/catalog-v1" --jq 
   exit 1
 fi
 printf '%s\n' "$out" > "$dir/assets.txt"
-for name in catalog banners rules; do
+for name in catalog banners rules manifest; do
   if grep -qx "$name.envelope.json" "$dir/assets.txt"; then
     gh release download catalog-v1 --pattern "$name.envelope.json" --dir "$dir" --clobber
   fi
