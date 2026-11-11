@@ -2759,7 +2759,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory-bridge"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "flutter_rust_bridge",
  "wishtory-core",
@@ -2767,7 +2767,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "argon2",
  "base64",
