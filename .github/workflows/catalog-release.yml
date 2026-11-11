@@ -12,8 +12,11 @@ on:
         default: false
 
 # Three signed feeds live on one rolling release: the item catalog, the banner list and the pity
-# rules. Versions are set here, not by hand: a changed file is published one version above what is
-# published now, and an unchanged one is not published at all (scripts/prepare-catalog.mjs).
+# rules, and a fourth, the manifest, names the exact versions that make one catalog release and
+# carries its change log. Versions are set here, not by hand: a changed file is published one
+# version above what is published now, and an unchanged one is not published at all
+# (scripts/prepare-catalog.mjs). The components are uploaded first and the manifest last, so a
+# manifest never points at a component that is not there yet (apps treat that as "not ready").
 concurrency:
   group: catalog-release
   cancel-in-progress: false
@@ -47,15 +50,17 @@ jobs:
           set -euo pipefail
           force_flag=""
           if [ "$FORCE" = "true" ]; then force_flag="--force"; fi
-          mkdir -p out
+          mkdir -p out new
           for name in catalog banners rules; do
             published=""
             if [ -f "published/$name.envelope.json" ]; then published="published/$name.envelope.json"; fi
+            # --stamp writes the document as it is (or will be) published into new/, whatever the
+            # status, so the manifest is built from exactly what the app will see.
             # shellcheck disable=SC2086
-            status="$(node scripts/prepare-catalog.mjs "catalog/$name.json" "catalog/$name.prepared.json" $published $force_flag)"
+            status="$(node scripts/prepare-catalog.mjs "catalog/$name.json" "new/$name.json" $published $force_flag --stamp)"
             echo "$name: $status"
             if [ "$status" = "publish" ]; then
-              node scripts/sign-catalog.mjs "catalog/$name.prepared.json" "out/$name.envelope.json"
+              node scripts/sign-catalog.mjs "new/$name.json" "out/$name.envelope.json"
             fi
           done
           # Apps up to 0.0.2 ask for catalog.json and banners.json, names this workflow never
@@ -69,8 +74,20 @@ jobs:
               cp "published/$name.envelope.json" "out/$name.json"
             fi
           done
-          echo "files=$(find out -type f | sort | paste -sd' ' -)" >> "$GITHUB_OUTPUT"
-      - name: Publish rolling catalog release
+          # The manifest: one catalog version, naming the components above, with the change log.
+          # The checked-in catalog/manifest.json only supplies the lowest version number to use.
+          cp catalog/manifest.json new/manifest.json
+          # shellcheck disable=SC2086
+          status="$(node scripts/changelog.mjs --new new --published published --out new/manifest.out.json --notes catalog/changes.json --summary new/summary.md $force_flag)"
+          echo "manifest: $status"
+          if [ "$status" = "publish" ]; then
+            node scripts/sign-catalog.mjs new/manifest.out.json out/manifest.envelope.json
+            cat new/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "files=$(find out -type f ! -name manifest.envelope.json | sort | paste -sd' ' -)" >> "$GITHUB_OUTPUT"
+          echo "manifest=$(find out -type f -name manifest.envelope.json | paste -sd' ' -)" >> "$GITHUB_OUTPUT"
+      # Step 1 of 2: the component feeds. Nothing a manifest names is missing once this step is done.
+      - name: Publish component feeds
         if: steps.sign.outputs.files != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,5 +98,17 @@ jobs:
           if gh release view catalog-v1 >/dev/null 2>&1; then
             gh release upload catalog-v1 $FILES --clobber
           else
-            gh release create catalog-v1 $FILES --title "Wishtory game catalog" --notes "Signed metadata for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero: item catalog, banner list and pity rules. This release contains data only."
+            gh release create catalog-v1 $FILES --title "Wishtory game catalog" --notes "Signed metadata for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero: item catalog, banner list, pity rules and the manifest that names a complete release. This release contains data only."
+          fi
+      # Step 2 of 2: the manifest, last. Apps that see it look for exactly the versions it names.
+      - name: Publish manifest
+        if: steps.sign.outputs.manifest != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST: ${{ steps.sign.outputs.manifest }}
+        run: |
+          if gh release view catalog-v1 >/dev/null 2>&1; then
+            gh release upload catalog-v1 "$MANIFEST" --clobber
+          else
+            gh release create catalog-v1 "$MANIFEST" --title "Wishtory game catalog" --notes "Signed metadata for Genshin Impact, Honkai: Star Rail, and Zenless Zone Zero. This release contains data only."
           fi
