@@ -1,6 +1,6 @@
 ## Installation
 
-Wishtory is for **Windows 10 and Windows 11**, and for **Linux** (the games run in Wine or Proton). The Windows build is below; Linux is built from source with one command, see the README.
+Wishtory is for **Windows 10 and Windows 11**, and for **Linux** (the games run in Wine or Proton). The Windows build is below; Linux is built from source with one command, see [the Linux guide](https://github.com/Pylxyr/Wishtory/blob/main/docs/linux.md).
 
 **Windows:** download **`Wishtory_x.y.z_x64-setup.exe`** below and run it. It installs for your user only and never needs administrator rights. Prefer no installer? **`Wishtory_x.y.z_windows_x64.zip`** holds the same app: unpack it anywhere and run `wishtory.exe`.
 
