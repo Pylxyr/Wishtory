@@ -2,9 +2,9 @@
 
 use crate::{
     error::AppError,
-    models::{is_rerun_gacha_type, Account, Pull},
+    models::{Account, Pull, is_rerun_gacha_type},
 };
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{Connection, Transaction, params};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::Path,
@@ -83,6 +83,16 @@ pub struct AccountPulls {
     /// `false` when `tz` is only a guess derived from the UID.
     pub tz_known: bool,
     pub pulls: Vec<Pull>,
+}
+
+/// What identifies the saved pulls of one account without reading them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountFingerprint {
+    pub game: String,
+    pub uid: String,
+    pub pulls: i64,
+    pub newest_time: String,
+    pub newest_id: String,
 }
 
 /// Cheap to clone; every clone shares the same connection.
@@ -320,16 +330,20 @@ impl Db {
 
     /// One row per account: game, uid, pull count, newest time and newest id. Cheap, and changes
     /// whenever pulls are added, so an impact review can tell its data went stale.
-    pub fn pull_fingerprints(
-        &self,
-    ) -> Result<Vec<(String, String, i64, String, String)>, AppError> {
+    pub fn pull_fingerprints(&self) -> Result<Vec<AccountFingerprint>, AppError> {
         let conn = self.conn();
         let mut st = conn.prepare(
             "SELECT game, uid, COUNT(*), COALESCE(MAX(time), ''), COALESCE(MAX(id), '')
              FROM pulls GROUP BY game, uid ORDER BY game, uid",
         )?;
         let rows = st.query_map([], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            Ok(AccountFingerprint {
+                game: r.get(0)?,
+                uid: r.get(1)?,
+                pulls: r.get(2)?,
+                newest_time: r.get(3)?,
+                newest_id: r.get(4)?,
+            })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -866,10 +880,11 @@ mod tests {
         let ids = db.complete_pull_ids_for("hk4e", "1").unwrap();
         assert_eq!(ids.len(), 1);
         assert!(ids.contains("whole"));
-        assert!(db
-            .complete_pull_ids_for("hk4e", "other")
-            .unwrap()
-            .is_empty());
+        assert!(
+            db.complete_pull_ids_for("hk4e", "other")
+                .unwrap()
+                .is_empty()
+        );
         let _ = std::fs::remove_file(&path);
     }
 

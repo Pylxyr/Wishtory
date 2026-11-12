@@ -25,6 +25,6 @@ Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives u
 
 The games run in Wine or Proton, and Wishtory reads the same files inside the Wine prefix. It checks the usual places by itself (Wine, Lutris, Bottles, Steam, the anime-game launchers and their Flatpak versions). If a game is not found, launch it once, then add its prefix folder under **Settings, then Game locations**. Opening links needs `xdg-utils`.
 
-On a system without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `git`, `curl`, `unzip`, `xz`, `zip`, `clang`, `cmake`, `ninja`, `pkg-config`, the GTK 3 development files and Rust 1.91 or newer. Arch users who already have Flutter can also build a package from `packaging/arch/wishtory-git` with `makepkg -sic`. To include [cloud backup](cloud-backup.md) in your own build, see [cloud-backup.md](cloud-backup.md).
+On a system without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `git`, `curl`, `unzip`, `xz`, `zip`, `clang`, `cmake`, `ninja`, `pkg-config`, the GTK 3 development files and Rust 1.99 or newer. Arch users who already have Flutter can also build a package from `packaging/arch/wishtory-git` with `makepkg -sic`. To include [cloud backup](cloud-backup.md) in your own build, see [cloud-backup.md](cloud-backup.md).
 
 [Back to the README](../README.md)

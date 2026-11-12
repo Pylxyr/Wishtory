@@ -1,5 +1,5 @@
 # The one place the Flutter version is chosen, as rust-toolchain.toml does for Rust. CI and release
 # workflows read the first line that is not a comment, so a new Flutter release never changes what
-# ships until this line is bumped. `3.47.x` means the newest 3.47 patch release. app/pubspec.yaml
+# ships until this line is bumped. `3.50.x` means the newest 3.50 patch release. app/pubspec.yaml
 # states the oldest version the code is written for.
-3.47.x
+3.50.x

@@ -176,10 +176,10 @@ fn data_dirs_in(sources: &[Source], game: Game) -> Vec<PathBuf> {
         let dir = last_data_dir_in(&text, re)
             .and_then(|written| sources[index].resolve(&written))
             .filter(|dir| dir.is_dir());
-        if let Some(dir) = dir {
-            if !dirs.contains(&dir) {
-                dirs.push(dir);
-            }
+        if let Some(dir) = dir
+            && !dirs.contains(&dir)
+        {
+            dirs.push(dir);
         }
     }
     dirs

@@ -347,9 +347,11 @@ mod tests {
         assert_eq!((list[0].id.as_str(), list[0].size), ("AAAAAAAAAA", 1234));
         let request = String::from_utf8(seen.await.unwrap()).unwrap();
         assert!(request.contains("spaces=appDataFolder"));
-        assert!(request
-            .to_ascii_lowercase()
-            .contains("authorization: bearer token"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer token")
+        );
     }
 
     #[tokio::test]
@@ -386,10 +388,12 @@ mod tests {
         ));
 
         let (url, _) = mock_once(200, &[7u8; 100]).await;
-        assert!(drive_at(&url)
-            .download("T", "AAAAAAAAAA", 10)
-            .await
-            .is_err());
+        assert!(
+            drive_at(&url)
+                .download("T", "AAAAAAAAAA", 10)
+                .await
+                .is_err()
+        );
         let (url, _) = mock_once(200, &[7u8; 100]).await;
         assert_eq!(
             drive_at(&url)
@@ -401,14 +405,18 @@ mod tests {
         );
 
         // An id that is not an id never reaches the network.
-        assert!(drive_at("http://127.0.0.1:1")
-            .download("T", "../x", 10)
-            .await
-            .is_err());
-        assert!(drive_at("http://127.0.0.1:1")
-            .delete("T", "a/b/c/d/e/f")
-            .await
-            .is_err());
+        assert!(
+            drive_at("http://127.0.0.1:1")
+                .download("T", "../x", 10)
+                .await
+                .is_err()
+        );
+        assert!(
+            drive_at("http://127.0.0.1:1")
+                .delete("T", "a/b/c/d/e/f")
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

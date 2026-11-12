@@ -22,8 +22,7 @@
 //   info   additions that cannot alter an existing pull: new items and new banners
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 
 export const SEVERITIES = ['major', 'minor', 'info'];
 const RANK = { major: 0, minor: 1, info: 2 };
@@ -322,7 +321,7 @@ async function readIfPresent(path, read) {
   return existsSync(path) ? read(path) : null;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (import.meta.main) {
   const args = process.argv.slice(2);
   const option = (name) => {
     const at = args.indexOf(`--${name}`);

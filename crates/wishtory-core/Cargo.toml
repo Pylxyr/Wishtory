@@ -2,8 +2,8 @@
 name = "wishtory-core"
 version.workspace = true
 description = "Wishtory core: read-only game-cache discovery, history fetching, storage, pity maths, UIGF import/export"
-edition = "2021"
-rust-version = "1.91"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 semver = "1"

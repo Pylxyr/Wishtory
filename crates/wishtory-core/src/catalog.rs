@@ -1,13 +1,13 @@
 use crate::rules::{RuleSet, RulesStore};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use ring::signature::{UnparsedPublicKey, ED25519};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -506,10 +506,10 @@ impl Catalog {
             let mut by_paimon_key = HashMap::new();
             let mut by_name = HashMap::<String, HashMap<String, usize>>::new();
             for (position, item) in self.items.iter().enumerate() {
-                if item.game == "hk4e" {
-                    if let Some(key) = &item.paimon_key {
-                        by_paimon_key.entry(key.clone()).or_insert(position);
-                    }
+                if item.game == "hk4e"
+                    && let Some(key) = &item.paimon_key
+                {
+                    by_paimon_key.entry(key.clone()).or_insert(position);
                 }
                 let names = by_name.entry(item.game.clone()).or_default();
                 for name in std::iter::once(&item.name).chain(&item.aliases) {
@@ -846,12 +846,15 @@ pub struct Envelopes {
     pub rules: Vec<u8>,
 }
 
+/// Picks one envelope out of a release.
+type EnvelopePart = fn(&Envelopes) -> &[u8];
+
 impl Envelopes {
-    const FILES: [(&'static str, fn(&Envelopes) -> &Vec<u8>); 4] = [
-        ("manifest.envelope.json", |e| &e.manifest),
-        ("catalog.envelope.json", |e| &e.catalog),
-        ("banners.envelope.json", |e| &e.banners),
-        ("rules.envelope.json", |e| &e.rules),
+    const FILES: [(&str, EnvelopePart); 4] = [
+        ("manifest.envelope.json", |e| e.manifest.as_slice()),
+        ("catalog.envelope.json", |e| e.catalog.as_slice()),
+        ("banners.envelope.json", |e| e.banners.as_slice()),
+        ("rules.envelope.json", |e| e.rules.as_slice()),
     ];
 }
 
@@ -1075,7 +1078,7 @@ impl ReleaseStore {
         {
             Ok(bytes) => bytes,
             Err(SourceError::NotFound) => {
-                return Ok(CheckOutcome::NotReady("no release is published yet".into()))
+                return Ok(CheckOutcome::NotReady("no release is published yet".into()));
             }
             Err(e) => return Err(fail(e)),
         };
@@ -1083,10 +1086,10 @@ impl ReleaseStore {
         if manifest.manifest_version <= self.current().manifest_version {
             return Ok(CheckOutcome::Current);
         }
-        if let Some(staged) = self.staged() {
-            if staged.manifest.manifest_version >= manifest.manifest_version {
-                return Ok(CheckOutcome::Staged(staged));
-            }
+        if let Some(staged) = self.staged()
+            && staged.manifest.manifest_version >= manifest.manifest_version
+        {
+            return Ok(CheckOutcome::Staged(staged));
         }
         let mut parts = Vec::with_capacity(3);
         for (asset, max) in [
@@ -1100,7 +1103,7 @@ impl ReleaseStore {
                     return Ok(CheckOutcome::NotReady(format!(
                         "the {asset} feed of release {} is not published yet",
                         manifest.manifest_version
-                    )))
+                    )));
                 }
                 Err(e) => return Err(fail(e)),
             }
@@ -1189,10 +1192,10 @@ impl ReleaseStore {
             *memo = None;
             return None;
         }
-        if let Some(staged) = memo.as_ref() {
-            if staged.manifest.manifest_version > self.current().manifest_version {
-                return Some(staged.clone());
-            }
+        if let Some(staged) = memo.as_ref()
+            && staged.manifest.manifest_version > self.current().manifest_version
+        {
+            return Some(staged.clone());
         }
         *memo = None;
         let loaded = self.load_staged();
@@ -1431,11 +1434,13 @@ mod tests {
         let mut changed_payload = SAMPLE.to_vec();
         changed_payload[10] ^= 1;
         tampered["payload"] = serde_json::Value::from(BASE64.encode(changed_payload));
-        assert!(verify_envelope_with_key::<Catalog>(
-            tampered.to_string().as_bytes(),
-            key.public_key().as_ref()
-        )
-        .is_err());
+        assert!(
+            verify_envelope_with_key::<Catalog>(
+                tampered.to_string().as_bytes(),
+                key.public_key().as_ref()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1604,17 +1609,18 @@ mod tests {
         changed_payload[10] ^= 1;
         let mut tampered: serde_json::Value = serde_json::from_str(&envelope).unwrap();
         tampered["payload"] = serde_json::Value::from(BASE64.encode(changed_payload));
-        assert!(verify_envelope_with_key::<BannerSet>(
-            tampered.to_string().as_bytes(),
-            key.public_key().as_ref()
-        )
-        .is_err());
+        assert!(
+            verify_envelope_with_key::<BannerSet>(
+                tampered.to_string().as_bytes(),
+                key.public_key().as_ref()
+            )
+            .is_err()
+        );
         let other = ring::signature::Ed25519KeyPair::from_seed_unchecked(&[8u8; 32]).unwrap();
-        assert!(verify_envelope_with_key::<BannerSet>(
-            envelope.as_bytes(),
-            other.public_key().as_ref()
-        )
-        .is_err());
+        assert!(
+            verify_envelope_with_key::<BannerSet>(envelope.as_bytes(), other.public_key().as_ref())
+                .is_err()
+        );
     }
 
     #[test]
@@ -1859,21 +1865,25 @@ mod release_tests {
         assert!(good(&|v| v["changes"][0]["game"] = "other".into()).is_err());
         assert!(good(&|v| v["changes"][0]["summary"] = "".into()).is_err());
         assert!(good(&|v| v["changes"][0]["unknown"] = 1.into()).is_err());
-        assert!(good(&|v| {
-            let first = v["changes"][0].clone();
-            v["changes"].as_array_mut().unwrap().push(first);
-        })
-        .is_err());
-        assert!(good(&|v| {
-            v["changes"] = (0..2001)
-                .map(|i| {
-                    serde_json::json!({"id": format!("c{i}"), "scope": "rules", "game": "nap",
+        assert!(
+            good(&|v| {
+                let first = v["changes"][0].clone();
+                v["changes"].as_array_mut().unwrap().push(first);
+            })
+            .is_err()
+        );
+        assert!(
+            good(&|v| {
+                v["changes"] = (0..2001)
+                    .map(|i| {
+                        serde_json::json!({"id": format!("c{i}"), "scope": "rules", "game": "nap",
                     "ids": [], "summary": "s", "severity": "info"})
-                })
-                .collect::<Vec<_>>()
-                .into()
-        })
-        .is_err());
+                    })
+                    .collect::<Vec<_>>()
+                    .into()
+            })
+            .is_err()
+        );
         assert!(Manifest::parse_and_validate(&vec![b' '; MAX_MANIFEST_BYTES + 1]).is_err());
     }
 
@@ -2154,10 +2164,12 @@ mod release_tests {
         run(feeds.release.check(&source, true)).unwrap();
         let staged = feeds.release.staged().unwrap();
         install(&feeds);
-        assert!(feeds
-            .release
-            .install(&staged, &feeds.catalog, &feeds.banners, &feeds.rules)
-            .is_err());
+        assert!(
+            feeds
+                .release
+                .install(&staged, &feeds.catalog, &feeds.banners, &feeds.rules)
+                .is_err()
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

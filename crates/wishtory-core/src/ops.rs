@@ -25,11 +25,11 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
-use tokio::task::{spawn_blocking, JoinError};
+use tokio::task::{JoinError, spawn_blocking};
 
 /// Import files above this size are refused (a full multi-game UIGF file is a few MB at most).
 const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
@@ -62,7 +62,7 @@ async fn game_locations_view(settings: &SettingsStore) -> Result<GameLocations, 
 }
 
 pub async fn get_game_locations(settings: &SettingsStore) -> Result<GameLocations, AppError> {
-    game_locations_view(&settings).await
+    game_locations_view(settings).await
 }
 
 pub async fn set_game_locations(
@@ -70,7 +70,7 @@ pub async fn set_game_locations(
     locations: Vec<String>,
 ) -> Result<GameLocations, AppError> {
     settings.set_game_locations(locations)?;
-    game_locations_view(&settings).await
+    game_locations_view(settings).await
 }
 
 /// Returns the most likely history URL found in the game's web cache (read-only).
@@ -188,12 +188,12 @@ pub async fn fetch_history(
         "{}: fetching with a pasted link",
         game.as_str()
     );
-    let known = known_ids(&db, game, full.unwrap_or(false));
+    let known = known_ids(db, game, full.unwrap_or(false));
     let f = fetch::fetch_all(game, &url, progress, &known)
         .await // network first; never hold the DB lock across await
         .inspect_err(|e| wlog!(Level::Warn, "{}: fetch failed: {e}", game.as_str()))?;
     progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-    store(&db, banners.current(), game, f).await
+    store(db, banners.current(), game, f).await
 }
 
 /// One-click flow: read the cache (read-only), then try the cached links newest first until one
@@ -205,7 +205,7 @@ pub async fn refresh_from_game(
     game: Game,
     full: Option<bool>,
 ) -> Result<FetchSummary, AppError> {
-    let known = known_ids(&db, game, full.unwrap_or(false));
+    let known = known_ids(db, game, full.unwrap_or(false));
     progress("Looking for your game's cache…".into());
     wlog!(
         Level::Debug,
@@ -239,7 +239,7 @@ pub async fn refresh_from_game(
             Ok(f) => {
                 wlog!(Level::Debug, "{}: link {} accepted", game.as_str(), i + 1);
                 progress(format!("Saving {} pulls to this PC…", f.pulls.len()));
-                return store(&db, banners.current(), game, f).await;
+                return store(db, banners.current(), game, f).await;
             }
             Err(AppError::AuthExpired) => {
                 wlog!(
@@ -531,10 +531,10 @@ async fn apply_staged(
                 );
                 Ok(())
             });
-            if result.is_err() {
-                if let Some(applied) = installed.take() {
-                    c.release.revert(applied, &c.catalog, &c.banners, &c.rules);
-                }
+            if result.is_err()
+                && let Some(applied) = installed.take()
+            {
+                c.release.revert(applied, &c.catalog, &c.banners, &c.rules);
             }
             result
         })
@@ -597,13 +597,13 @@ pub async fn apply_catalog(
         .staged()
         .ok_or_else(|| AppError::Message("There is no game data update waiting.".into()))?;
     let impact = impact_for(ctx, &staged).await?;
-    if let Some((version, fingerprint)) = reviewed {
-        if version != staged.manifest.manifest_version || fingerprint != impact.fingerprint {
-            return Ok(ApplyResult {
-                applied: false,
-                stale: true,
-            });
-        }
+    if let Some((version, fingerprint)) = reviewed
+        && (version != staged.manifest.manifest_version || fingerprint != impact.fingerprint)
+    {
+        return Ok(ApplyResult {
+            applied: false,
+            stale: true,
+        });
     }
     apply_staged(ctx, &staged, false, impact.total_affected).await?;
     Ok(ApplyResult {
@@ -950,7 +950,7 @@ fn write_export(target: &Path, contents: &[u8]) -> Result<(), AppError> {
 fn replace_file(source: &Path, target: &Path) -> Result<(), AppError> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
     };
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -1033,11 +1033,13 @@ mod tests {
             ensure_not_game_dir("C:\\Users\\me\\Documents\\wish_data\\out.json", &roots).is_ok()
         );
         assert!(ensure_not_game_dir("D:\\Games\\Genshin Impact Game 2\\out.json", &roots).is_ok());
-        assert!(ensure_not_game_dir(
-            "D:\\Games\\Other\\..\\Genshin Impact Game\\out.json",
-            &roots
-        )
-        .is_err());
+        assert!(
+            ensure_not_game_dir(
+                "D:\\Games\\Other\\..\\Genshin Impact Game\\out.json",
+                &roots
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -96,11 +96,11 @@ fn find_history_urls(game: Game, bytes: &[u8]) -> Vec<String> {
                 _ => {}
             }
         }
-        if let (Some(key), true) = (authkey, biz_ok) {
-            if !seen.contains(&key) {
-                seen.push(key);
-                out.push(text.to_string());
-            }
+        if let (Some(key), true) = (authkey, biz_ok)
+            && !seen.contains(&key)
+        {
+            seen.push(key);
+            out.push(text.to_string());
         }
     }
     out

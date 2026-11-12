@@ -1,11 +1,14 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/wishtory-core", "crates/wishtory-bridge"]
 
 [workspace.package]
 # The app version. Both crates inherit it, and scripts/bump_version.py keeps it in step with
 # package.json, app/pubspec.yaml and Cargo.lock.
-version = "0.4.1"
+version = "0.4.0"
+# One edition and one minimum Rust for every crate (rust-toolchain.toml installs exactly this version).
+edition = "2024"
+rust-version = "1.99"
 
 [profile.release]
 opt-level = "s"

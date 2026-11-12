@@ -21,7 +21,7 @@ bin_link="$prefix/bin/wishtory"
 desktop_file="$prefix/share/applications/wishtory.desktop"
 # icon folder : file in assets/icons
 icons=("32x32:32x32.png" "128x128:128x128.png" "256x256:128x128@2x.png" "512x512:icon.png")
-minimum_rust="1.91"
+minimum_rust="1.99"
 
 keep=0
 uninstall=0
@@ -195,7 +195,7 @@ if [ "$flutter_source" = download ]; then
     pin="$(grep -v '^#' "$root/flutter-toolchain.txt" | head -n 1 | tr -d '[:space:]')"
     tag="${pin%.x}"
     if [ "$tag" != "$pin" ]; then
-      # "3.47.x" means the newest 3.47 release.
+      # "3.50.x" means the newest 3.50 release.
       tag="$(git ls-remote --tags --refs https://github.com/flutter/flutter.git "$tag.*" |
         sed 's#.*refs/tags/##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
     fi

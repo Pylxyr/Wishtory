@@ -7,7 +7,7 @@
 //! and a random `state`, so another web page cannot feed it a code.
 
 use crate::error::AppError;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ring::{
     digest,
     rand::{SecureRandom, SystemRandom},
@@ -326,7 +326,7 @@ impl Loopback {
                 match self.handle(&mut stream, state).await {
                     Callback::Code(code) => return Ok(code),
                     Callback::Declined => {
-                        return Err(AppError::Message("Sign-in was cancelled.".into()))
+                        return Err(AppError::Message("Sign-in was cancelled.".into()));
                     }
                     Callback::Ignore => {}
                 }

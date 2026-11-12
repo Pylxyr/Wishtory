@@ -450,7 +450,7 @@ async fn fetch_banner(
                 return Err(AppError::Api(
                     "This banner exceeds the 100,000-pull safety limit and was not fully fetched."
                         .into(),
-                ))
+                ));
             }
             None => break,
         }

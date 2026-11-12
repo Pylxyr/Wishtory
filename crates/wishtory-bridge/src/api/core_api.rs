@@ -4,7 +4,7 @@
 use super::{error::ApiError, types::*};
 use crate::frb_generated::StreamSink;
 use std::{path::PathBuf, sync::Arc};
-use wishtory_core::{about, logging, models::Game, ops, update, Core};
+use wishtory_core::{Core, about, logging, models::Game, ops, update};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshEventKind {

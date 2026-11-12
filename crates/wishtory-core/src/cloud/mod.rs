@@ -35,7 +35,7 @@ use crate::{
 };
 use drive::{Drive, DriveError};
 use oauth::{Access, Credentials, Endpoints, Loopback, OAuth, TokenError};
-use secrets::{OsKeyring, SecretStore, PASSPHRASE, REFRESH_TOKEN};
+use secrets::{OsKeyring, PASSPHRASE, REFRESH_TOKEN, SecretStore};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 use zeroize::Zeroizing;
@@ -219,10 +219,10 @@ impl Cloud {
                 }
                 wlog!(Level::Info, "cloud: backups deleted from Drive");
             }
-            if let Some(token) = self.secrets.get(REFRESH_TOKEN)? {
-                if let Err(e) = parts.oauth.revoke(&token).await {
-                    wlog!(Level::Warn, "cloud: could not revoke the sign-in: {e}");
-                }
+            if let Some(token) = self.secrets.get(REFRESH_TOKEN)?
+                && let Err(e) = parts.oauth.revoke(&token).await
+            {
+                wlog!(Level::Warn, "cloud: could not revoke the sign-in: {e}");
             }
         }
         self.forget_local(settings).await?;
@@ -705,11 +705,12 @@ mod tests {
             .unwrap();
         assert!(err.to_string().contains("passphrase"), "{err}");
         // The saved passphrase still works.
-        assert!(r
-            .cloud
-            .restore(&r.db, &r.catalog, &r.banners, &r.settings, file.id, None)
-            .await
-            .is_ok());
+        assert!(
+            r.cloud
+                .restore(&r.db, &r.catalog, &r.banners, &r.settings, file.id, None)
+                .await
+                .is_ok()
+        );
         let _ = std::fs::remove_dir_all(&r.dir);
     }
 
@@ -783,25 +784,28 @@ mod tests {
         let r = rig("auto", None).await;
         seed(&r);
         // Off by default.
-        assert!(r
-            .cloud
-            .backup_if_due(&r.db, &r.catalog, &r.settings)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            r.cloud
+                .backup_if_due(&r.db, &r.catalog, &r.settings)
+                .await
+                .unwrap()
+                .is_none()
+        );
         r.cloud.set_auto_backup(&r.settings, true).unwrap();
-        assert!(r
-            .cloud
-            .backup_if_due(&r.db, &r.catalog, &r.settings)
-            .await
-            .unwrap()
-            .is_some());
-        assert!(r
-            .cloud
-            .backup_if_due(&r.db, &r.catalog, &r.settings)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            r.cloud
+                .backup_if_due(&r.db, &r.catalog, &r.settings)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            r.cloud
+                .backup_if_due(&r.db, &r.catalog, &r.settings)
+                .await
+                .unwrap()
+                .is_none()
+        );
         // A day later it is due again.
         r.settings
             .update_cloud(|c| {
@@ -809,12 +813,13 @@ mod tests {
                     Some((chrono::Utc::now() - chrono::Duration::hours(25)).to_rfc3339())
             })
             .unwrap();
-        assert!(r
-            .cloud
-            .backup_if_due(&r.db, &r.catalog, &r.settings)
-            .await
-            .unwrap()
-            .is_some());
+        assert!(
+            r.cloud
+                .backup_if_due(&r.db, &r.catalog, &r.settings)
+                .await
+                .unwrap()
+                .is_some()
+        );
         let _ = std::fs::remove_dir_all(&r.dir);
     }
 
@@ -828,12 +833,13 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("no wish history"), "{err}");
         r.cloud.set_auto_backup(&r.settings, true).unwrap();
-        assert!(r
-            .cloud
-            .backup_if_due(&r.db, &r.catalog, &r.settings)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            r.cloud
+                .backup_if_due(&r.db, &r.catalog, &r.settings)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(r.fake.state.lock().unwrap().files.is_empty());
         let _ = std::fs::remove_dir_all(&r.dir);
     }
@@ -849,11 +855,13 @@ mod tests {
         assert!(!status.available && !status.signed_in);
         assert!(cloud.sign_in(&settings, PASS.into()).await.is_err());
         assert!(cloud.backup_now(&db, &catalog, &settings).await.is_err());
-        assert!(cloud
-            .backup_if_due(&db, &catalog, &settings)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            cloud
+                .backup_if_due(&db, &catalog, &settings)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(cloud.set_auto_backup(&settings, true).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -75,8 +75,7 @@ pub fn uigf_gacha_type<'a>(game: &str, gacha_type: &'a str) -> &'a str {
 
 impl Pull {
     /// Column list matching `from_row`, for `SELECT {COLUMNS} FROM pulls`.
-    pub const COLUMNS: &'static str =
-        "id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count";
+    pub const COLUMNS: &'static str = "id, game, uid, gacha_type, gacha_id, item_id, name, item_type, rank_type, time, lang, count";
 
     pub fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Pull> {
         Ok(Pull {

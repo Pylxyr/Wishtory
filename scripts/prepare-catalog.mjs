@@ -12,8 +12,6 @@
 // cached feed over the bundled one when its version is not lower, so a bundled file that kept an
 // old version number would lose to older cached content after an upgrade.
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 export function versionKey(doc) {
   if (Number.isSafeInteger(doc.catalog_version) && Array.isArray(doc.items)) return 'catalog_version';
@@ -41,7 +39,7 @@ export function readEnvelope(text) {
   return JSON.parse(Buffer.from(envelope.payload, 'base64').toString('utf8'));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (import.meta.main) {
   const args = process.argv.slice(2);
   const force = args.includes('--force');
   const stamp = args.includes('--stamp');

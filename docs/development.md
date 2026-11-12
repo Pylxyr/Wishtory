@@ -4,7 +4,7 @@ For installing and using Wishtory, see the [README](../README.md).
 
 ## Build
 
-Prerequisites: Rust (the version pinned in `rust-toolchain.toml`; rustup installs it on first use) and Flutter (the version in `flutter-toolchain.txt`) with desktop support. [Node.js 20+](https://nodejs.org) is only needed for the catalog scripts. System libraries:
+Prerequisites: Rust (the version pinned in `rust-toolchain.toml`; rustup installs it on first use) and Flutter (the version in `flutter-toolchain.txt`) with desktop support. [Node.js 26](https://nodejs.org) (the current LTS) is only needed for the catalog scripts. System libraries:
 
 - **Windows 10/11:** Visual Studio Build Tools (the C++ desktop workload).
 - **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils`, plus Flutter (your own install, or the AUR `flutter` package).

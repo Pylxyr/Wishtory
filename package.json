@@ -1,8 +1,11 @@
 {
   "name": "wishtory-tools",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.0",
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "description": "Catalog and release tooling only. The app itself is Flutter (app/) over Rust (crates/).",
   "scripts": {
     "catalog:update": "node scripts/update-catalog.mjs",

@@ -1,6 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const BASE = 'https://raw.githubusercontent.com/EnkaNetwork/API-docs/master/store';
 const PAIMON = 'https://api.github.com/repos/MadeBaruna/paimon-moe/contents';
@@ -145,7 +143,7 @@ export async function updateCatalog(path = 'catalog/catalog.json', sources = nul
   return true;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (import.meta.main) {
   const changed = await updateCatalog();
   console.log(changed ? 'Catalog data changed.' : 'Catalog is current.');
 }

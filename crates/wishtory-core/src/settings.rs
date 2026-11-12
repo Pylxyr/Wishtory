@@ -267,9 +267,11 @@ mod tests {
         assert_eq!(again.game_locations(), saved);
         // A folder that was saved earlier stays even if it vanished (an unmounted disk).
         fs::remove_dir_all(&folder).unwrap();
-        assert!(again
-            .set_game_locations(vec![folder.to_string_lossy().into_owned()])
-            .is_ok());
+        assert!(
+            again
+                .set_game_locations(vec![folder.to_string_lossy().into_owned()])
+                .is_ok()
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

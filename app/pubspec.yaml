@@ -1,11 +1,11 @@
 name: wishtory
 description: Wishtory - local-first wish history and pity tracker for Genshin Impact, Honkai Star Rail and Zenless Zone Zero.
 publish_to: none
-version: 0.4.1+1
+version: 0.4.0+1
 
 environment:
   sdk: ^3.13.0
-  flutter: ">=3.47.0"
+  flutter: ">=3.50.0"
 # Dependencies are added with `flutter pub add` (see docs/redesign/BUILDING.md) so the latest stable
 # versions are resolved on your machine. flutter_rust_bridge must be exactly 2.13.0, the version of
 # the Rust crate in crates/wishtory-bridge.

@@ -6,7 +6,7 @@
 
 **Architecture:** A Rust core (`crates/wishtory-core`) owns the data, the database and the network. `crates/wishtory-bridge` exposes it to the Flutter app (`app/`) through flutter_rust_bridge. Node 22 scripts (`scripts/`) and GitHub Actions (`.github/workflows/`) build, review and publish the signed feeds.
 
-**Tech stack:** Rust 1.91 (`rust-toolchain.toml`), `ring` Ed25519, `rusqlite`, `reqwest`; Flutter (`flutter-toolchain.txt`), Riverpod, flutter_rust_bridge 2.13; Node 22; GitHub Actions.
+**Tech stack:** Rust 1.99 (`rust-toolchain.toml`), `ring` Ed25519, `rusqlite`, `reqwest`; Flutter (`flutter-toolchain.txt`), Riverpod, flutter_rust_bridge 2.13; Node 26; GitHub Actions.
 
 ## Global constraints
 

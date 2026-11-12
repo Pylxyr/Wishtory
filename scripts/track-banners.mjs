@@ -7,8 +7,6 @@
 // --previous) and still need a banner entry. Existing entries are never rewritten: differences are only
 // reported, because the list was checked by hand against HoYoverse's notices.
 import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const PAIMON_BANNERS = 'https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/src/data/banners.js';
 // The first update whose windows were checked against the official schedule. Earlier rows are left alone.
@@ -163,7 +161,7 @@ async function loadText(url) {
   return response.text();
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (import.meta.main) {
   const args = process.argv.slice(2);
   const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
   const bannersPath = 'catalog/banners.json';

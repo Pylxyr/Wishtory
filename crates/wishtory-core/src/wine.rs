@@ -360,9 +360,10 @@ mod tests {
         s.dir("p/drive_c/users/nolow/AppData/Local");
         let dirs = prefix.locallow_dirs();
         assert_eq!(dirs.len(), 2);
-        assert!(dirs
-            .iter()
-            .any(|d| d.to_string_lossy().contains("steamuser")));
+        assert!(
+            dirs.iter()
+                .any(|d| d.to_string_lossy().contains("steamuser"))
+        );
         assert!(dirs.iter().any(|d| d.to_string_lossy().contains("other")));
     }
 
@@ -465,9 +466,11 @@ mod tests {
             );
         }
         let custom = default_roots_for(Some(&home), Some(Path::new("/data/xdg")), None);
-        assert!(custom
-            .iter()
-            .any(|(p, d)| p == Path::new("/data/xdg") && *d == 3));
+        assert!(
+            custom
+                .iter()
+                .any(|(p, d)| p == Path::new("/data/xdg") && *d == 3)
+        );
         assert!(default_roots_for(None, None, None).is_empty());
     }
 }

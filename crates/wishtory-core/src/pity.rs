@@ -118,10 +118,10 @@ pub fn resolve_banners<'a>(
         if slot.is_some() || !has_gacha_id(pull) {
             continue;
         }
-        if let Some(Some(banner)) = learned.get(pull.gacha_id.as_str()) {
-            if banner_key(game, &pull.gacha_type).is_some_and(|key| serves(banner, key)) {
-                *slot = Some(*banner);
-            }
+        if let Some(Some(banner)) = learned.get(pull.gacha_id.as_str())
+            && banner_key(game, &pull.gacha_type).is_some_and(|key| serves(banner, key))
+        {
+            *slot = Some(*banner);
         }
     }
     placed
@@ -238,14 +238,13 @@ pub fn resolve_banner<'a>(
 ) -> Option<&'a BannerEntry> {
     let pool = banner_key(game, &pull.gacha_type)?;
     let same_pool = |b: &&BannerEntry| b.game == game.as_str() && serves(b, pool);
-    if has_gacha_id(pull) {
-        if let Some(found) = banners
+    if has_gacha_id(pull)
+        && let Some(found) = banners
             .iter()
             .filter(same_pool)
             .find(|b| b.gacha_ids.contains(&pull.gacha_id))
-        {
-            return Some(found);
-        }
+    {
+        return Some(found);
     }
     let live: Vec<&BannerEntry> = banners
         .iter()
@@ -704,9 +703,10 @@ mod tests {
     fn empty_history_shows_banners_with_zero_and_hides_beginner() {
         let r = compute(Game::Hkrpg, &[]);
         assert!(r.iter().all(|b| b.banner != "beginner"));
-        assert!(r
-            .iter()
-            .all(|b| b.pity == 0 && b.total == 0 && b.avg_five_pity.is_none()));
+        assert!(
+            r.iter()
+                .all(|b| b.pity == 0 && b.total == 0 && b.avg_five_pity.is_none())
+        );
     }
 
     #[test]

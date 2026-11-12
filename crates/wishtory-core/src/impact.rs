@@ -159,8 +159,11 @@ fn game_of(text: &str) -> Option<Game> {
 /// release versions and, per account, how many pulls there are and which are the newest.
 pub fn fingerprint(db: &Db, current: u64, staged: u64) -> Result<String, AppError> {
     let mut text = format!("{current}>{staged}");
-    for (game, uid, count, newest_time, newest_id) in db.pull_fingerprints()? {
-        text.push_str(&format!("|{game}/{uid}/{count}/{newest_time}/{newest_id}"));
+    for a in db.pull_fingerprints()? {
+        text.push_str(&format!(
+            "|{}/{}/{}/{}/{}",
+            a.game, a.uid, a.pulls, a.newest_time, a.newest_id
+        ));
     }
     let hash = digest::digest(&digest::SHA256, text.as_bytes());
     Ok(hash.as_ref().iter().map(|b| format!("{b:02x}")).collect())
@@ -215,7 +218,9 @@ fn reasons(
     if before.banner != after.banner {
         let text = match (&before.banner, &after.banner) {
             (None, Some((_, to))) => {
-                format!("The banner list now places this pull on “{to}”. Before, it could not be placed.")
+                format!(
+                    "The banner list now places this pull on “{to}”. Before, it could not be placed."
+                )
             }
             (Some((_, from)), None) => format!(
                 "The banner list no longer places this pull on a banner. It was on “{from}”."
@@ -538,10 +543,12 @@ mod tests {
         assert_eq!(affected.result_before.as_deref(), Some("loss"));
         assert_eq!(affected.result_after, None);
         assert_eq!(affected.banner_before, affected.banner_after);
-        assert!(affected
-            .reasons
-            .iter()
-            .any(|r| r.text.contains("lost to not tracked")));
+        assert!(
+            affected
+                .reasons
+                .iter()
+                .any(|r| r.text.contains("lost to not tracked"))
+        );
     }
 
     #[test]
@@ -682,11 +689,12 @@ mod tests {
         assert!(impact.pulls.is_empty());
         assert_eq!(impact.not_listed, 0);
         assert_eq!(rig.dump().len(), before.len());
-        assert!(rig
-            .dump()
-            .iter()
-            .zip(&before)
-            .all(|(a, b)| a.id == b.id && a.time == b.time && a.name == b.name));
+        assert!(
+            rig.dump()
+                .iter()
+                .zip(&before)
+                .all(|(a, b)| a.id == b.id && a.time == b.time && a.name == b.name)
+        );
     }
 
     #[test]

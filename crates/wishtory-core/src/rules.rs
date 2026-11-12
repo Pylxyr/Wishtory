@@ -8,7 +8,7 @@
 //! soft near 74) and are the least certain entry.
 
 use crate::{
-    catalog::{is_clock, Feed, FeedStore},
+    catalog::{Feed, FeedStore, is_clock},
     models::Game,
 };
 use serde::{Deserialize, Serialize};
@@ -197,16 +197,15 @@ impl GameRules {
                 return Err("rules contain an invalid featured window".into());
             }
         }
-        if let Some(search) = &self.custom_search {
-            if !is_clock(&search.from)
+        if let Some(search) = &self.custom_search
+            && (!is_clock(&search.from)
                 || search.engines.len() > MAX_ITEMS_PER_SET
                 || search
                     .engines
                     .iter()
-                    .any(|e| !sane(&e.engine, 80) || !sane(&e.agent, 80))
-            {
-                return Err("rules contain an invalid Custom Search entry".into());
-            }
+                    .any(|e| !sane(&e.engine, 80) || !sane(&e.agent, 80)))
+        {
+            return Err("rules contain an invalid Custom Search entry".into());
         }
         Ok(())
     }

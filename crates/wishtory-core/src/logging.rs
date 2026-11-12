@@ -9,8 +9,8 @@ use serde::Serialize;
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
         Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
 };
 

@@ -5,10 +5,10 @@ use crate::{
     catalog::Catalog,
     db::{AccountPulls, Db},
     error::AppError,
-    models::{is_rerun_gacha_type, uigf_gacha_type, Account, Game, Pull},
+    models::{Account, Game, Pull, is_rerun_gacha_type, uigf_gacha_type},
 };
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const LANGS: [&str; 15] = [
     "de-de", "en-us", "es-es", "fr-fr", "id-id", "it-it", "ja-jp", "ko-kr", "pt-pt", "ru-ru",
@@ -275,10 +275,10 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
             // Backups are normally oldest first; a newest-first file is read back to front so the
             // sequence numbers below always follow the order the pulls were made in.
             let mut rows: Vec<&Value> = rows.iter().collect();
-            if let (Some(first), Some(last)) = (rows.first(), rows.last()) {
-                if normalize_time(&get(first, "time")) > normalize_time(&get(last, "time")) {
-                    rows.reverse();
-                }
+            if let (Some(first), Some(last)) = (rows.first(), rows.last())
+                && normalize_time(&get(first, "time")) > normalize_time(&get(last, "time"))
+            {
+                rows.reverse();
             }
             let mut same_time = std::collections::HashMap::<String, u32>::new();
             for row in rows {

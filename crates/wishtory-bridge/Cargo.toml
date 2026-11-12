@@ -2,8 +2,8 @@
 name = "wishtory-bridge"
 version.workspace = true
 description = "flutter_rust_bridge API over wishtory-core: plain data types and one Core handle for the Flutter app"
-edition = "2021"
-rust-version = "1.91"
+edition.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "wishtory_bridge"
