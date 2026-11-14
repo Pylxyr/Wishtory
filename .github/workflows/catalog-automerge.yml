@@ -4,8 +4,9 @@ name: Merge safe game catalog updates
 #   - CI passed on exactly the commit that gets merged, and the branch is up to date with main
 #     (so the merged tree is the tree CI tested);
 #   - every commit is the bot's own (a person's commit means a person wants to review it);
-#   - the only file changed is catalog/catalog.json (a banner list change always waits for a person:
-#     Paimon.moe drafts can be wrong, and banners decide how saved pulls are read);
+#   - the only files changed are catalog/catalog.json and catalog/manifest.json, which names its
+#     version (a banner list change always waits for a person: Paimon.moe drafts can be wrong, and
+#     banners decide how saved pulls are read);
 #   - the change log this release would publish has entries and every one is "info" (new items).
 #     Renames, trait fixes, rarity changes and removals (minor / major) wait for a person.
 # Anything else is left open with the reason in this run's summary.
@@ -98,7 +99,7 @@ jobs:
           fi
 
           files="$(git diff --name-only origin/main...origin/catalog-refresh)"
-          [ "$files" = "catalog/catalog.json" ] \
+          [ "$files" = "$(printf 'catalog/catalog.json\ncatalog/manifest.json')" ] \
             || hold "The pull request changes more than the item catalog (banner list drafts are checked by hand): $(echo "$files" | paste -sd' ' -)"
 
           # The change log this candidate would publish, the same way catalog-proposal.yml builds it.
