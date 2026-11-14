@@ -111,6 +111,7 @@
     {"id": "hk4e-character-2026-09-23", "game": "hk4e", "pool": "character", "name": "When Warm Winds Cavort / Surging Ballad", "start": "2026-09-22 15:00:00", "end": "2026-10-13 17:59:59", "featured_5": ["10000143", "10000140"]},
     {"id": "hk4e-character-2026-10-13", "game": "hk4e", "pool": "character", "name": "Void Star's Advent / La Chanson Cerise", "start": "2026-10-13 18:00:00", "end": "2026-11-03 14:59:59", "featured_5": ["10000114", "10000112"]},
     {"id": "hk4e-character-2026-11-04", "game": "hk4e", "pool": "character", "name": "Myriad Patterns Unfold / Chanson of Many Waters", "start": "2026-11-03 15:00:00", "end": "2026-11-24 17:59:59", "featured_5": ["10000136", "10000089"]},
+    {"id": "hk4e-character-2026-11-24", "game": "hk4e", "pool": "character", "name": "Harmonious Abundance / Ya-hoho! Compendium", "start": "2026-11-24 18:00:00", "end": "2026-12-15 14:59:59", "featured_5": ["10000126", "10000130"]},
     {"id": "hk4e-weapon-2020-09-28", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-09-28 18:00:00", "end": "2020-10-20 17:59:59", "featured_5": ["11501", "15502"]},
     {"id": "hk4e-weapon-2020-10-20", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-10-20 18:00:00", "end": "2020-11-11 17:59:59", "featured_5": ["14502", "12502"]},
     {"id": "hk4e-weapon-2020-11-11", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2020-11-11 18:00:00", "end": "2020-12-01 17:59:59", "featured_5": ["15501", "14504"]},
@@ -218,6 +219,7 @@
     {"id": "hk4e-weapon-2026-09-23", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2026-09-22 15:00:00", "end": "2026-10-13 17:59:59", "featured_5": ["11522", "14524"]},
     {"id": "hk4e-weapon-2026-10-13", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2026-10-13 18:00:00", "end": "2026-11-03 14:59:59", "featured_5": ["11517", "13514"]},
     {"id": "hk4e-weapon-2026-11-04", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2026-11-03 15:00:00", "end": "2026-11-24 17:59:59", "featured_5": ["14525", "11513"]},
+    {"id": "hk4e-weapon-2026-11-24", "game": "hk4e", "pool": "weapon", "name": "Epitome Invocation", "start": "2026-11-24 18:00:00", "end": "2026-12-15 14:59:59", "featured_5": ["11519", "15516"]},
     {"id": "nap-character-2024-07-04", "game": "nap", "pool": "character", "name": "Mellow Waveride", "start": "2024-07-04 12:00:00", "end": "2024-07-24 11:59:59", "featured_5": ["1191"]},
     {"id": "nap-character-2024-07-24", "game": "nap", "pool": "character", "name": "Unswerving Bullet", "start": "2024-07-24 12:00:00", "end": "2024-08-13 14:59:59", "featured_5": ["1241"]},
     {"id": "nap-character-2024-08-14", "game": "nap", "pool": "character", "name": "Untainted Jade", "start": "2024-08-13 15:00:00", "end": "2024-09-04 11:59:59", "featured_5": ["1251"]},
@@ -290,7 +292,9 @@
     {"id": "hkrpg-character-version-4-6-main-warp", "game": "hkrpg", "pool": "character", "name": "Version 4.6 Main Warp", "start": "2026-09-28 11:00:00", "end": "2026-11-10 15:00:00", "featured_5": ["1503"]},
     {"id": "hkrpg-character-version-4-6-phase-i", "game": "hkrpg", "pool": "character", "name": "Version 4.6 Phase I", "start": "2026-09-28 11:00:00", "end": "2026-10-21 11:59:59", "featured_5": ["1505"]},
     {"id": "hkrpg-character-version-4-6-phase-ii", "game": "hkrpg", "pool": "character", "name": "Version 4.6 Phase II", "start": "2026-10-21 12:00:00", "end": "2026-11-10 15:00:00", "featured_5": ["1507"]},
+    {"id": "hkrpg-character-version-4-7-main-warp", "game": "hkrpg", "pool": "character", "name": "Version 4.7 Main Warp", "start": "2026-11-11 11:00:00", "end": "2026-12-22 15:00:00", "featured_5": ["1511"]},
     {"id": "hkrpg-character-version-4-7-phase-i", "game": "hkrpg", "pool": "character", "name": "Version 4.7 Phase I", "start": "2026-11-11 11:00:00", "end": "2026-12-02 11:59:59", "featured_5": ["1506", "1501", "1502"]},
+    {"id": "hkrpg-character-version-4-7-phase-ii", "game": "hkrpg", "pool": "character", "name": "Version 4.7 Phase II", "start": "2026-12-02 12:00:00", "end": "2026-12-22 15:00:00", "featured_5": ["1308", "1213", "1204"]},
     {"id": "hkrpg-collab-version-4-4", "game": "hkrpg", "pool": "collab", "name": "Version 4.4 Collaboration Warp", "start": "2026-07-24 12:00:00", "end": "2026-09-04 11:59:59", "featured_5": ["1508", "1509"]}
   ]
 }
