@@ -53,6 +53,9 @@ jobs:
           fi
           echo "KEEP_BRANCH=$keep" >> "$GITHUB_ENV"
       - name: Build candidate from upstream metadata
+        env:
+          # Authenticates the one api.github.com request (anonymous ones share a small per-IP limit).
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git show origin/main:catalog/catalog.json > "$RUNNER_TEMP/previous-catalog.json"
           npm run catalog:update

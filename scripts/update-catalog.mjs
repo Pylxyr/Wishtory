@@ -115,7 +115,13 @@ export function buildItems(source, oldItems = [], minimumCounts = MINIMUM_ITEMS_
 }
 
 async function getJSON(url) {
-  const response = await fetch(url, { headers: { 'user-agent': 'Wishtory catalog maintenance' } });
+  // The directory listing comes from api.github.com, where anonymous requests share one small hourly
+  // limit per IP address (a shared runner can hit it and get a 403). The workflow token raises it;
+  // it is sent to api.github.com only, never to the raw file host.
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const headers = { 'user-agent': 'Wishtory catalog maintenance' };
+  if (token && url.startsWith('https://api.github.com/')) headers.authorization = `Bearer ${token}`;
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`Upstream request failed (${response.status}): ${url}`);
   return response.json();
 }
