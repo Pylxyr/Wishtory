@@ -12,6 +12,19 @@ These projects and their data remain theirs; Wishtory is an independent, non-aff
 
 The **Review game catalog updates** workflow runs each Monday and can also be run manually from GitHub Actions after a game patch. It builds a candidate, checks required metadata and minimum per-game counts, retains known rows omitted by an upstream refresh, and creates or updates a PR. If an earlier run already pushed the `catalog-refresh` branch but no PR was opened (for example Actions was not allowed to create one), the next run opens the PR for that branch even though it finds nothing new to commit. It also tracks the banner schedule (see below). Review the diff before merging. The action never edits wish records, and it never edits the pity rules (`catalog/rules.json`, see below), which are changed by hand in a PR.
 
+### Automatic merge
+
+The **Merge safe game catalog updates** workflow (`catalog-automerge.yml`) merges the review PR by itself when CI has passed on it, and starts **Publish signed game catalog** (a merge made with the workflow token does not start it on its own). It merges only when all of this holds, and otherwise leaves the PR open and says why in the run summary:
+
+- CI passed on the exact commit that is merged, and the branch is up to date with `main`, so the merged tree is the tree CI tested.
+- Every commit is the bot's own: a commit by a person means a person wants to review it.
+- The only file changed is `catalog/catalog.json`. A change to `catalog/banners.json` always waits for you.
+- Every entry of the change log this release would publish is `info` (new items). A rename, trait fix, rarity change or removal (`minor` or `major`) waits for you.
+
+New 5★ characters need a banner entry that no script can draft for Honkai: Star Rail or Zenless Zone Zero. When a merged PR listed any, the workflow opens the issue "New 5-star character needs a banner entry" (or adds to the open one), because the PR description is gone from view after the merge and the weekly check no longer reports a character that is already in the catalog.
+
+To switch it off, set the repository variable `CATALOG_AUTOMERGE` to `false` (Settings, Secrets and variables, Actions, Variables). It needs *Allow rebase merging* on, and it cannot merge if a branch rule demands a review, since the workflow token cannot approve its own PR; the run then fails with a message and you merge by hand. Loosen the severity rule in the "Check that the candidate is safe to merge" step if you want minor changes merged too.
+
 After merge, **Publish signed game catalog** sets the versions, signs the catalog, the banner list and the rules using the repository secret and updates the `catalog-v1` release assets (`catalog.envelope.json`, `banners.envelope.json`, `rules.envelope.json`). It only publishes a file whose content differs from what is published now. The app checks once per day when online and keeps its last valid cache when a feed is unavailable or invalid.
 
 Two details keep the version numbers trustworthy:

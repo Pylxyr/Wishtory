@@ -117,7 +117,7 @@ jobs:
           fi
 
           {
-            echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published. CI has been started on this branch; when it is green, use Rebase and merge."
+            echo "Weekly candidate generated from EnkaNetwork game data and Paimon.moe's published item catalog and banner schedule. Please review names, rarity, traits and Paimon keys, and check any drafted banner events against the official notice, before merging. This PR does not change wish records or game mechanics. Version numbers are set automatically when the catalog is published. CI has been started on this branch; when it is green, use Rebase and merge. A candidate that only adds items is merged by itself once CI is green (catalog-automerge.yml); anything else waits for you."
             echo
             echo "## Change log users will see"
             echo
