@@ -18,7 +18,7 @@ The **Merge safe game catalog updates** workflow (`catalog-automerge.yml`) merge
 
 - CI passed on the exact commit that is merged, and the branch is up to date with `main`, so the merged tree is the tree CI tested.
 - Every commit is the bot's own: a commit by a person means a person wants to review it.
-- The only file changed is `catalog/catalog.json`. A change to `catalog/banners.json` always waits for you.
+- The only files changed are `catalog/catalog.json` and `catalog/manifest.json` (the weekly run keeps the manifest's component versions in step with the feeds through `npm run catalog:sync`; a Rust test requires them to match). A change to `catalog/banners.json` always waits for you.
 - Every entry of the change log this release would publish is `info` (new items). A rename, trait fix, rarity change or removal (`minor` or `major`) waits for you.
 
 New 5★ characters need a banner entry that no script can draft for Honkai: Star Rail or Zenless Zone Zero. When a merged PR listed any, the workflow opens the issue "New 5-star character needs a banner entry" (or adds to the open one), because the PR description is gone from view after the merge and the weekly check no longer reports a character that is already in the catalog.
@@ -101,4 +101,4 @@ The public half is checked in at `catalog/catalog-public-key.txt` and embedded i
 
 If a catalog PR introduced bad metadata, restore the prior item data in a new PR. Merge it to publish a new signed asset: the version is raised automatically, because clients reject lower versions and a rollback must be published as a newer version containing the restored data.
 
-The local scripts are `npm run catalog:test`, `npm run catalog:update`, `npm run banners:track` and `npm run catalog:sign`. `scripts/prepare-catalog.mjs` and `scripts/fetch-published.sh` are run by the workflows only. A local catalog update needs internet access to the upstream sources; the scheduled GitHub Action has that access.
+The local scripts are `npm run catalog:test`, `npm run catalog:update`, `npm run catalog:sync`, `npm run banners:track` and `npm run catalog:sign`. `scripts/prepare-catalog.mjs` and `scripts/fetch-published.sh` are run by the workflows only. A local catalog update needs internet access to the upstream sources; the scheduled GitHub Action has that access.

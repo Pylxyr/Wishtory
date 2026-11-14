@@ -60,6 +60,8 @@ jobs:
           git show origin/main:catalog/catalog.json > "$RUNNER_TEMP/previous-catalog.json"
           npm run catalog:update
           npm run banners:track -- --previous "$RUNNER_TEMP/previous-catalog.json" --report "$RUNNER_TEMP/banners-report.md"
+          # The bundled manifest must name the versions of the bundled feeds (a Rust test checks it).
+          npm run catalog:sync
       - name: Open or update the review PR, or the review issue
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,8 +83,8 @@ jobs:
           # differs from main (an earlier run pushed it but no pull request was opened, for example
           # because Actions was not allowed to create one). Without the second check that commit
           # would sit on the branch with nobody told, because this run finds nothing new to commit.
-          if git diff --quiet -- catalog/catalog.json catalog/banners.json \
-            && git diff --quiet origin/main HEAD -- catalog/catalog.json catalog/banners.json; then
+          if git diff --quiet -- catalog/catalog.json catalog/banners.json catalog/manifest.json \
+            && git diff --quiet origin/main HEAD -- catalog/catalog.json catalog/banners.json catalog/manifest.json; then
             echo "No catalog changes found."
             # A pull request left over from an earlier candidate has nothing left to propose once
             # main has it all (a person's own branch is never closed from here).
@@ -128,7 +130,7 @@ jobs:
             if [ -s "$report" ]; then cat "$report"; fi
           } > "$RUNNER_TEMP/pr-body.md"
 
-          git add catalog/catalog.json catalog/banners.json
+          git add catalog/catalog.json catalog/banners.json catalog/manifest.json
           # Nothing is staged when the branch already holds the candidate from an earlier run.
           if ! git diff --cached --quiet; then
             git commit -m "chore: update game catalog and banner list"
