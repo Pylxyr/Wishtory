@@ -88,6 +88,10 @@ extension WishTheme on BuildContext {
   WishColors get wc => Theme.of(this).extension<WishColors>()!;
 }
 
+/// Height of the title bars: the sidebar's brand row and the page bar share it (and the hairline under
+/// it), so they line up across the window.
+const double kBarHeight = 60;
+
 /// Text styles that carry no colour, so they inherit it from the surrounding widget.
 class Ty {
   static const String ui = 'GoogleSans';

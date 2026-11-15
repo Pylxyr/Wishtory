@@ -29,6 +29,19 @@ void main() {
     expect(applyFilters(all, const HistoryFilter(), rare: true, includeFours: true).length, 3);
   });
 
+  test('rare mode can run oldest first, and newest first stays the default', () {
+    expect(applyFilters(all, const HistoryFilter(ascending: true), rare: true, includeFours: true).map((p) => p.id), ['1', '2', '3']);
+    expect(applyFilters(all, const HistoryFilter(ascending: true), rare: true, includeFours: false).map((p) => p.id), ['1', '3']);
+    expect(applyFilters(all, const HistoryFilter(), rare: true, includeFours: true).map((p) => p.id), ['3', '2', '1']);
+  });
+
+  test('grouping keeps the chosen time order inside and between groups', () {
+    final oldest = applyFilters(all, const HistoryFilter(ascending: true), rare: true, includeFours: true);
+    final rows = flatten(oldest, GroupBy.month);
+    expect(rows.where((r) => r.isHeader).map((r) => r.header).toList(), ['2024-02', '2024-03']);
+    expect(rows.where((r) => !r.isHeader).map((r) => r.pull!.id).toList(), ['1', '2', '3']);
+  });
+
   test('banner, search and date range narrow the list', () {
     expect(applyFilters(all, const HistoryFilter(bannerKey: 'standard'), rare: false, includeFours: false).single.id, '1');
     expect(applyFilters(all, const HistoryFilter(query: 'ven'), rare: false, includeFours: false).single.id, '3');

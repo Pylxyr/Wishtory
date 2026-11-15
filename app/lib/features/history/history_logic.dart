@@ -57,7 +57,8 @@ class HistoryFilter {
       );
 }
 
-/// [rare]: only 5★ (and 4★ when [includeFours]); otherwise the rarity filter applies.
+/// [rare]: only 5★ (and 4★ when [includeFours]) in time order ([HistoryFilter.ascending] reverses it); otherwise the
+/// rarity filter and the sort column apply.
 List<HistoryPull> applyFilters(List<HistoryPull> all, HistoryFilter f, {required bool rare, required bool includeFours}) {
   final q = f.query.trim().toLowerCase();
   final out = <HistoryPull>[];
@@ -74,7 +75,17 @@ List<HistoryPull> applyFilters(List<HistoryPull> all, HistoryFilter f, {required
     if (f.to != null && day.compareTo(f.to!) > 0) continue;
     out.add(p);
   }
-  if (!rare) _sort(out, f);
+  if (rare) {
+    // The rare-pulls timeline only has time order: newest first as received, or reversed.
+    if (f.ascending) {
+      final reversed = out.reversed.toList();
+      out
+        ..clear()
+        ..addAll(reversed);
+    }
+  } else {
+    _sort(out, f);
+  }
   return out;
 }
 
