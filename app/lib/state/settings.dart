@@ -9,12 +9,18 @@ import 'providers.dart';
 
 enum HistoryMode { rare, all }
 
+/// How a pull is shown in every list: icon and name, the name alone (fits the most on screen), or the
+/// icon alone (the name is in the tooltip).
+enum PullView { iconsAndNames, namesOnly, iconsOnly }
+
 class AppSettings {
   const AppSettings({
     this.themeMode = ThemeMode.system,
     this.comfortable = false,
     this.historyMode = HistoryMode.rare,
     this.showFours = false,
+    this.pullView = PullView.iconsAndNames,
+    this.newestFirst = true,
     this.tutorialDone = false,
     this.loggingEnabled = false,
     this.aliases = const {},
@@ -27,6 +33,12 @@ class AppSettings {
   final bool comfortable;
   final HistoryMode historyMode;
   final bool showFours;
+
+  /// What each pull shows in the lists, for every game.
+  final PullView pullView;
+
+  /// Lists run from the newest pull to the oldest; false reverses them.
+  final bool newestFirst;
   final bool tutorialDone;
   final bool loggingEnabled;
 
@@ -41,6 +53,8 @@ class AppSettings {
     bool? comfortable,
     HistoryMode? historyMode,
     bool? showFours,
+    PullView? pullView,
+    bool? newestFirst,
     bool? tutorialDone,
     bool? loggingEnabled,
     Map<String, String>? aliases,
@@ -51,6 +65,8 @@ class AppSettings {
         comfortable: comfortable ?? this.comfortable,
         historyMode: historyMode ?? this.historyMode,
         showFours: showFours ?? this.showFours,
+        pullView: pullView ?? this.pullView,
+        newestFirst: newestFirst ?? this.newestFirst,
         tutorialDone: tutorialDone ?? this.tutorialDone,
         loggingEnabled: loggingEnabled ?? this.loggingEnabled,
         aliases: aliases ?? this.aliases,
@@ -77,6 +93,8 @@ class SettingsController extends Notifier<AppSettings> {
       comfortable: p.getBool('comfortable') ?? false,
       historyMode: HistoryMode.values.asNameMap()[p.getString('historyMode')] ?? HistoryMode.rare,
       showFours: p.getBool('showFours') ?? false,
+      pullView: PullView.values.asNameMap()[p.getString('pullView')] ?? PullView.iconsAndNames,
+      newestFirst: p.getBool('newestFirst') ?? true,
       tutorialDone: p.getBool('tutorialDone') ?? false,
       loggingEnabled: false, // diagnostics are opt-in per session, as before
       aliases: map<String>('aliases'),
@@ -102,6 +120,16 @@ class SettingsController extends Notifier<AppSettings> {
   void setShowFours(bool value) {
     state = state.copyWith(showFours: value);
     ref.read(sharedPrefsProvider).setBool('showFours', value);
+  }
+
+  void setPullView(PullView view) {
+    state = state.copyWith(pullView: view);
+    ref.read(sharedPrefsProvider).setString('pullView', view.name);
+  }
+
+  void setNewestFirst(bool value) {
+    state = state.copyWith(newestFirst: value);
+    ref.read(sharedPrefsProvider).setBool('newestFirst', value);
   }
 
   void finishTutorial() {

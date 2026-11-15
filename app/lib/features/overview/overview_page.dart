@@ -11,6 +11,7 @@ import '../../state/providers.dart';
 import '../../state/refresh.dart';
 import '../../ui/density.dart';
 import '../../ui/tokens.dart';
+import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
 import 'banner_stats.dart';
@@ -36,7 +37,7 @@ class OverviewPage extends ConsumerWidget {
     final info = GameInfo.of(nav.game);
 
     if (accounts.data == null && accounts.loading) {
-      return const PageBody(children: [_OverviewSkeleton()]);
+      return const PageBody(maxWidth: double.infinity, children: [_OverviewSkeleton()]);
     }
     if (account == null) {
       return PageBody(children: [
@@ -60,7 +61,8 @@ class OverviewPage extends ConsumerWidget {
         ),
       ]);
     }
-    return PageBody(children: [
+    // The data views use the whole window: on a wide screen a capped column leaves wide empty margins.
+    return PageBody(maxWidth: double.infinity, children: [
       const RefreshPanel(),
       _body(context, ref, account, pity),
     ]);
@@ -220,7 +222,12 @@ class _BannerGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return LayoutBuilder(builder: (context, box) {
       final gap = Density.of(context).gap;
-      final cols = box.maxWidth >= 900 ? 3 : (box.maxWidth >= 600 ? 2 : 1);
+      // As many cards per row as fit at a sensible width, balanced so no row ends with a lone card.
+      var fit = ((box.maxWidth + gap) / (280 + gap)).floor();
+      if (fit < 1) fit = 1;
+      if (fit > 6) fit = 6;
+      final rows = (list.length / fit).ceil();
+      final cols = (list.length / rows).ceil();
       final w = (box.maxWidth - (cols - 1) * gap) / cols;
       return Wrap(spacing: gap, runSpacing: gap, children: [
         for (final p in list)
@@ -312,17 +319,23 @@ class _BannerDetail extends StatelessWidget {
 
     return Panel(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(p.label, style: Ty.h2)),
-          if (inSoft) const StatusChip('Past soft pity', icon: Icons.trending_up),
-        ]),
+        LayoutBuilder(builder: (context, box) {
+          final title = Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(child: Text(p.label, style: Ty.h2, overflow: TextOverflow.ellipsis)),
+            if (inSoft) ...[const SizedBox(width: 10), const StatusChip('Past soft pity', icon: Icons.trending_up)],
+          ]);
+          if (box.maxWidth < 1000) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, const SizedBox(height: 8), const ViewControls()]);
+          }
+          return Row(children: [Expanded(child: title), const SizedBox(width: 16), const ViewControls()]);
+        }),
         const SizedBox(height: 6),
         Text(guarantee(), style: Ty.body),
         if (plan != null) ...[
           const SizedBox(height: 4),
           Text(planText(), style: Ty.body.copyWith(color: c.muted)),
         ],
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         LayoutBuilder(builder: (context, box) {
           final stats = StatsTable(p: p, game: game);
           final chips = PullChips(key: ValueKey(p.banner), p: p, game: game);

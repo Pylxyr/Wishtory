@@ -71,16 +71,22 @@ class _AppShellState extends ConsumerState<AppShell> {
         child: Focus(
           autofocus: true,
           child: Stack(children: [
-            Row(children: [
-              AppRail(wide: wide),
+            Column(children: [
               Expanded(
-                child: Column(children: [
-                  const CatalogUpdateNotice(),
-                  if (nav.page.isGamePage) const PageBar(),
-                  Expanded(child: _page(nav.page)),
-                  const StatusBar(),
+                child: Row(children: [
+                  AppRail(wide: wide),
+                  Expanded(
+                    child: Column(children: [
+                      // The page bar comes first so its hairline lines up with the sidebar's brand row; the
+                      // catalog notice sits under it instead of pushing it down.
+                      if (nav.page.isGamePage) const PageBar(),
+                      const CatalogUpdateNotice(),
+                      Expanded(child: _page(nav.page)),
+                    ]),
+                  ),
                 ]),
               ),
+              const StatusBar(),
             ]),
             const ToastHost(),
           ]),
@@ -131,41 +137,51 @@ class AppRail extends ConsumerWidget {
     return Container(
       width: width,
       decoration: BoxDecoration(color: c.rail, border: Border(right: BorderSide(color: c.line))),
-      padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
       child: FocusTraversalGroup(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
-            child: Row(mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center, children: [
+          // Same height and hairline as the page bar, so the two title bars line up.
+          Container(
+            height: kBarHeight,
+            padding: EdgeInsets.symmetric(horizontal: wide ? 18 : 0),
+            alignment: wide ? Alignment.centerLeft : Alignment.center,
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.auto_awesome, color: c.accent, size: 20),
               if (wide) ...[const SizedBox(width: 9), const Text('Wishtory', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3))],
             ]),
           ),
-          // The games are where you spend your time, so they come first. Choosing one always opens that
-          // game's Overview or History, whichever page you were on.
           Expanded(
-            child: ListView(padding: EdgeInsets.zero, children: [
-              if (wide) const _RailLabel('Games'),
-              for (final g in GameId.values)
-                _RailItem(
-                  abbr: GameInfo.of(g).abbr,
-                  label: GameInfo.of(g).name,
-                  wide: wide,
-                  selected: nav.page.isGamePage && nav.game == g,
-                  count: wide ? counts.where((a) => a.game == g).length : null,
-                  onTap: () => ref.read(navProvider.notifier).openGame(g),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+              child: Column(children: [
+                // The games are where you spend your time, so they come first. Choosing one always opens that
+                // game's Overview or History, whichever page you were on.
+                Expanded(
+                  child: ListView(padding: EdgeInsets.zero, children: [
+                    if (wide) const _RailLabel('Games'),
+                    for (final g in GameId.values)
+                      _RailItem(
+                        abbr: GameInfo.of(g).abbr,
+                        label: GameInfo.of(g).name,
+                        wide: wide,
+                        selected: nav.page.isGamePage && nav.game == g,
+                        count: wide ? counts.where((a) => a.game == g).length : null,
+                        onTap: () => ref.read(navProvider.notifier).openGame(g),
+                      ),
+                    if (wide) const _RailLabel('Your data') else const _RailDivider(),
+                    item(AppPage.accounts, Icons.people_outline),
+                    item(AppPage.importExport, Icons.swap_vert),
+                  ]),
                 ),
-              if (wide) const _RailLabel('Your data') else const _RailDivider(),
-              item(AppPage.accounts, Icons.people_outline),
-              item(AppPage.importExport, Icons.swap_vert),
-            ]),
+                // The rest of the app stays at the bottom, out of the way.
+                const _RailDivider(),
+                item(AppPage.settings, Icons.settings_outlined, dot: update?.available == true || catalogWaiting, dotLabel: catalogWaiting ? 'Review' : 'Update'),
+                if (logging) item(AppPage.logs, Icons.receipt_long_outlined),
+                item(AppPage.help, Icons.help_outline),
+                item(AppPage.about, Icons.info_outline),
+              ]),
+            ),
           ),
-          // The rest of the app stays at the bottom, out of the way.
-          const _RailDivider(),
-          item(AppPage.settings, Icons.settings_outlined, dot: update?.available == true || catalogWaiting, dotLabel: catalogWaiting ? 'Review' : 'Update'),
-          if (logging) item(AppPage.logs, Icons.receipt_long_outlined),
-          item(AppPage.help, Icons.help_outline),
-          item(AppPage.about, Icons.info_outline),
         ]),
       ),
     );
@@ -278,25 +294,23 @@ class PageBar extends ConsumerWidget {
     final busy = ref.watch(refreshProvider.select((s) => s.busy));
     final last = account == null ? null : settings.lastRefresh[accountKey(account.game, account.uid)];
 
-    // Who and when: the game, the account, and how fresh the data is.
-    final title = Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Text(GameInfo.of(nav.game).name, style: Ty.h1),
-          const SizedBox(width: 12),
-          const AccountMenu(),
-        ]),
-        if (account != null) ...[
-          const SizedBox(height: 2),
-          Text(
+    // Who and when, on one line: the game, the account, and how fresh the data is.
+    final title = Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(GameInfo.of(nav.game).name, style: Ty.h1),
+      const SizedBox(width: 12),
+      const AccountMenu(),
+      if (account != null) ...[
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
             last == null ? 'Not refreshed on this PC yet' : 'Refreshed ${ago(DateTime.fromMillisecondsSinceEpoch(last))}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: Ty.small.copyWith(color: c.muted),
           ),
-        ],
+        ),
       ],
-    );
+    ]);
 
     // What to look at: the two views of this game's data.
     final views = SegmentedButton<AppPage>(
@@ -336,17 +350,22 @@ class PageBar extends ConsumerWidget {
     ]);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      constraints: const BoxConstraints(minHeight: kBarHeight),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(color: c.bg, border: Border(bottom: BorderSide(color: c.line))),
       child: LayoutBuilder(builder: (context, box) {
-        if (box.maxWidth >= 900) {
-          return Row(children: [title, const SizedBox(width: 24), views, const Spacer(), refresh]);
+        if (box.maxWidth >= 1100) {
+          return Row(children: [Flexible(child: title), const SizedBox(width: 24), views, const Spacer(), refresh]);
         }
-        return Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 16,
-          runSpacing: 10,
-          children: [title, views, refresh],
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 10,
+            children: [title, views, refresh],
+          ),
         );
       }),
     );

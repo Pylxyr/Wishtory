@@ -10,8 +10,11 @@ import '../../state/refresh.dart';
 import '../../state/settings.dart';
 import '../../state/toasts.dart';
 import '../../ui/density.dart';
+import '../../ui/pull_tiles.dart';
 import '../../ui/tokens.dart';
+import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
+import '../overview/banner_stats.dart' show resultWords;
 import '../shell/shell.dart';
 import 'history_logic.dart';
 
@@ -110,7 +113,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         child: Column(children: [for (var i = 0; i < 8; i++) const Padding(padding: EdgeInsets.only(bottom: 8), child: Skeleton(height: 36, radius: 8))]),
       );
     } else {
-      final rows = applyFilters(history.data!, filter, rare: rare, includeFours: settings.showFours);
+      // Time order follows the persisted "newest first" choice; other sort columns keep their own direction.
+      final effective = (rare || filter.sort == SortColumn.time) ? filter.copyWith(sort: SortColumn.time, ascending: !settings.newestFirst) : filter;
+      final rows = applyFilters(history.data!, effective, rare: rare, includeFours: settings.showFours);
       body = _Content(all: history.data!, rows: rows, account: account, rare: rare, searchFocus: _search, searchText: _searchText);
     }
 
@@ -282,6 +287,7 @@ class _Toolbar extends ConsumerWidget {
               onChanged: (g) => controller.update((f) => f.copyWith(group: g)),
             ),
           ),
+          const ViewControls(),
         ]),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -369,15 +375,81 @@ class _RareList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(historyFilterProvider);
+    final view = ref.watch(settingsProvider.select((s) => s.pullView));
     final flat = flatten(rows, filter.group == GroupBy.none ? GroupBy.month : filter.group);
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      itemCount: flat.length,
-      itemBuilder: (context, i) {
-        final r = flat[i];
-        if (r.isHeader) return _GroupHeader(title: r.header!, count: r.count);
-        return _RareRow(pull: r.pull!, account: account);
-      },
+    return LayoutBuilder(builder: (context, box) {
+      const gap = 8.0;
+      const iconTile = 52.0;
+      final inner = box.maxWidth - 48;
+      final cols = switch (view) {
+        PullView.iconsOnly => tileColumns(inner, iconTile, 6),
+        PullView.namesOnly => tileColumns(inner, 300, gap),
+        PullView.iconsAndNames => tileColumns(inner, 400, gap),
+      };
+      // Group headers get a row of their own; the pulls between them are cut into rows of [cols].
+      final blocks = <_Block>[];
+      var run = <HistoryPull>[];
+      void flush() {
+        for (var i = 0; i < run.length; i += cols) {
+          blocks.add(_Block.pulls(run.sublist(i, i + cols > run.length ? run.length : i + cols)));
+        }
+        run = <HistoryPull>[];
+      }
+
+      for (final r in flat) {
+        if (r.isHeader) {
+          flush();
+          blocks.add(_Block.header(r.header!, r.count));
+        } else {
+          run.add(r.pull!);
+        }
+      }
+      flush();
+      return ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+        itemCount: blocks.length,
+        itemBuilder: (context, i) {
+          final b = blocks[i];
+          if (b.title != null) return _GroupHeader(title: b.title!, count: b.count);
+          return _RareTileRow(pulls: b.pulls, cols: cols, view: view, gap: view == PullView.iconsOnly ? 6 : gap, account: account);
+        },
+      );
+    });
+  }
+}
+
+/// One entry of the timeline: a group header or a row of pulls.
+class _Block {
+  const _Block.header(this.title, this.count) : pulls = const [];
+  const _Block.pulls(this.pulls)
+      : title = null,
+        count = 0;
+  final String? title;
+  final int count;
+  final List<HistoryPull> pulls;
+}
+
+class _RareTileRow extends StatelessWidget {
+  const _RareTileRow({required this.pulls, required this.cols, required this.view, required this.gap, required this.account});
+  final List<HistoryPull> pulls;
+  final int cols;
+  final PullView view;
+  final double gap;
+  final Account account;
+
+  @override
+  Widget build(BuildContext context) {
+    final icons = view == PullView.iconsOnly;
+    final cells = <Widget>[];
+    for (var i = 0; i < cols; i++) {
+      if (i > 0) cells.add(SizedBox(width: gap));
+      final child = i < pulls.length ? _RareTile(pull: pulls[i], account: account, view: view) : const SizedBox.shrink();
+      // Every row has the same number of equal cells, so the columns line up and fill the width.
+      cells.add(icons ? SizedBox(width: 52, child: child) : Expanded(child: child));
+    }
+    return Padding(
+      padding: EdgeInsets.only(bottom: gap),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: cells),
     );
   }
 }
@@ -404,10 +476,11 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-class _RareRow extends ConsumerWidget {
-  const _RareRow({required this.pull, required this.account});
+class _RareTile extends ConsumerWidget {
+  const _RareTile({required this.pull, required this.account, required this.view});
   final HistoryPull pull;
   final Account account;
+  final PullView view;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -425,49 +498,81 @@ class _RareRow extends ConsumerWidget {
       PullOutcome.guaranteed => c.blue,
       null => c.accent,
     };
+    final outcomeIcon = switch (outcome) {
+      PullOutcome.win => Icons.check_circle_outline,
+      PullOutcome.loss => Icons.cancel_outlined,
+      PullOutcome.guaranteed => Icons.lock_outline,
+      null => Icons.help_outline,
+    };
+    final outcomeColor = outcome == null ? c.faint : tint;
     final pity = pull.pity;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Panel(
+    final date = pull.time.length >= 10 ? pull.time.substring(0, 10) : pull.time;
+    final words = '${pull.name}, ${rankLabel(account.game, pull.rank)}, pity ${pity ?? 'unknown'}, ${pull.time}'
+        '${pull.bannerName == null ? '' : ', ${pull.bannerName}'}${tracked ? '. ${resultWords(outcome, odds)}' : ''}';
+    final pityColor = pull.rank == 5 ? tint : c.purple;
+    void open() => openDetail(context, ref, pull, account);
+
+    if (view == PullView.iconsOnly) {
+      return PullIconTile(
+        game: account.game,
+        name: pull.name,
+        rank: pull.rank,
+        pity: pity,
+        pityColor: pityColor,
+        border: tracked && outcome != null ? tint.withValues(alpha: 0.85) : c.line,
+        tooltip: words,
+        outcomeIcon: tracked ? outcomeIcon : null,
+        outcomeColor: outcomeColor,
+        onTap: open,
         selected: selected,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        onTap: () => _open(context, ref),
-        child: Semantics(
-          label: '${pull.name}, ${rankLabel(account.game, pull.rank)}, pity ${pity ?? 'unknown'}, ${pull.time}',
-          child: Row(children: [
-            ItemIcon(game: account.game, name: pull.name, rank: pull.rank, size: 42),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 5,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(child: Text(pull.name, style: Ty.h2.copyWith(color: c.rarity(pull.rank)), overflow: TextOverflow.ellipsis)),
-                  const SizedBox(width: 8),
-                  if (pull.rank != 5) RarityChip(game: account.game, rank: pull.rank),
-                ]),
-                Text(
-                  [pull.bannerName ?? pull.pool, pull.time.length >= 10 ? pull.time.substring(0, 10) : pull.time].join('  ·  '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Ty.small.copyWith(color: c.muted),
-                ),
-              ]),
+      );
+    }
+
+    final nameColor = c.rarity(pull.rank);
+    final Widget row;
+    if (view == PullView.namesOnly) {
+      row = Row(children: [
+        Expanded(child: Text(pull.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.body.copyWith(color: nameColor, fontWeight: FontWeight.w600))),
+        const SizedBox(width: 8),
+        Text(date, style: Ty.small.copyWith(color: c.muted, fontFamily: Ty.mono)),
+        SizedBox(width: 40, child: Text(pity == null ? '–' : '$pity', textAlign: TextAlign.right, style: Ty.num.copyWith(fontWeight: FontWeight.w700, color: pityColor))),
+        if (tracked) ...[const SizedBox(width: 6), Icon(outcomeIcon, size: 15, color: outcomeColor)],
+      ]);
+    } else {
+      row = Row(children: [
+        ItemIcon(game: account.game, name: pull.name, rank: pull.rank, size: 36),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 5,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(child: Text(pull.name, style: Ty.h3.copyWith(color: nameColor), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              if (pull.rank != 5) ...[const SizedBox(width: 6), RarityChip(game: account.game, rank: pull.rank)],
+            ]),
+            Text(
+              [pull.bannerName ?? pull.pool, date].join('  ·  '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Ty.small.copyWith(color: c.muted),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 4,
-              child: pity == null ? const SizedBox.shrink() : PityBar(value: pity, hard: hard, color: pull.rank == 5 ? tint : c.purple, height: 10),
-            ),
-            SizedBox(width: 52, child: Text(pity == null ? '–' : '$pity', textAlign: TextAlign.right, style: Ty.num.copyWith(fontWeight: FontWeight.w600))),
-            const SizedBox(width: 10),
-            SizedBox(width: 128, child: Align(alignment: Alignment.centerLeft, child: tracked ? OutcomeChip(outcome: outcome, odds: odds) : const SizedBox.shrink())),
           ]),
         ),
+        const SizedBox(width: 10),
+        if (pity != null) Expanded(flex: 2, child: PityBar(value: pity, hard: hard, color: pityColor, height: 6)) else const Spacer(flex: 2),
+        SizedBox(width: 38, child: Text(pity == null ? '–' : '$pity', textAlign: TextAlign.right, style: Ty.num.copyWith(fontWeight: FontWeight.w700))),
+        if (tracked) ...[const SizedBox(width: 6), Icon(outcomeIcon, size: 16, color: outcomeColor)],
+      ]);
+    }
+    return Tooltip(
+      message: words,
+      child: Panel(
+        selected: selected,
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: view == PullView.namesOnly ? 6 : 7),
+        onTap: open,
+        child: Semantics(label: words, child: row),
       ),
     );
   }
-
-  void _open(BuildContext context, WidgetRef ref) => openDetail(context, ref, pull, account);
 }
 
 /// Wide windows show the detail panel beside the list; narrow ones use a dialog.
@@ -523,16 +628,29 @@ class _TableHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.wc;
+    final newestFirst = ref.watch(settingsProvider.select((s) => s.newestFirst));
     Widget cell(String label, SortColumn col, {double? width, int flex = 0, TextAlign align = TextAlign.left}) {
       final active = filter.sort == col;
+      // Time is ordered by the same persisted choice as every other list; the other columns keep their own direction.
+      final ascending = col == SortColumn.time ? !newestFirst : filter.ascending;
       final inner = InkWell(
-        onTap: () => ref.read(historyFilterProvider.notifier).update((f) => f.copyWith(
-              sort: col,
-              ascending: active ? !f.ascending : (col == SortColumn.item),
-            )),
+        onTap: () {
+          if (col == SortColumn.time) {
+            if (active) {
+              ref.read(settingsProvider.notifier).setNewestFirst(!newestFirst);
+            } else {
+              ref.read(historyFilterProvider.notifier).update((f) => f.copyWith(sort: SortColumn.time));
+            }
+            return;
+          }
+          ref.read(historyFilterProvider.notifier).update((f) => f.copyWith(
+                sort: col,
+                ascending: active ? !f.ascending : (col == SortColumn.item),
+              ));
+        },
         child: Row(mainAxisAlignment: align == TextAlign.right ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
           Flexible(child: Text(label, style: Ty.label.copyWith(color: active ? c.text : c.faint), overflow: TextOverflow.ellipsis)),
-          if (active) Icon(filter.ascending ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: c.text),
+          if (active) Icon(ascending ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: c.text),
         ]),
       );
       final sem = Semantics(
@@ -570,7 +688,9 @@ class _TableRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(selectedPullProvider) == pull.id;
+    final view = ref.watch(settingsProvider.select((s) => s.pullView));
     final rarity = c.rarity(pull.rank);
+    final nameStyle = TextStyle(color: pull.rank >= 4 ? rarity : c.text, fontWeight: pull.rank >= 4 ? FontWeight.w600 : FontWeight.w400);
     return InkWell(
       onTap: () => openDetail(context, ref, pull, account),
       child: Container(
@@ -578,7 +698,16 @@ class _TableRow extends ConsumerWidget {
         child: Row(children: [
           const SizedBox(width: 0),
           SizedBox(width: 160, child: Text(pull.time, style: Ty.num.copyWith(fontSize: 12.5, color: c.muted))),
-          Expanded(flex: 3, child: Text(pull.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: pull.rank >= 4 ? rarity : c.text, fontWeight: pull.rank >= 4 ? FontWeight.w600 : FontWeight.w400))),
+          Expanded(
+            flex: 3,
+            child: Row(children: [
+              if (view != PullView.namesOnly) ...[
+                Tooltip(message: pull.name, child: ItemIcon(game: account.game, name: pull.name, rank: pull.rank, size: 20)),
+                if (view == PullView.iconsAndNames) const SizedBox(width: 8),
+              ],
+              if (view != PullView.iconsOnly) Expanded(child: Text(pull.name, overflow: TextOverflow.ellipsis, style: nameStyle)),
+            ]),
+          ),
           SizedBox(width: 90, child: Text(rankLabel(account.game, pull.rank), style: TextStyle(color: rarity))),
           SizedBox(width: 70, child: Text(pull.pity == null ? '' : '${pull.pity}', textAlign: TextAlign.right, style: Ty.num)),
           const SizedBox(width: 20),

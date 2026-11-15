@@ -14,6 +14,8 @@ That is the whole routine. The game only keeps about six months of history, so r
 | `Ctrl` + `,` | Settings |
 | `F1` | Help |
 
+**Lists.** The 5-star and 4-star lists on the Overview and the History timeline share two switches: *Icons + names*, *Names* or *Icons* for what each pull shows (the names-only and icons-only views fit the most on screen; hover an icon for its name), and *Newest first* or *Oldest first* for the order. In the full History table, click the Time heading to flip the order. Both choices are remembered for every game.
+
 Your data lives in one folder: `%APPDATA%\app.wishtory.desktop` on Windows, `~/.local/share/app.wishtory.desktop` on Linux.
 
 **Import and export.** Wishtory reads and writes the [UIGF](https://uigf.org) standard (v4.x, recommended for moving between trackers, plus older v2 and v3 for Genshin), SRGF v1.0 for Star Rail, and Paimon.moe backups for Genshin. Rows without a rarity are skipped, and the import summary tells you how many.

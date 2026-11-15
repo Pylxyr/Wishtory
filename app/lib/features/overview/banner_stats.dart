@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../bridge/wishtory_api.dart';
 import '../../domain/game_info.dart';
+import '../../state/settings.dart';
 import '../../ui/density.dart';
+import '../../ui/pull_tiles.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 
@@ -226,58 +229,114 @@ class _ResultBar extends StatelessWidget {
 
 // ------------------------------------------------------------------ pull chips
 
-const _firstChips = 30;
+const _firstFives = 120;
+const _firstFours = 60;
 
-/// Every 5★ (newest first) as a chip: the item, a thin bar for how deep the pity went, the pity number in a colour
-/// that says how lucky it was, and a symbol for how it was decided. The 4★ follow, smaller.
-class PullChips extends StatefulWidget {
+/// Lays the chips out for the chosen [view]: icons and names or names only in equal columns that fill the
+/// row, icons only in a tight run of squares.
+Widget _chipGrid(PullView view, {required double withIcons, required double namesOnly, required List<Widget> children}) => switch (view) {
+      PullView.iconsOnly => Wrap(spacing: 6, runSpacing: 6, children: children),
+      PullView.namesOnly => TileGrid(minTile: namesOnly, children: children),
+      PullView.iconsAndNames => TileGrid(minTile: withIcons, children: children),
+    };
+
+/// The 5★ and the 4★ of one banner. Wide windows put them side by side so neither leaves a gap beside the other.
+class PullChips extends StatelessWidget {
   const PullChips({super.key, required this.p, required this.game});
   final BannerPity p;
   final GameId game;
 
   @override
-  State<PullChips> createState() => _PullChipsState();
+  Widget build(BuildContext context) {
+    final fives = FiveChips(key: ValueKey('${p.banner}-fives'), p: p, game: game);
+    if (p.recentFours.isEmpty) return fives;
+    final fours = FourChips(key: ValueKey('${p.banner}-fours'), p: p, game: game);
+    return LayoutBuilder(builder: (context, box) {
+      if (box.maxWidth >= 1000) {
+        return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(flex: 3, child: fives),
+          const SizedBox(width: 24),
+          Expanded(flex: 2, child: fours),
+        ]);
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [fives, const SizedBox(height: 16), fours]);
+    });
+  }
 }
 
-class _PullChipsState extends State<PullChips> {
-  bool _allFives = false;
-  bool _allFours = false;
+/// Every 5★ as a chip: the item, a thin bar for how deep the pity went, the pity number in a colour that says
+/// how lucky it was, and a symbol for how it was decided.
+class FiveChips extends ConsumerStatefulWidget {
+  const FiveChips({super.key, required this.p, required this.game});
+  final BannerPity p;
+  final GameId game;
+
+  @override
+  ConsumerState<FiveChips> createState() => _FiveChipsState();
+}
+
+class _FiveChipsState extends ConsumerState<FiveChips> {
+  bool _all = false;
 
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
     final p = widget.p;
     final info = GameInfo.of(widget.game);
-    final fives = p.recentFives.reversed.toList();
-    final fours = p.recentFours.reversed.toList();
-    final shownFives = _allFives ? fives : fives.take(_firstChips).toList();
-    final shownFours = _allFours ? fours : fours.take(_firstChips).toList();
-
-    Widget more(bool all, int total, VoidCallback toggle) => total <= _firstChips
-        ? const SizedBox.shrink()
-        : Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: TextButton(onPressed: toggle, child: Text(all ? 'Show fewer' : 'Show all $total')),
-          );
-
+    final view = ref.watch(settingsProvider.select((s) => s.pullView));
+    final newest = ref.watch(settingsProvider.select((s) => s.newestFirst));
+    final fives = newest ? p.recentFives.reversed.toList() : p.recentFives.toList();
+    final shown = _all ? fives : fives.take(_firstFives).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: Text('${info.r5} · newest first', style: Ty.h3)),
+        Expanded(child: Text('${info.r5} · ${fives.length} · ${newest ? 'newest' : 'oldest'} first', style: Ty.h3)),
         const _Key(),
       ]),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       if (fives.isEmpty)
         Text('No ${info.r5} on this banner yet.', style: Ty.body.copyWith(color: c.muted))
       else
-        Wrap(spacing: 8, runSpacing: 8, children: [for (final f in shownFives) FiveChip(f: f, p: p, game: widget.game)]),
-      more(_allFives, fives.length, () => setState(() => _allFives = !_allFives)),
-      if (fours.isNotEmpty) ...[
-        const SizedBox(height: 18),
-        Text('${info.r4} · newest first', style: Ty.h3),
-        const SizedBox(height: 10),
-        Wrap(spacing: 6, runSpacing: 6, children: [for (final f in shownFours) FourChip(f: f, game: widget.game)]),
-        more(_allFours, fours.length, () => setState(() => _allFours = !_allFours)),
-      ],
+        _chipGrid(view, withIcons: 190, namesOnly: 150, children: [for (final f in shown) FiveChip(f: f, p: p, game: widget.game, view: view)]),
+      if (fives.length > _firstFives)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: TextButton(onPressed: () => setState(() => _all = !_all), child: Text(_all ? 'Show fewer' : 'Show all ${fives.length}')),
+        ),
+    ]);
+  }
+}
+
+/// Every 4★, smaller than the 5★: the item and how many pulls it took.
+class FourChips extends ConsumerStatefulWidget {
+  const FourChips({super.key, required this.p, required this.game});
+  final BannerPity p;
+  final GameId game;
+
+  @override
+  ConsumerState<FourChips> createState() => _FourChipsState();
+}
+
+class _FourChipsState extends ConsumerState<FourChips> {
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.p;
+    final info = GameInfo.of(widget.game);
+    final view = ref.watch(settingsProvider.select((s) => s.pullView));
+    final newest = ref.watch(settingsProvider.select((s) => s.newestFirst));
+    final fours = newest ? p.recentFours.reversed.toList() : p.recentFours.toList();
+    final shown = _all ? fours : fours.take(_firstFours).toList();
+    if (fours.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${info.r4} · ${fours.length} · ${newest ? 'newest' : 'oldest'} first', style: Ty.h3),
+      const SizedBox(height: 8),
+      _chipGrid(view, withIcons: 150, namesOnly: 130, children: [for (final f in shown) FourChip(f: f, game: widget.game, view: view)]),
+      if (fours.length > _firstFours)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: TextButton(onPressed: () => setState(() => _all = !_all), child: Text(_all ? 'Show fewer' : 'Show all ${fours.length}')),
+        ),
     ]);
   }
 }
@@ -310,10 +369,11 @@ class _Key extends StatelessWidget {
     };
 
 class FiveChip extends StatelessWidget {
-  const FiveChip({super.key, required this.f, required this.p, required this.game});
+  const FiveChip({super.key, required this.f, required this.p, required this.game, this.view = PullView.iconsAndNames});
   final FiveStar f;
   final BannerPity p;
   final GameId game;
+  final PullView view;
 
   @override
   Widget build(BuildContext context) {
@@ -322,34 +382,67 @@ class FiveChip extends StatelessWidget {
     final tierColor = pityTierColor(c, tier);
     final outcome = _outcomeStyle(c, f.outcome);
     final tracked = p.guaranteeOdds != null;
+    final border = tracked && f.outcome != null ? outcome.color.withValues(alpha: 0.85) : c.line;
     final words = '${f.name}, ${f.time.substring(0, 10)}. Pity ${f.pity} of ${p.hardPity} (${pityTierWords(tier).toLowerCase()}). ${resultWords(f.outcome, p.guaranteeOdds)}.';
+
+    if (view == PullView.iconsOnly) {
+      return PullIconTile(
+        game: game,
+        name: f.name,
+        rank: 5,
+        pity: f.pity,
+        pityColor: tierColor,
+        border: border,
+        tooltip: words,
+        outcomeIcon: tracked ? outcome.icon : null,
+        outcomeColor: outcome.color,
+      );
+    }
+
+    final nameStyle = Ty.small.copyWith(color: c.text, fontWeight: FontWeight.w600);
+    final pityStyle = Ty.num.copyWith(fontWeight: FontWeight.w700, color: tierColor);
+    final Widget content;
+    if (view == PullView.namesOnly) {
+      content = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: nameStyle)),
+          const SizedBox(width: 6),
+          Text('${f.pity}', style: pityStyle.copyWith(fontSize: 13)),
+          if (tracked) ...[const SizedBox(width: 5), Icon(outcome.icon, size: 14, color: outcome.color)],
+        ]),
+        const SizedBox(height: 3),
+        PityBar(value: f.pity, hard: p.hardPity, soft: p.softPity, color: tierColor, height: 3),
+      ]);
+    } else {
+      content = Row(children: [
+        ItemIcon(game: game, name: f.name, rank: 5, size: 28),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: nameStyle),
+            const SizedBox(height: 3),
+            PityBar(value: f.pity, hard: p.hardPity, soft: p.softPity, color: tierColor, height: 4),
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Text('${f.pity}', style: pityStyle),
+        if (tracked) ...[const SizedBox(width: 6), Icon(outcome.icon, size: 15, color: outcome.color)],
+      ]);
+    }
+    final names = view == PullView.namesOnly;
     return Tooltip(
       message: words,
       child: Semantics(
         label: words,
         child: ExcludeSemantics(
           child: Container(
-            padding: const EdgeInsets.fromLTRB(6, 5, 10, 5),
+            padding: names ? const EdgeInsets.symmetric(horizontal: 8, vertical: 5) : const EdgeInsets.fromLTRB(6, 5, 10, 5),
             decoration: BoxDecoration(
               color: c.panel2,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: tracked && f.outcome != null ? outcome.color.withValues(alpha: 0.85) : c.line, width: 1.3),
+              borderRadius: BorderRadius.circular(names ? 8 : 10),
+              border: Border.all(color: border, width: 1.3),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              ItemIcon(game: game, name: f.name, rank: 5, size: 28),
-              const SizedBox(width: 8),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.small.copyWith(color: c.text, fontWeight: FontWeight.w600))),
-                const SizedBox(height: 3),
-                SizedBox(width: 90, child: PityBar(value: f.pity, hard: p.hardPity, soft: p.softPity, color: tierColor, height: 4)),
-              ]),
-              const SizedBox(width: 10),
-              Text('${f.pity}', style: Ty.num.copyWith(fontWeight: FontWeight.w700, color: tierColor)),
-              if (tracked) ...[
-                const SizedBox(width: 6),
-                Icon(outcome.icon, size: 15, color: outcome.color),
-              ],
-            ]),
+            child: content,
           ),
         ),
       ),
@@ -358,14 +451,19 @@ class FiveChip extends StatelessWidget {
 }
 
 class FourChip extends StatelessWidget {
-  const FourChip({super.key, required this.f, required this.game});
+  const FourChip({super.key, required this.f, required this.game, this.view = PullView.iconsAndNames});
   final FourStar f;
   final GameId game;
+  final PullView view;
 
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
     final words = '${f.name}, ${f.time.substring(0, 10)}. Pity ${f.pity}. ${f.isCharacter ? 'Character' : 'Weapon'}.';
+    final border = c.purple.withValues(alpha: 0.55);
+    if (view == PullView.iconsOnly) {
+      return PullIconTile(game: game, name: f.name, rank: 4, pity: f.pity, pityColor: c.purple, border: border, tooltip: words, size: 44);
+    }
     return Tooltip(
       message: words,
       child: Semantics(
@@ -373,11 +471,10 @@ class FourChip extends StatelessWidget {
         child: ExcludeSemantics(
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(color: c.panel2, borderRadius: BorderRadius.circular(8), border: Border.all(color: c.purple.withValues(alpha: 0.55))),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(f.isCharacter ? Icons.person_outline : Icons.shield_outlined, size: 13, color: c.purple),
-              const SizedBox(width: 5),
-              ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.small.copyWith(color: c.text))),
+            decoration: BoxDecoration(color: c.panel2, borderRadius: BorderRadius.circular(8), border: Border.all(color: border)),
+            child: Row(children: [
+              if (view == PullView.iconsAndNames) ...[ItemIcon(game: game, name: f.name, rank: 4, size: 20), const SizedBox(width: 7)],
+              Expanded(child: Text(f.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.small.copyWith(color: c.text))),
               const SizedBox(width: 7),
               Text('${f.pity}', style: Ty.num.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: c.purple)),
             ]),
