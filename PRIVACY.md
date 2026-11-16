@@ -1,6 +1,6 @@
 # Wishtory Privacy Policy
 
-_Last updated: 10 November 2026_
+_Last updated: 16 November 2026_
 
 Wishtory is a free, open-source desktop app for Windows and Linux. It shows your wish history, pity and 50/50s for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero.
 
