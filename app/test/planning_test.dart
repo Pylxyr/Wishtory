@@ -55,4 +55,50 @@ void main() {
     lines = mergeProgress(lines, 'Weapon Event: page 1');
     expect(lines, ['Character Event: page 2', 'Weapon Event: page 1']);
   });
+
+  group('live cards', () {
+    LiveBanner banner(String pool, String name, List<String> featured, {int msLeft = 1000}) =>
+        LiveBanner(id: '$pool-$name', name: name, pool: pool, featured: featured, msLeft: msLeft);
+
+    test('a character banner with two characters becomes one card each, with its own title', () {
+      final b = banner('character', 'Myriad Patterns Unfold / Chanson of Many Waters', ['Mitya', 'Furina']);
+      final cards = liveCards([b]);
+      expect(cards.map((c) => c.title), ['Myriad Patterns Unfold', 'Chanson of Many Waters']);
+      expect(cards.map((c) => c.featured), [
+        ['Mitya'],
+        ['Furina']
+      ]);
+      // Both cards belong to the one banner, so they share its pity.
+      expect(cards.every((c) => identical(c.banner, b)), isTrue);
+    });
+
+    test('the weapon banner stays one card with both weapons', () {
+      final cards = liveCards([banner('weapon', 'Epitome Invocation', ['Starsealed Edict', 'Splendor of Tranquil Waters'])]);
+      expect(cards, hasLength(1));
+      expect(cards.single.title, 'Epitome Invocation');
+      expect(cards.single.featured, ['Starsealed Edict', 'Splendor of Tranquil Waters']);
+    });
+
+    test('a single-character banner is one card', () {
+      final cards = liveCards([banner('character', 'Ballad in Goblets', ['Venti'])]);
+      expect(cards.map((c) => c.title), ['Ballad in Goblets']);
+    });
+
+    test('when the titles do not line up with the characters, each card keeps the whole name', () {
+      final cards = liveCards([banner('character', 'One Title Only', ['A', 'B'])]);
+      expect(cards.map((c) => c.title), ['One Title Only', 'One Title Only']);
+      expect(cards.map((c) => c.featured), [
+        ['A'],
+        ['B']
+      ]);
+    });
+
+    test('the order of the banners given is kept, so the three live cards read Mitya, Furina, weapons', () {
+      final cards = liveCards([
+        banner('character', 'Myriad Patterns Unfold / Chanson of Many Waters', ['Mitya', 'Furina']),
+        banner('weapon', 'Epitome Invocation', ['Starsealed Edict', 'Splendor of Tranquil Waters']),
+      ]);
+      expect(cards.map((c) => c.featured.first), ['Mitya', 'Furina', 'Starsealed Edict']);
+    });
+  });
 }

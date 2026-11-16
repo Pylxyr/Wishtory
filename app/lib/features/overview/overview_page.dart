@@ -15,7 +15,6 @@ import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
 import 'banner_stats.dart';
-import 'daily_domains.dart';
 import 'live_hero.dart';
 
 /// Which banner's detail is open; null means the first one.
@@ -100,10 +99,6 @@ class OverviewPage extends ConsumerWidget {
       _BannerGrid(list: list, game: account.game, selected: selected.banner),
       const SizedBox(height: 20),
       _BannerDetail(p: selected, game: account.game),
-      if (account.game == GameId.genshin) ...[
-        const SizedBox(height: 24),
-        DailyDomains(account: account),
-      ],
     ]);
   }
 }

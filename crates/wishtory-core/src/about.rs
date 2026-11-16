@@ -61,15 +61,21 @@ const GROUPS: &[CreditGroup] = &[
         credits: &[
             credit(
                 "EnkaNetwork API documentation and game stores",
-                "Item IDs, names, rarities and character traits behind the updateable game catalog. Item icons load from enka.network.",
+                "Item IDs, names, rarities and character traits behind the updateable game catalog. Item icons and the artwork behind live banners load from enka.network.",
                 "https://github.com/EnkaNetwork/API-docs/tree/master/store",
                 "",
             ),
             credit(
                 "Paimon.moe",
-                "Open-source item data. Its exact item keys match backup records, its Genshin backup format is supported, and its documented read-only cache lookup informed history-link discovery.",
+                "Open-source item data and the Genshin farming schedule. Its exact item keys match backup records, its Genshin backup format is supported, and its documented read-only cache lookup informed history-link discovery.",
                 "https://paimon.moe/",
                 "",
+            ),
+            credit(
+                "Paimon.moe open-source repository",
+                "Wish art, weapon pictures and farming-material pictures, shown for items Enka has no picture for yet and in the farming panel. Each is downloaded once and kept on your PC.",
+                "https://github.com/MadeBaruna/paimon-moe",
+                "MIT",
             ),
             credit(
                 "UIGF",
@@ -290,6 +296,7 @@ mod tests {
             "https://github.com/Pylxyr/Wishtory/releases/tag/v1.2.3-rc.1+b5",
             "https://uigf.org/",
             "https://paimon.moe/",
+            "https://github.com/MadeBaruna/paimon-moe",
             "https://genshin-impact.fandom.com/",
             "https://honkai-star-rail.fandom.com/",
             "https://zenless-zone-zero.fandom.com/",

@@ -28,9 +28,10 @@ class IconRequest {
 
 /// Keeps item pictures on disk, so they appear instantly, and work offline, after the first time.
 ///
-/// Only PNG files up to [maxBytes] ([maxArtBytes] for banner artwork) are kept, at most [maxConcurrent] downloads run at once, and a
-/// picture that could not be fetched is not asked for again for [retryAfter]. Files are written
-/// to a temporary name first, so an interrupted download never leaves a broken picture behind.
+/// Only PNG and WebP pictures up to [maxBytes] ([maxArtBytes] for banner artwork) are kept, at most [maxConcurrent]
+/// downloads run at once, and a picture that could not be fetched is not asked for again for [retryAfter]. Files are
+/// written to a temporary name first, so an interrupted download never leaves a broken picture behind.
+/// (WebP is accepted because some hosts serve it under a `.png` name; Flutter decodes it from the contents.)
 class IconCache {
   IconCache(
     this.directory, {
@@ -123,7 +124,7 @@ class IconCache {
       if (bytes.length > limit) return null;
     }
     final data = bytes.takeBytes();
-    if (!_isPng(data)) return null;
+    if (!_isImage(data)) return null;
     await directory.create(recursive: true);
     final temp = File('${target.path}.part');
     await temp.writeAsBytes(data, flush: true);
@@ -131,7 +132,21 @@ class IconCache {
     return target;
   }
 
+  static bool _isImage(Uint8List d) => _isPng(d) || _isWebp(d);
+
   static bool _isPng(Uint8List d) => d.length > 8 && d[0] == 0x89 && d[1] == 0x50 && d[2] == 0x4E && d[3] == 0x47;
+
+  /// "RIFF", four size bytes, then "WEBP".
+  static bool _isWebp(Uint8List d) =>
+      d.length > 12 &&
+      d[0] == 0x52 &&
+      d[1] == 0x49 &&
+      d[2] == 0x46 &&
+      d[3] == 0x46 &&
+      d[8] == 0x57 &&
+      d[9] == 0x45 &&
+      d[10] == 0x42 &&
+      d[11] == 0x50;
 
   File _fileFor(String url) {
     final uri = Uri.parse(url);

@@ -16,6 +16,7 @@ import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../about/about_page.dart';
 import '../accounts/accounts_page.dart';
+import '../farming/farming_rail.dart';
 import '../help/help_page.dart';
 import '../help/tutorial.dart';
 import '../history/history_page.dart';
@@ -52,6 +53,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final nav = ref.watch(navProvider);
+    final account = ref.watch(currentAccountProvider);
     final wide = MediaQuery.sizeOf(context).width >= 1100;
     ref.listen(accountsProvider, (_, next) {
       if (next.data != null) _maybeTutorial();
@@ -75,6 +77,8 @@ class _AppShellState extends ConsumerState<AppShell> {
               Expanded(
                 child: Row(children: [
                   AppRail(wide: wide),
+                  // Genshin's farming schedule sits beside the rail on the Overview; it can be closed to a strip.
+                  if (nav.page == AppPage.overview && nav.game == GameId.genshin && account != null) FarmingRail(account: account),
                   Expanded(
                     child: Column(children: [
                       // The page bar comes first so its hairline lines up with the sidebar's brand row; the
