@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bridge/wishtory_api.dart';
+import '../domain/first_five.dart';
 import '../domain/game_info.dart';
 import '../domain/icon_cache.dart';
 import '../domain/icons.dart';
 import '../domain/materials.dart';
 import 'loadable.dart';
 import 'nav.dart';
+import 'settings.dart';
 
 /// Overridden in `main` with the real instances.
 final sharedPrefsProvider = Provider<SharedPreferences>((ref) => throw UnimplementedError('sharedPrefsProvider'));
@@ -169,5 +171,17 @@ class HistoryLoader extends AccountLoader<List<HistoryPull>> {
   Future<List<HistoryPull>> load(WishtoryApi api, GameId game, String uid) => api.getHistory(game, uid);
 }
 
-final pityProvider = NotifierProvider<PityLoader, Loadable<List<BannerPity>>>(PityLoader.new);
+/// What the core returned, before the player's answer about the first 5★ of a banner is applied.
+final rawPityProvider = NotifierProvider<PityLoader, Loadable<List<BannerPity>>>(PityLoader.new);
+
+/// The pity of every banner of the current account. The first 5★ of a banner the history cannot place as a 50/50
+/// win or a guarantee takes the player's answer when there is one; every list and table reads it from here.
+final pityProvider = Provider<Loadable<List<BannerPity>>>((ref) {
+  final raw = ref.watch(rawPityProvider);
+  final account = ref.watch(currentAccountProvider);
+  final answers = ref.watch(settingsProvider.select((s) => s.firstFiveAnswers));
+  final list = raw.data;
+  if (list == null || account == null || answers.isEmpty) return raw;
+  return Loadable(data: applyFirstFiveAnswers(list, account.game, account.uid, answers), loading: raw.loading, error: raw.error);
+});
 final historyProvider = NotifierProvider<HistoryLoader, Loadable<List<HistoryPull>>>(HistoryLoader.new);

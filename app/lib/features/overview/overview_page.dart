@@ -15,6 +15,7 @@ import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
 import 'banner_stats.dart';
+import 'first_five_prompt.dart';
 import 'live_hero.dart';
 
 /// Which banner's detail is open; null means the first one.
@@ -305,6 +306,7 @@ class _BannerDetail extends StatelessWidget {
           const SizedBox(height: 4),
           Text(planText(), style: Ty.body.copyWith(color: c.muted)),
         ],
+        FirstFivePrompt(p: p, game: game),
         const SizedBox(height: 14),
         LayoutBuilder(builder: (context, box) {
           final stats = StatsTable(p: p, game: game);

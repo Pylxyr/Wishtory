@@ -14,6 +14,8 @@ That is the whole routine. The game only keeps about six months of history, so r
 | `Ctrl` + `,` | Settings |
 | `F1` | Help |
 
+**Your first 5★.** The game keeps only about six months, so the oldest 5★ in your history may have been a 50/50 win or the guarantee after an older loss that is no longer listed. When that oldest 5★ was the featured item, the banner's detail asks which it was: *Won the 50/50*, *It was guaranteed* or *Not sure*. Your answer is remembered for that account and banner and counts in the result list and the win rate; *Not sure* leaves it as *Result unknown*, and *Change* asks again. A permanent-pool 5★ is a certain loss and is never asked about, and neither is a banner that tracks no 50/50.
+
 **Lists.** The 5-star and 4-star lists on the Overview and the History timeline share two switches: *Icons + names*, *Names* or *Icons* for what each pull shows (the names-only and icons-only views fit the most on screen; hover an icon for its name), and *Newest first* or *Oldest first* for the order. In the full History table, click the Time heading to flip the order. Both choices are remembered for every game.
 
 **Live banners.** The banners running now sit at the top of the Overview on the artwork of what they feature, with the time left and your pity on them; click one to open its statistics below. Artwork downloads once per picture and is kept with the item pictures, so *Clear item pictures* in Settings removes it too (it comes back when needed).
