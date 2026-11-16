@@ -1,7 +1,7 @@
 {
   "name": "wishtory-tools",
   "private": true,
-  "version": "0.4.3-rc2",
+  "version": "0.5.0",
   "type": "module",
   "engines": {
     "node": ">=26"
