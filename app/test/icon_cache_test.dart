@@ -6,6 +6,9 @@ import 'package:wishtory/domain/icon_cache.dart';
 
 final _png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4]);
 
+/// "RIFF", a size, "WEBP": what some hosts send under a `.png` name.
+final _webp = Uint8List.fromList([0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 1, 2, 3, 4]);
+
 /// A valid-looking PNG of 3 MB: too big for an item picture, fine for banner artwork.
 final _big = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ...List<int>.filled(3 * 1024 * 1024, 7)]);
 
@@ -30,6 +33,10 @@ void main() {
         case '/big-icon.png':
         case '/big-art.png':
           request.response.add(_big);
+        case '/webp-as.png':
+          request.response.add(_webp);
+        case '/riff-not-webp.png':
+          request.response.add([0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 1, 2, 3, 4]);
         case '/page.png':
           request.response.write('<html>this is not a picture</html>');
         default:
@@ -64,6 +71,14 @@ void main() {
   test('something that is not a PNG is never saved', () async {
     expect(await cache.get(url('/page.png')), isNull);
     expect(await dir.list().toList(), isEmpty);
+  });
+
+  test('a WebP picture under a .png name is kept, other RIFF files are not', () async {
+    final file = await cache.get(url('/webp-as.png'), art: true);
+    expect(file, isNotNull);
+    expect(await file!.readAsBytes(), _webp);
+    // A WAV file starts with the same four bytes, but is not a picture.
+    expect(await cache.get(url('/riff-not-webp.png')), isNull);
   });
 
   test('banner artwork may be larger than an item picture, which is still refused', () async {

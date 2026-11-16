@@ -21,6 +21,7 @@ class AppSettings {
     this.showFours = false,
     this.pullView = PullView.iconsAndNames,
     this.newestFirst = true,
+    this.farmingOpen = true,
     this.themeId = 'default',
     this.tutorialDone = false,
     this.loggingEnabled = false,
@@ -41,6 +42,10 @@ class AppSettings {
   /// Lists run from the newest pull to the oldest; false reverses them.
   final bool newestFirst;
 
+  /// Whether the farming panel beside the Genshin Overview is open; closed, it leaves a thin strip and the
+  /// page gets the room.
+  final bool farmingOpen;
+
   /// The colour theme (see `themePresets`); 'default' is the original look.
   final String themeId;
   final bool tutorialDone;
@@ -59,6 +64,7 @@ class AppSettings {
     bool? showFours,
     PullView? pullView,
     bool? newestFirst,
+    bool? farmingOpen,
     String? themeId,
     bool? tutorialDone,
     bool? loggingEnabled,
@@ -72,6 +78,7 @@ class AppSettings {
         showFours: showFours ?? this.showFours,
         pullView: pullView ?? this.pullView,
         newestFirst: newestFirst ?? this.newestFirst,
+        farmingOpen: farmingOpen ?? this.farmingOpen,
         themeId: themeId ?? this.themeId,
         tutorialDone: tutorialDone ?? this.tutorialDone,
         loggingEnabled: loggingEnabled ?? this.loggingEnabled,
@@ -101,6 +108,7 @@ class SettingsController extends Notifier<AppSettings> {
       showFours: p.getBool('showFours') ?? false,
       pullView: PullView.values.asNameMap()[p.getString('pullView')] ?? PullView.iconsAndNames,
       newestFirst: p.getBool('newestFirst') ?? true,
+      farmingOpen: p.getBool('farmingOpen') ?? true,
       themeId: p.getString('themeId') ?? 'default',
       tutorialDone: p.getBool('tutorialDone') ?? false,
       loggingEnabled: false, // diagnostics are opt-in per session, as before
@@ -142,6 +150,11 @@ class SettingsController extends Notifier<AppSettings> {
   void setNewestFirst(bool value) {
     state = state.copyWith(newestFirst: value);
     ref.read(sharedPrefsProvider).setBool('newestFirst', value);
+  }
+
+  void setFarmingOpen(bool value) {
+    state = state.copyWith(farmingOpen: value);
+    ref.read(sharedPrefsProvider).setBool('farmingOpen', value);
   }
 
   void finishTutorial() {

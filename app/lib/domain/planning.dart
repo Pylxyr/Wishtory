@@ -79,6 +79,39 @@ List<LiveBanner> liveBanners(BannerList? set, GameId game, int tzHours, GameCata
   return out;
 }
 
+/// One card of the Live now row. The game runs a character banner that features two characters as two
+/// banners that share one pity, so it gets two cards, each with its own title and picture. Any other banner,
+/// the weapon banner included, is one card.
+class LiveCard {
+  const LiveCard({required this.banner, required this.title, required this.featured});
+
+  /// The running banner this card belongs to: its pool and time left, and so the pity it shows.
+  final LiveBanner banner;
+
+  /// What the card is called, and the items it features.
+  final String title;
+  final List<String> featured;
+}
+
+/// The cards for [live], in the order given; a split banner's cards keep the order of its featured items.
+List<LiveCard> liveCards(List<LiveBanner> live) {
+  final out = <LiveCard>[];
+  for (final b in live) {
+    if (b.pool == 'character' && b.featured.length > 1) {
+      // Banner names list one title per featured character, in the same order, joined by " / ". When the
+      // counts do not line up, every card carries the whole name rather than a guess.
+      final titles = b.name.split(' / ');
+      final one = titles.length == b.featured.length;
+      for (var i = 0; i < b.featured.length; i++) {
+        out.add(LiveCard(banner: b, title: one ? titles[i].trim() : b.name, featured: [b.featured[i]]));
+      }
+    } else {
+      out.add(LiveCard(banner: b, title: b.name, featured: b.featured));
+    }
+  }
+  return out;
+}
+
 /// "6 d 4 h left", "5 h 12 min left", "9 min left".
 String timeLeft(int ms) {
   final min = (ms ~/ 60000) < 1 ? 1 : ms ~/ 60000;

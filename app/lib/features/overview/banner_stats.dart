@@ -177,7 +177,7 @@ class StatsTable extends StatelessWidget {
         if (s.unclassified > 0) ...[
           const SizedBox(height: 8),
           Text(
-            '${s.unclassified} ${info.r5} at the start of your history ${s.unclassified == 1 ? 'is' : 'are'} not counted above: it cannot be told whether they were a 50/50 or a guarantee.',
+            '${s.unclassified} ${info.r5} could not be told apart as a 50/50 win or a guarantee and ${s.unclassified == 1 ? 'is' : 'are'} not counted above.',
             style: Ty.small.copyWith(color: c.faint),
           ),
         ],

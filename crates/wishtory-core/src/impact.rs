@@ -541,13 +541,13 @@ mod tests {
         assert_eq!(impact.total_affected, 1);
         let affected = &impact.pulls[0];
         assert_eq!(affected.result_before.as_deref(), Some("loss"));
-        assert_eq!(affected.result_after, None);
+        assert_eq!(affected.result_after.as_deref(), Some("win"));
         assert_eq!(affected.banner_before, affected.banner_after);
         assert!(
             affected
                 .reasons
                 .iter()
-                .any(|r| r.text.contains("lost to not tracked"))
+                .any(|r| r.text.contains("lost to won"))
         );
     }
 

@@ -10,8 +10,10 @@
 
 Wishtory relies on these independent projects and references (the same list is under **About** in the app):
 
-- [EnkaNetwork API docs and game stores](https://github.com/EnkaNetwork/API-docs/tree/master/store) for item IDs, names, rarities and traits. Item icons load from enka.network.
-- [Paimon.moe](https://paimon.moe/) and its [open-source item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data), whose item keys and backup format are supported, and whose read-only cache lookup approach informed history-link discovery.
+- [EnkaNetwork API docs and game stores](https://github.com/EnkaNetwork/API-docs/tree/master/store) for item IDs, names, rarities and traits. Item icons and the artwork behind live banners load from enka.network.
+- [Paimon.moe](https://paimon.moe/) and its [open-source item data](https://github.com/MadeBaruna/paimon-moe/tree/main/src/data), whose item keys and backup format are supported, whose farming schedule is bundled in the app, and whose read-only cache lookup approach informed history-link discovery.
+- The [Paimon.moe open-source repository](https://github.com/MadeBaruna/paimon-moe) (MIT) for wish art, weapon pictures and farming-material pictures, shown for items Enka has no picture for yet and in the farming panel. Each picture is downloaded once and kept on your PC.
+- The pictures themselves, like the games' names and characters, belong to HoYoverse / COGNOSPHERE. They are shown for reference, as in other community tools.
 - The [UIGF project](https://uigf.org/), the format used to move wish histories between tools.
 - Banner dates and featured items were checked against the community wikis ([Genshin Impact](https://genshin-impact.fandom.com/), [Honkai: Star Rail](https://honkai-star-rail.fandom.com/), [Zenless Zone Zero](https://zenless-zone-zero.fandom.com/)) and the trackers [Banner History](https://bannerhistory.app/) and [GachaTracker](https://gachatracker.app/). References only; Wishtory does not use them at run time.
 - Built with [Flutter](https://flutter.dev/) (BSD-3-Clause), [Rust](https://www.rust-lang.org/) (Apache-2.0 OR MIT), [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) (MIT), [Riverpod](https://riverpod.dev/) (MIT), [SQLite](https://sqlite.org/) (public domain), and the fonts Google Sans and JetBrains Mono via [Fontsource](https://fontsource.org/) (OFL-1.1). The full list of libraries and licences is in the source repository.

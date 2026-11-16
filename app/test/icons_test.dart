@@ -58,4 +58,62 @@ void main() {
       expect(table.bannerArtUrls(item('hk4e', 'abc', 'character')), isEmpty);
     });
   });
+
+  group('Paimon.moe fallback for items Enka has no name for yet', () {
+    CatalogItem keyed(String id, String kind, String? key) =>
+        CatalogItem(game: 'hk4e', id: id, name: 'Test', aliases: const [], rarity: 5, kind: kind, paimonKey: key);
+    const paimon = 'https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/static/images';
+
+    test('a new character is shown from its full wish art, then its portrait', () {
+      expect(table.bannerArtUrls(keyed('10000136', 'character', 'mitya')), [
+        '$paimon/characters/full/mitya.png',
+        '$paimon/characters/mitya.png',
+      ]);
+      expect(table.iconUrls(keyed('10000136', 'character', 'mitya')), ['$paimon/characters/mitya.png']);
+    });
+
+    test('a new weapon is shown from its picture', () {
+      expect(table.bannerArtUrls(keyed('14525', 'weapon', 'starsealed_edict')), ['$paimon/weapons/starsealed_edict.png']);
+      expect(table.iconUrls(keyed('14525', 'weapon', 'starsealed_edict')), ['$paimon/weapons/starsealed_edict.png']);
+    });
+
+    test('Enka stays first, and the full wish art comes before any small portrait', () {
+      expect(table.bannerArtUrls(keyed('10000002', 'character', 'kamisato_ayaka')), [
+        'https://enka.network/ui/UI_Gacha_AvatarImg_Ayaka.png',
+        '$paimon/characters/full/kamisato_ayaka.png',
+        'https://enka.network/ui/UI_AvatarIcon_Ayaka.png',
+        '$paimon/characters/kamisato_ayaka.png',
+      ]);
+      expect(table.iconUrls(keyed('11509', 'weapon', 'mistsplitter_reforged')), [
+        'https://enka.network/ui/UI_EquipIcon_Mistsplitter.png',
+        '$paimon/weapons/mistsplitter_reforged.png',
+      ]);
+    });
+
+    test('a key that is not plain lowercase words never reaches an address', () {
+      for (final bad in ['../x', 'a/b', 'Mitya', 'mit ya', 'a?b=1', '']) {
+        expect(table.bannerArtUrls(keyed('10000136', 'character', bad)), isEmpty, reason: bad);
+        expect(table.iconUrls(keyed('10000136', 'character', bad)), isEmpty, reason: bad);
+      }
+    });
+
+    test('other games are not given Paimon.moe pictures', () {
+      final hsr = CatalogItem(game: 'hkrpg', id: '1001', name: 'Test', aliases: const [], rarity: 5, kind: 'character', paimonKey: 'march_7th');
+      expect(table.iconUrls(hsr), ['https://enka.network/ui/hsr/SpriteOutput/AvatarRoundIcon/Avatar/1001.png']);
+    });
+  });
+
+  group('farming material pictures', () {
+    test('a series is shown by the picture of its lowest-tier item', () {
+      expect(table.materialUrls('teachings_of_freedom'), [
+        'https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/static/images/items/teachings_of_freedom.png',
+      ]);
+    });
+
+    test('an id that is not plain lowercase words gives nothing', () {
+      expect(table.materialUrls('../secret'), isEmpty);
+      expect(table.materialUrls('Teachings'), isEmpty);
+      expect(table.materialUrls(''), isEmpty);
+    });
+  });
 }
