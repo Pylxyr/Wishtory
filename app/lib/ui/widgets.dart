@@ -119,7 +119,8 @@ class OutcomeChip extends StatelessWidget {
   }
 }
 
-/// Item icon from the public Enka host, with a rarity-coloured star as the offline/missing fallback.
+/// Item icon from the public Enka host (or Paimon.moe's repository when Enka has none yet), with a rarity-coloured
+/// star as the offline/missing fallback.
 class ItemIcon extends ConsumerWidget {
   const ItemIcon({super.key, required this.game, required this.name, required this.rank, this.size = 36});
 

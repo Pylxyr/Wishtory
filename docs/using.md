@@ -18,7 +18,7 @@ That is the whole routine. The game only keeps about six months of history, so r
 
 **Live banners.** The banners running now sit at the top of the Overview on the artwork of what they feature, with the time left and your pity on them; click one to open its statistics below. Artwork downloads once per picture and is kept with the item pictures, so *Clear item pictures* in Settings removes it too (it comes back when needed).
 
-**Farming (Genshin).** At the bottom of the Genshin Overview, the talent books and weapon materials the domains offer today, and who uses them. The day is the game's farming day on your account's server (it starts at 04:00 server time), so it is right in every region. Pick another weekday to plan ahead; on Sundays every domain offers everything. The list is bundled with the app and refreshed with each release.
+**Farming (Genshin).** In the panel on the left of the Genshin Overview, the talent books and weapon materials the domains offer today, with a picture of each, and who uses them. Switch between talent books and weapons at the top, and close the panel with the arrow in its corner to give the page the whole window; a thin strip stays so you can open it again, and Wishtory remembers your choice. The day is the game's farming day on your account's server (it starts at 04:00 server time), so it is right in every region. Pick another weekday to plan ahead; on Sundays every domain offers everything. The list is bundled with the app and refreshed with each release.
 
 **Colors.** Settings has color themes; Graphite is the original look. A theme tints the surfaces and sets the accent, and the gold of 5-star and purple of 4-star never change.
 

@@ -6,8 +6,10 @@ import '../bridge/generated/api/types.dart';
 import 'game_info.dart';
 
 /// Item icons come from Enka.Network's public image host (credited in About). Star Rail paths
-/// derive from the catalog id; Genshin and Zenless need the lookup tables (5★ only). Anything
-/// missing gives no address and the UI draws a star glyph instead. Pictures are saved on disk by
+/// derive from the catalog id; Genshin and Zenless need the lookup tables (5★ only). Genshin items the
+/// table does not know yet (a new character or weapon is usually missing for a while) fall back to the
+/// pictures in Paimon.moe's open-source repository, which the catalog's `paimon_key` points at. Anything
+/// still missing gives no address and the UI draws a star glyph instead. Pictures are saved on disk by
 /// `IconCache` after the first download.
 class IconTable {
   IconTable(this._elements, this._genshin, this._zenless);
@@ -37,10 +39,11 @@ class IconTable {
         return ['$_enka/ui/hsr/SpriteOutput/${weapon ? 'LightConeMaxFigures' : 'AvatarRoundIcon/Avatar'}/${item.id}.png'];
       case 'hk4e':
         final key = _genshin[item.id];
-        if (key == null) return const [];
-        return weapon
-            ? ['$_enka/ui/UI_EquipIcon_$key.png']
-            : ['$_enka/ui/UI_AvatarIcon_$key.png', '$_enka/ui/UI_AvatarIcon_Side_$key.png'];
+        final paimon = _paimonKey(item);
+        return [
+          if (key != null) ...(weapon ? ['$_enka/ui/UI_EquipIcon_$key.png'] : ['$_enka/ui/UI_AvatarIcon_$key.png', '$_enka/ui/UI_AvatarIcon_Side_$key.png']),
+          if (paimon != null) '$_paimon/${weapon ? 'weapons' : 'characters'}/$paimon.png',
+        ];
       case 'nap':
         final key = _zenless[item.id];
         return key == null ? const [] : ['$_enka/ui/zzz/$key.png'];
@@ -49,9 +52,21 @@ class IconTable {
   }
 }
 
+/// Paimon.moe's open-source repository (MIT, credited in About) serves pictures for Genshin items, named by the
+/// catalog's `paimon_key`. Only used when Enka has no address for an item, or as the next try after it.
+const _paimon = 'https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/static/images';
+
+/// Item keys are lowercase words joined by underscores; anything else is never put into an address.
+final _paimonKeyPattern = RegExp(r'^[a-z0-9_]+$');
+
+String? _paimonKey(CatalogItem? item) {
+  final key = item?.paimonKey;
+  return key != null && _paimonKeyPattern.hasMatch(key) ? key : null;
+}
+
 extension BannerArt on IconTable {
   /// The picture addresses to try for a banner's background, best first: the wish-screen artwork of the
-  /// featured item where the host has it, then its ordinary picture (so an unknown artwork name still
+  /// featured item where a host has it, then its ordinary picture (so an unknown artwork name still
   /// shows something). Used with `IconRequest(urls, art: true)`.
   List<String> bannerArtUrls(CatalogItem? item) {
     if (item == null || !RegExp(r'^\d+$').hasMatch(item.id)) return const [];
@@ -60,10 +75,20 @@ extension BannerArt on IconTable {
     switch (item.game) {
       case 'hk4e':
         final key = _genshin[item.id];
-        if (key == null) return const [];
-        return weapon
-            ? ['$enka/ui/UI_Gacha_EquipIcon_$key.png', '$enka/ui/UI_EquipIcon_$key.png']
-            : ['$enka/ui/UI_Gacha_AvatarImg_$key.png', '$enka/ui/UI_AvatarIcon_$key.png'];
+        final paimon = _paimonKey(item);
+        if (weapon) {
+          return [
+            if (key != null) ...['$enka/ui/UI_Gacha_EquipIcon_$key.png', '$enka/ui/UI_EquipIcon_$key.png'],
+            if (paimon != null) '$_paimon/weapons/$paimon.png',
+          ];
+        }
+        // The full wish-screen picture of a character comes before any small portrait, from either host.
+        return [
+          if (key != null) '$enka/ui/UI_Gacha_AvatarImg_$key.png',
+          if (paimon != null) '$_paimon/characters/full/$paimon.png',
+          if (key != null) '$enka/ui/UI_AvatarIcon_$key.png',
+          if (paimon != null) '$_paimon/characters/$paimon.png',
+        ];
       case 'hkrpg':
         return weapon
             ? ['$enka/ui/hsr/SpriteOutput/LightConeMaxFigures/${item.id}.png']
@@ -74,6 +99,12 @@ extension BannerArt on IconTable {
     }
     return const [];
   }
+}
+
+extension MaterialPictures on IconTable {
+  /// The picture of a farming series, such as "Teachings of Freedom", by the series id in `materials.json`
+  /// (the key of its lowest-tier item). Paimon.moe's repository has one for every series.
+  List<String> materialUrls(String seriesId) => _paimonKeyPattern.hasMatch(seriesId) ? ['$_paimon/items/$seriesId.png'] : const [];
 }
 
 /// Catalog lookups by (game, item name), built once per catalog.

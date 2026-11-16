@@ -18,7 +18,7 @@ Wishtory is a free, open-source desktop app for Windows and Linux. It shows your
 | Wish history (pulls, UIDs, banners, times) | The games' official history service, or a file you import | A local database on your PC | Only if you export it, or use cloud backup (encrypted) |
 | Game history link | A cache file the game already saved on your PC, which Wishtory only reads, or a link you paste | Not saved by Wishtory | Sent only to the official history service of that game, to fetch your records |
 | Settings and preferences (theme, nicknames, game folders) | You | Your PC | No |
-| Item pictures and banner artwork | enka.network | A cache folder on your PC | No (they are downloaded, never uploaded) |
+| Item pictures, banner artwork and farming-material pictures | enka.network, and Paimon.moe's open-source repository on GitHub | A cache folder on your PC | No (they are downloaded, never uploaded) |
 | Diagnostics log (optional) | The app, only if you switch it on | Memory only, never written to disk, cleared when switched off | Only if you copy it yourself |
 | Google account email, Google sign-in token, backup passphrase | Google, and you (only if you use cloud backup) | See section 3 | See section 3 |
 
@@ -38,6 +38,7 @@ Uninstalling Wishtory does not delete this folder, so your history survives a re
 | HoYoverse history service (official game servers) | To fetch your wish records when you press Refresh | Your game history link, to the official service for that game only |
 | GitHub (this project's releases and files) | A check for new app versions, and for banner and item catalog updates | Standard web request data, including your IP address and the app name and version |
 | enka.network | To download item pictures and the artwork behind live banners once | Standard web request data. No wish or account data |
+| GitHub (raw.githubusercontent.com, Paimon.moe's open-source repository) | To download pictures once for items enka.network does not have yet, and the farming-material pictures | Standard web request data. No wish or account data |
 | Google (only if you use cloud backup) | Sign-in, and uploading and downloading your encrypted backups | See section 3 |
 
 These services receive standard request data such as your IP address and are covered by their own privacy policies. The developer receives none of it.
