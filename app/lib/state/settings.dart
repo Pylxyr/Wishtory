@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bridge/wishtory_api.dart';
+import '../domain/first_five.dart';
 import '../domain/game_info.dart';
 import 'providers.dart';
 
@@ -27,6 +28,7 @@ class AppSettings {
     this.loggingEnabled = false,
     this.aliases = const {},
     this.lastRefresh = const {},
+    this.firstFiveAnswers = const {},
   });
 
   final ThemeMode themeMode;
@@ -57,6 +59,9 @@ class AppSettings {
   /// Epoch milliseconds of the last successful refresh on this PC, by "game|uid".
   final Map<String, int> lastRefresh;
 
+  /// What the player said about the first 5★ of a banner, by "game|uid|banner" (see `first_five.dart`).
+  final Map<String, String> firstFiveAnswers;
+
   AppSettings copyWith({
     ThemeMode? themeMode,
     bool? comfortable,
@@ -70,6 +75,7 @@ class AppSettings {
     bool? loggingEnabled,
     Map<String, String>? aliases,
     Map<String, int>? lastRefresh,
+    Map<String, String>? firstFiveAnswers,
   }) =>
       AppSettings(
         themeMode: themeMode ?? this.themeMode,
@@ -84,6 +90,7 @@ class AppSettings {
         loggingEnabled: loggingEnabled ?? this.loggingEnabled,
         aliases: aliases ?? this.aliases,
         lastRefresh: lastRefresh ?? this.lastRefresh,
+        firstFiveAnswers: firstFiveAnswers ?? this.firstFiveAnswers,
       );
 }
 
@@ -114,6 +121,7 @@ class SettingsController extends Notifier<AppSettings> {
       loggingEnabled: false, // diagnostics are opt-in per session, as before
       aliases: map<String>('aliases'),
       lastRefresh: map<int>('lastRefresh'),
+      firstFiveAnswers: map<String>('firstFiveAnswers'),
     );
   }
 
@@ -179,6 +187,19 @@ class SettingsController extends Notifier<AppSettings> {
     ref.read(sharedPrefsProvider).setString('aliases', jsonEncode(aliases));
   }
 
+  /// Remembers the answer for the first 5★ of [banner]; null forgets it, so the question is asked again.
+  void setFirstFiveAnswer(GameId game, String uid, String banner, FiveStar first, FirstFiveAnswer? answer) {
+    final answers = {...state.firstFiveAnswers};
+    final key = firstFiveKey(game, uid, banner);
+    if (answer == null) {
+      answers.remove(key);
+    } else {
+      answers[key] = firstFiveValue(first, answer);
+    }
+    state = state.copyWith(firstFiveAnswers: answers);
+    ref.read(sharedPrefsProvider).setString('firstFiveAnswers', jsonEncode(answers));
+  }
+
   void markRefreshed(GameId game, String uid) {
     final map = {...state.lastRefresh, accountKey(game, uid): DateTime.now().millisecondsSinceEpoch};
     state = state.copyWith(lastRefresh: map);
@@ -189,10 +210,12 @@ class SettingsController extends Notifier<AppSettings> {
     final key = accountKey(game, uid);
     final aliases = {...state.aliases}..remove(key);
     final last = {...state.lastRefresh}..remove(key);
-    state = state.copyWith(aliases: aliases, lastRefresh: last);
+    final answers = {...state.firstFiveAnswers}..removeWhere((k, _) => k.startsWith('$key|'));
+    state = state.copyWith(aliases: aliases, lastRefresh: last, firstFiveAnswers: answers);
     final p = ref.read(sharedPrefsProvider);
     p.setString('aliases', jsonEncode(aliases));
     p.setString('lastRefresh', jsonEncode(last));
+    p.setString('firstFiveAnswers', jsonEncode(answers));
   }
 }
 
