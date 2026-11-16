@@ -6,7 +6,8 @@ name: Merge safe game catalog updates
 #   - every commit is the bot's own (a person's commit means a person wants to review it);
 #   - the only files changed are catalog/catalog.json and catalog/manifest.json, which names its
 #     version (a banner list change always waits for a person: Paimon.moe drafts can be wrong, and
-#     banners decide how saved pulls are read);
+#     banners decide how saved pulls are read; so does a change to the Genshin materials list, which
+#     only reaches people with the next app release);
 #   - the change log this release would publish has entries and every one is "info" (new items).
 #     Renames, trait fixes, rarity changes and removals (minor / major) wait for a person.
 # Anything else is left open with the reason in this run's summary.
@@ -100,7 +101,7 @@ jobs:
 
           files="$(git diff --name-only origin/main...origin/catalog-refresh)"
           [ "$files" = "$(printf 'catalog/catalog.json\ncatalog/manifest.json')" ] \
-            || hold "The pull request changes more than the item catalog (banner list drafts are checked by hand): $(echo "$files" | paste -sd' ' -)"
+            || hold "The pull request changes more than the item catalog (banner list drafts and the Genshin materials list are checked by hand): $(echo "$files" | paste -sd' ' -)"
 
           # The change log this candidate would publish, the same way catalog-proposal.yml builds it.
           mkdir -p "$RUNNER_TEMP/new"

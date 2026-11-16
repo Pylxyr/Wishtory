@@ -15,6 +15,8 @@ import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
 import 'banner_stats.dart';
+import 'daily_domains.dart';
+import 'live_hero.dart';
 
 /// Which banner's detail is open; null means the first one.
 class SelectedBanner extends Notifier<String?> {
@@ -91,13 +93,17 @@ class OverviewPage extends ConsumerWidget {
     final selectedKey = ref.watch(selectedBannerProvider);
     final selected = list.firstWhere((p) => p.banner == selectedKey, orElse: () => list.first);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      LiveHero(account: account, pity: list, onSelect: (key) => ref.read(selectedBannerProvider.notifier).select(key)),
       _StatusStrip(game: account.game, list: list),
       const SizedBox(height: 20),
-      _LiveNow(account: account),
       const SectionLabel('Banners'),
       _BannerGrid(list: list, game: account.game, selected: selected.banner),
       const SizedBox(height: 20),
       _BannerDetail(p: selected, game: account.game),
+      if (account.game == GameId.genshin) ...[
+        const SizedBox(height: 24),
+        DailyDomains(account: account),
+      ],
     ]);
   }
 }
@@ -178,37 +184,6 @@ class _Stat extends StatelessWidget {
 }
 
 // ------------------------------------------------------------------ live banners
-
-class _LiveNow extends ConsumerWidget {
-  const _LiveNow({required this.account});
-  final Account account;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final banners = ref.watch(bannersProvider).data;
-    final catalog = ref.watch(catalogProvider).data;
-    final live = liveBanners(banners, account.game, account.timezone, catalog);
-    if (live.isEmpty) return const SizedBox.shrink();
-    final c = context.wc;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const SectionLabel('Live now'),
-        Wrap(spacing: 10, runSpacing: 10, children: [
-          for (final b in live)
-            Panel(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(b.name, style: Ty.h3),
-                if (b.featured.isNotEmpty) Text(b.featured.join(' / '), style: Ty.small.copyWith(color: c.muted)),
-                Text(timeLeft(b.msLeft), style: Ty.small.copyWith(color: c.faint)),
-              ]),
-            ),
-        ]),
-      ]),
-    );
-  }
-}
 
 // ------------------------------------------------------------------ banner cards
 

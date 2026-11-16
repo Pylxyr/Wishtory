@@ -6,6 +6,9 @@ import 'package:wishtory/domain/icon_cache.dart';
 
 final _png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4]);
 
+/// A valid-looking PNG of 3 MB: too big for an item picture, fine for banner artwork.
+final _big = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, ...List<int>.filled(3 * 1024 * 1024, 7)]);
+
 void main() {
   late HttpServer server;
   late Directory dir;
@@ -24,6 +27,9 @@ void main() {
       switch (path) {
         case '/ok.png':
           request.response.add(_png);
+        case '/big-icon.png':
+        case '/big-art.png':
+          request.response.add(_big);
         case '/page.png':
           request.response.write('<html>this is not a picture</html>');
         default:
@@ -58,6 +64,19 @@ void main() {
   test('something that is not a PNG is never saved', () async {
     expect(await cache.get(url('/page.png')), isNull);
     expect(await dir.list().toList(), isEmpty);
+  });
+
+  test('banner artwork may be larger than an item picture, which is still refused', () async {
+    expect(await cache.get(url('/big-icon.png')), isNull);
+    final art = await cache.get(url('/big-art.png'), art: true);
+    expect(art, isNotNull);
+    expect(await art!.length(), _big.length);
+  });
+
+  test('an artwork request is not the same request as an icon request', () {
+    expect(const IconRequest(['a']) == const IconRequest(['a']), isTrue);
+    expect(const IconRequest(['a']) == const IconRequest(['a'], art: true), isFalse);
+    expect(const IconRequest(['a'], art: true).hashCode, const IconRequest(['a'], art: true).hashCode);
   });
 
   test('getFirst falls back to the next address', () async {

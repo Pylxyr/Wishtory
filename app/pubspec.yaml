@@ -25,6 +25,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/data/icons.json
+    - assets/data/materials.json
     - assets/fonts/GoogleSans-OFL.txt
     - assets/fonts/JetBrainsMono-OFL.txt
   fonts:

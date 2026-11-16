@@ -12,6 +12,7 @@ import '../../state/providers.dart';
 import '../../state/refresh.dart';
 import '../../state/settings.dart';
 import '../../state/toasts.dart';
+import '../../ui/theme_picker.dart';
 import '../../ui/tokens.dart';
 import '../../ui/widgets.dart';
 import '../help/tutorial.dart';
@@ -32,7 +33,13 @@ class SettingsPage extends ConsumerWidget {
       const SectionLabel('Appearance'),
       Panel(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Theme', style: Ty.h3),
+          const Text('Colors', style: Ty.h3),
+          const SizedBox(height: 2),
+          Text('The graphite look is the original. A theme tints every surface and sets the accent; gold for 5★ and purple for 4★ stay the same.', style: Ty.small.copyWith(color: context.wc.muted)),
+          const SizedBox(height: 8),
+          const ThemePicker(),
+          const SizedBox(height: 16),
+          const Text('Brightness', style: Ty.h3),
           const SizedBox(height: 8),
           SegmentedButton<ThemeMode>(
             showSelectedIcon: false,
@@ -245,7 +252,7 @@ class _ItemPicturesState extends ConsumerState<_ItemPictures> {
             const Text('Saved item pictures', style: Ty.h3),
             const SizedBox(height: 4),
             Text(
-              'Pictures are downloaded from Enka.Network once and kept on this PC, so they load instantly and work offline. '
+              'Item pictures and the artwork behind live banners are downloaded from Enka.Network once and kept on this PC, so they load instantly and work offline. '
               '${bytes == null ? '' : 'Using ${_size(bytes)}. '}Clearing them is safe: they download again when needed.',
               style: Ty.body.copyWith(color: c.muted),
             ),

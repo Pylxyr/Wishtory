@@ -30,4 +30,32 @@ void main() {
     expect(table.iconUrls(item('hk4e', '99999999', 'character')), isEmpty);
     expect(table.iconUrls(item('hk4e', 'abc', 'character')), isEmpty);
   });
+
+  group('banner artwork', () {
+    test('Genshin tries the wish-screen picture first, then the ordinary one', () {
+      expect(table.bannerArtUrls(item('hk4e', '10000002', 'character')), [
+        'https://enka.network/ui/UI_Gacha_AvatarImg_Ayaka.png',
+        'https://enka.network/ui/UI_AvatarIcon_Ayaka.png',
+      ]);
+      expect(table.bannerArtUrls(item('hk4e', '11509', 'weapon')), [
+        'https://enka.network/ui/UI_Gacha_EquipIcon_Mistsplitter.png',
+        'https://enka.network/ui/UI_EquipIcon_Mistsplitter.png',
+      ]);
+    });
+
+    test('Star Rail and Zenless have their own artwork', () {
+      expect(table.bannerArtUrls(item('hkrpg', '1001', 'character')), [
+        'https://enka.network/ui/hsr/SpriteOutput/AvatarDrawCard/1001.png',
+        'https://enka.network/ui/hsr/SpriteOutput/AvatarRoundIcon/Avatar/1001.png',
+      ]);
+      expect(table.bannerArtUrls(item('hkrpg', '23001', 'weapon')), ['https://enka.network/ui/hsr/SpriteOutput/LightConeMaxFigures/23001.png']);
+      expect(table.bannerArtUrls(item('nap', '1091', 'character')), ['https://enka.network/ui/zzz/IconRoleCircle13.png']);
+    });
+
+    test('unknown items and bad ids give nothing, so the card shows its gradient', () {
+      expect(table.bannerArtUrls(null), isEmpty);
+      expect(table.bannerArtUrls(item('hk4e', '99999999', 'character')), isEmpty);
+      expect(table.bannerArtUrls(item('hk4e', 'abc', 'character')), isEmpty);
+    });
+  });
 }

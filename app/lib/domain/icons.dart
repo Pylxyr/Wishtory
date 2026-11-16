@@ -49,6 +49,33 @@ class IconTable {
   }
 }
 
+extension BannerArt on IconTable {
+  /// The picture addresses to try for a banner's background, best first: the wish-screen artwork of the
+  /// featured item where the host has it, then its ordinary picture (so an unknown artwork name still
+  /// shows something). Used with `IconRequest(urls, art: true)`.
+  List<String> bannerArtUrls(CatalogItem? item) {
+    if (item == null || !RegExp(r'^\d+$').hasMatch(item.id)) return const [];
+    final weapon = item.kind != 'character';
+    const enka = IconTable._enka;
+    switch (item.game) {
+      case 'hk4e':
+        final key = _genshin[item.id];
+        if (key == null) return const [];
+        return weapon
+            ? ['$enka/ui/UI_Gacha_EquipIcon_$key.png', '$enka/ui/UI_EquipIcon_$key.png']
+            : ['$enka/ui/UI_Gacha_AvatarImg_$key.png', '$enka/ui/UI_AvatarIcon_$key.png'];
+      case 'hkrpg':
+        return weapon
+            ? ['$enka/ui/hsr/SpriteOutput/LightConeMaxFigures/${item.id}.png']
+            : ['$enka/ui/hsr/SpriteOutput/AvatarDrawCard/${item.id}.png', '$enka/ui/hsr/SpriteOutput/AvatarRoundIcon/Avatar/${item.id}.png'];
+      case 'nap':
+        final key = _zenless[item.id];
+        return key == null ? const [] : ['$enka/ui/zzz/$key.png'];
+    }
+    return const [];
+  }
+}
+
 /// Catalog lookups by (game, item name), built once per catalog.
 class CatalogIndex {
   CatalogIndex(GameCatalog? catalog) {

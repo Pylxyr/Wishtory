@@ -21,6 +21,7 @@ class AppSettings {
     this.showFours = false,
     this.pullView = PullView.iconsAndNames,
     this.newestFirst = true,
+    this.themeId = 'default',
     this.tutorialDone = false,
     this.loggingEnabled = false,
     this.aliases = const {},
@@ -39,6 +40,9 @@ class AppSettings {
 
   /// Lists run from the newest pull to the oldest; false reverses them.
   final bool newestFirst;
+
+  /// The colour theme (see `themePresets`); 'default' is the original look.
+  final String themeId;
   final bool tutorialDone;
   final bool loggingEnabled;
 
@@ -55,6 +59,7 @@ class AppSettings {
     bool? showFours,
     PullView? pullView,
     bool? newestFirst,
+    String? themeId,
     bool? tutorialDone,
     bool? loggingEnabled,
     Map<String, String>? aliases,
@@ -67,6 +72,7 @@ class AppSettings {
         showFours: showFours ?? this.showFours,
         pullView: pullView ?? this.pullView,
         newestFirst: newestFirst ?? this.newestFirst,
+        themeId: themeId ?? this.themeId,
         tutorialDone: tutorialDone ?? this.tutorialDone,
         loggingEnabled: loggingEnabled ?? this.loggingEnabled,
         aliases: aliases ?? this.aliases,
@@ -95,6 +101,7 @@ class SettingsController extends Notifier<AppSettings> {
       showFours: p.getBool('showFours') ?? false,
       pullView: PullView.values.asNameMap()[p.getString('pullView')] ?? PullView.iconsAndNames,
       newestFirst: p.getBool('newestFirst') ?? true,
+      themeId: p.getString('themeId') ?? 'default',
       tutorialDone: p.getBool('tutorialDone') ?? false,
       loggingEnabled: false, // diagnostics are opt-in per session, as before
       aliases: map<String>('aliases'),
@@ -125,6 +132,11 @@ class SettingsController extends Notifier<AppSettings> {
   void setPullView(PullView view) {
     state = state.copyWith(pullView: view);
     ref.read(sharedPrefsProvider).setString('pullView', view.name);
+  }
+
+  void setThemeId(String id) {
+    state = state.copyWith(themeId: id);
+    ref.read(sharedPrefsProvider).setString('themeId', id);
   }
 
   void setNewestFirst(bool value) {

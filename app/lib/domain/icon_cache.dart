@@ -8,21 +8,27 @@ import 'package:flutter/foundation.dart' show immutable;
 /// side-facing one). Value equality, so it can key a provider.
 @immutable
 class IconRequest {
-  const IconRequest(this.urls);
+  const IconRequest(this.urls, {this.art = false});
 
   final List<String> urls;
 
-  @override
-  bool operator ==(Object other) =>
-      other is IconRequest && other.urls.length == urls.length && Iterable<int>.generate(urls.length).every((i) => other.urls[i] == urls[i]);
+  /// Banner artwork rather than an item picture: allowed to be larger on disk.
+  final bool art;
 
   @override
-  int get hashCode => Object.hashAll(urls);
+  bool operator ==(Object other) =>
+      other is IconRequest &&
+      other.art == art &&
+      other.urls.length == urls.length &&
+      Iterable<int>.generate(urls.length).every((i) => other.urls[i] == urls[i]);
+
+  @override
+  int get hashCode => Object.hash(art, Object.hashAll(urls));
 }
 
 /// Keeps item pictures on disk, so they appear instantly, and work offline, after the first time.
 ///
-/// Only PNG files up to [maxBytes] are kept, at most [maxConcurrent] downloads run at once, and a
+/// Only PNG files up to [maxBytes] ([maxArtBytes] for banner artwork) are kept, at most [maxConcurrent] downloads run at once, and a
 /// picture that could not be fetched is not asked for again for [retryAfter]. Files are written
 /// to a temporary name first, so an interrupted download never leaves a broken picture behind.
 class IconCache {
@@ -35,6 +41,9 @@ class IconCache {
   }) : _client = client ?? (HttpClient()..connectionTimeout = const Duration(seconds: 8));
 
   static const maxBytes = 2 * 1024 * 1024;
+
+  /// Banner artwork is a large picture; it gets a larger limit than an item icon.
+  static const maxArtBytes = 8 * 1024 * 1024;
 
   /// The same folder name the Rust core uses for its data, under the platform's cache location.
   static Directory defaultDirectory() {
@@ -65,31 +74,31 @@ class IconCache {
   /// The first picture of [request] that is cached or can be downloaded, or null.
   Future<File?> getFirst(IconRequest request) async {
     for (final url in request.urls) {
-      final file = await get(url);
+      final file = await get(url, art: request.art);
       if (file != null) return file;
     }
     return null;
   }
 
   /// The cached file for [url], downloading it first when needed; null when it is not available.
-  Future<File?> get(String url) {
+  Future<File?> get(String url, {bool art = false}) {
     final failed = _failedAt[url];
     if (failed != null && DateTime.now().difference(failed) < retryAfter) return Future.value(null);
     // A block body, not `=> remove(...)`: whenComplete awaits a returned Future, and remove()
     // returns this very future, so the arrow form made it wait on itself and never complete.
-    return _inflight[url] ??= _load(url).whenComplete(() {
+    return _inflight[url] ??= _load(url, art).whenComplete(() {
       _inflight.remove(url);
     });
   }
 
-  Future<File?> _load(String url) async {
+  Future<File?> _load(String url, bool art) async {
     // Never throws: callers (and Riverpod) must see "not available" as null, not as an error.
     try {
       final target = _fileFor(url);
       if (await target.exists() && await target.length() > 0) return target;
       await _acquire();
       try {
-        final file = await _download(url, target);
+        final file = await _download(url, target, art ? maxArtBytes : maxBytes);
         if (file == null) _failedAt[url] = DateTime.now();
         return file;
       } finally {
@@ -101,7 +110,7 @@ class IconCache {
     }
   }
 
-  Future<File?> _download(String url, File target) async {
+  Future<File?> _download(String url, File target, int limit) async {
     final request = await _client.getUrl(Uri.parse(url)).timeout(timeout);
     final response = await request.close().timeout(timeout);
     if (response.statusCode != 200) {
@@ -111,7 +120,7 @@ class IconCache {
     final bytes = BytesBuilder(copy: false);
     await for (final chunk in response.timeout(timeout)) {
       bytes.add(chunk);
-      if (bytes.length > maxBytes) return null;
+      if (bytes.length > limit) return null;
     }
     final data = bytes.takeBytes();
     if (!_isPng(data)) return null;

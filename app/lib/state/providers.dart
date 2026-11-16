@@ -7,6 +7,7 @@ import '../bridge/wishtory_api.dart';
 import '../domain/game_info.dart';
 import '../domain/icon_cache.dart';
 import '../domain/icons.dart';
+import '../domain/materials.dart';
 import 'loadable.dart';
 import 'nav.dart';
 
@@ -18,6 +19,9 @@ final iconCacheProvider = Provider<IconCache>((ref) => throw UnimplementedError(
 
 /// The saved picture for an item (downloaded on first use), or null when none is available.
 /// Auto-disposed, so a picture that failed is tried again when its row scrolls back into view.
+/// The Genshin farming schedule bundled with the app; it never changes while the app runs.
+final materialsProvider = FutureProvider<MaterialsData>((ref) => MaterialsData.load());
+
 final iconFileProvider = FutureProvider.autoDispose.family<File?, IconRequest>(
   (ref, request) => ref.watch(iconCacheProvider).getFirst(request),
 );

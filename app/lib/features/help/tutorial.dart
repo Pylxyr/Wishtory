@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/settings.dart';
+import '../../ui/theme_picker.dart';
 import '../../ui/tokens.dart';
 
 const _steps = [
   ('Open the history page in the game', 'In your game, open the wish / warp / signal history and wait until the list loads. This makes the game save a link Wishtory can use.'),
   ('Press Refresh', 'Wishtory reads that link from the game\'s cache (read-only) and downloads your history. Nothing in the game is changed.'),
   ('Read your pity at a glance', 'The Overview shows pity per banner, whether your next 5★ is guaranteed, and how lucky your recent 5★ were. History has every pull.'),
+  ('Make it yours', 'Pick a color theme. Graphite is the original look, and you can change it any time in Settings. Genshin also shows which talent books and weapon materials you can farm today.'),
 ];
+
+/// The step that shows the color theme picker under its text.
+const _themeStep = 3;
 
 Future<void> showTutorial(BuildContext context, WidgetRef ref) {
   return showDialog<void>(
@@ -36,11 +41,12 @@ class _TutorialState extends State<_Tutorial> {
       backgroundColor: c.panel,
       title: Text('${_i + 1} of ${_steps.length}', style: Ty.label.copyWith(color: c.faint)),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+        constraints: const BoxConstraints(maxWidth: 520),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: Ty.h2),
           const SizedBox(height: 8),
           Text(body, style: Ty.body.copyWith(color: c.muted)),
+          if (_i == _themeStep) ...[const SizedBox(height: 14), const ThemePicker()],
         ]),
       ),
       actions: [

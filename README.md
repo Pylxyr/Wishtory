@@ -22,6 +22,9 @@ Track your wish history, pity and 50/50 results for Genshin Impact, Honkai: Star
 - **Statistics per banner.** Totals, share of pulls and average pity for 5-star and 4-star, how your 50/50s went, and a chip for every 5-star showing how lucky it was.
 - **Every pull, searchable.** A timeline of your rare pulls and a full table with search, filters, grouping and CSV copy.
 - **Your layout.** Show pulls with icons and names, names only to fit the most on screen, or icons only, and list them newest or oldest first. The choice is remembered and applies to all three games.
+- **Live banners, front and center.** Every banner running now, large, on the artwork of what it features, with the time left and your pity on it.
+- **Daily farming (Genshin).** Which talent books and weapon materials the domains offer today on your account's server, who uses them, and any other day of the week.
+- **Color themes.** Graphite is the original look; Ocean, Forest, Sunset, Rose, Violet and Mono are one click away, in the first-run tour or in Settings.
 - **Three games, many accounts.** Switch between games and accounts in one app, and give each account a nickname.
 - **Import and export.** UIGF, SRGF and Paimon.moe files.
 - **Up to date.** Banners and item names update themselves, and a catalog update that would change your saved pulls waits for your review.

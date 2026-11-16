@@ -113,8 +113,9 @@ class Ty {
   );
 }
 
-ThemeData buildTheme(Brightness brightness, {bool comfortable = false}) {
-  final c = brightness == Brightness.dark ? WishColors.dark : WishColors.light;
+/// The Material theme for [brightness]; [palette] is a colour theme from `paletteFor`, the graphite default otherwise.
+ThemeData buildTheme(Brightness brightness, {bool comfortable = false, WishColors? palette}) {
+  final c = palette ?? (brightness == Brightness.dark ? WishColors.dark : WishColors.light);
   final scheme = ColorScheme(
     brightness: brightness,
     primary: c.accent,
