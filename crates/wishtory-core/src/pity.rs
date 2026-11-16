@@ -431,7 +431,7 @@ pub fn compute_with_banners(
             let (mut total, mut fives, mut fours, mut sum_five, mut sum_four) =
                 (0u32, 0u32, 0u32, 0u32, 0u32);
             // Only infer guarantee state after observing a loss in the imported history.
-            // A history may begin mid-stream, so the first featured pull is ambiguous.
+            // The first featured 5★ of a history is a win: a new account starts at a 50/50 (see below).
             let mut guaranteed: Option<bool> = None;
             let mut recent_fives = Vec::new();
             let mut recent_fours = Vec::new();
@@ -470,13 +470,13 @@ pub fn compute_with_banners(
                         } else if guaranteed == Some(false) {
                             Some("win".into())
                         } else {
-                            // The record alone cannot distinguish a 50/50 win from a
-                            // previously established guarantee (or Genshin Capturing Radiance).
-                            // Either way, this featured pull consumes the previous state and
-                            // leaves the next five-star at the featured-chance state. That lets
-                            // later pulls in a partial history be classified accurately.
+                            // The first 5★ of the history. A new account starts at a 50/50, so
+                            // it is judged like any other: the banner list or the rules'
+                            // featured windows for the pull's date say whether it was the featured
+                            // item (a win); a permanent-pool item that was not featured then was
+                            // already a loss above. It leaves the next 5★ at the 50/50 state.
                             guaranteed = Some(false);
-                            None
+                            Some("win".into())
                         };
                         recent_fives.push(FiveStar {
                             name: p.name.clone(),
@@ -658,17 +658,17 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_history_keeps_first_featured_outcome_unknown_but_knows_next_is_not_guaranteed() {
+    fn the_first_featured_five_star_of_a_history_is_a_win_and_the_next_is_not_guaranteed() {
         let result = compute(Game::Hk4e, &[p(1, 5, "10000099")]);
         let c = find(&result, "character");
         assert_eq!(c.guaranteed, Some(false));
-        assert_eq!(c.recent_fives[0].outcome, None);
+        assert_eq!(c.recent_fives[0].outcome.as_deref(), Some("win"));
     }
 
     #[test]
-    fn genshin_classifies_outcomes_after_an_ambiguous_first_featured_pull() {
+    fn genshin_classifies_every_outcome_including_the_first_featured_pull() {
         let pulls = vec![
-            p(1, 5, "10000099"), // unknown: may have been a guaranteed featured pull
+            p(1, 5, "10000099"), // first of the history: featured, counted as a win
             p(2, 5, "10000003"), // standard-pool loss
             p(3, 5, "10000099"), // guaranteed featured
             p(4, 5, "10000099"), // featured chance won
@@ -681,7 +681,7 @@ mod tests {
                 .iter()
                 .map(|f| f.outcome.as_deref())
                 .collect::<Vec<_>>(),
-            vec![None, Some("loss"), Some("guaranteed"), Some("win")]
+            vec![Some("win"), Some("loss"), Some("guaranteed"), Some("win")]
         );
     }
 
@@ -710,9 +710,9 @@ mod tests {
     }
 
     #[test]
-    fn star_rail_classifies_outcomes_after_an_ambiguous_first_featured_pull() {
+    fn star_rail_classifies_every_outcome_including_the_first_featured_pull() {
         let pulls = vec![
-            pull("hkrpg", "11", 1, 5, "1201"), // unknown featured state
+            pull("hkrpg", "11", 1, 5, "1201"), // first of the history: featured, a win
             pull("hkrpg", "11", 2, 5, "1003"), // Himeko: loss
             pull("hkrpg", "11", 3, 5, "1202"), // guaranteed featured
             pull("hkrpg", "11", 4, 5, "1203"), // featured chance won
@@ -726,7 +726,7 @@ mod tests {
                 .iter()
                 .map(|f| f.outcome.as_deref())
                 .collect::<Vec<_>>(),
-            vec![None, Some("loss"), Some("guaranteed"), Some("win")]
+            vec![Some("win"), Some("loss"), Some("guaranteed"), Some("win")]
         );
         assert_eq!(
             r.iter().map(|b| b.total).sum::<u32>(),
@@ -784,12 +784,12 @@ mod tests {
 
     #[test]
     fn genshin_weapon_banner_loses_only_to_the_standard_weapon_pool() {
-        // Unknown first featured pull, standard Skyward Harp (loss), guaranteed featured,
+        // First featured pull (a win), standard Skyward Harp (loss), guaranteed featured,
         // then a featured pull that was not guaranteed. A featured weapon always counts as
         // a win, even when it is not the one selected on Epitomized Path.
         let outcomes = weapon_outcomes(Game::Hk4e, "302", &["14515", "15501", "14516", "14515"]);
         let expected: Vec<Option<String>> = vec![
-            None,
+            Some("win".into()),
             Some("loss".into()),
             Some("guaranteed".into()),
             Some("win".into()),
@@ -844,12 +844,15 @@ mod tests {
         // The permanent character list must not classify weapon ids, and vice versa.
         let r = compute(Game::Hk4e, &[pull("hk4e", "301", 1, 5, "15502")]);
         assert_eq!(
-            find(&r, "character").recent_fives[0].outcome,
-            None,
+            find(&r, "character").recent_fives[0].outcome.as_deref(),
+            Some("win"),
             "a weapon id on the character banner is not a standard character"
         );
         let r = compute(Game::Hk4e, &[pull("hk4e", "302", 1, 5, "10000003")]);
-        assert_eq!(find(&r, "weapon").recent_fives[0].outcome, None);
+        assert_eq!(
+            find(&r, "weapon").recent_fives[0].outcome.as_deref(),
+            Some("win")
+        );
     }
 
     #[test]
@@ -1085,7 +1088,7 @@ mod tests {
         );
         assert_eq!(
             outcome(&list, jean("2030-01-05 12:00:00")),
-            (None, Some(false))
+            (Some("win".to_string()), Some(false))
         );
         // Outside the window, or for a record without an item_id, the usual rule still applies.
         assert_eq!(
@@ -1096,6 +1099,33 @@ mod tests {
         by_name.item_id = String::new();
         by_name.name = "Jean".into();
         assert_eq!(outcome(&list, by_name).0, Some("loss".to_string()));
+    }
+
+    #[test]
+    fn a_first_five_star_is_judged_by_the_banner_period_it_was_pulled_in() {
+        // Amos' Bow (15502) is a permanent-pool weapon that was also a rate-up weapon on an old
+        // banner. Pulled in that banner's period it is a win; pulled any other time it is a loss.
+        let list = vec![event(
+            "old-weapon-banner",
+            "hk4e",
+            "weapon",
+            "2021-04-28 18:00:00",
+            "2021-05-18 17:59:59",
+            &["15502"],
+        )];
+        let harp = |time: &str| at(pull("hk4e", "302", 1, 5, "15502"), time);
+        let outcome = |pull: Pull| {
+            let r = compute_with_banners(Game::Hk4e, &[pull], &list, &RuleSet::bundled());
+            find(&r, "weapon").recent_fives[0].outcome.clone()
+        };
+        assert_eq!(
+            outcome(harp("2021-05-01 12:00:00")).as_deref(),
+            Some("win")
+        );
+        assert_eq!(
+            outcome(harp("2022-05-01 12:00:00")).as_deref(),
+            Some("loss")
+        );
     }
 
     #[test]
@@ -1114,7 +1144,7 @@ mod tests {
         ];
         let r = compute_with_banners(Game::Hk4e, &pulls, &list, &RuleSet::bundled());
         let fives = &find(&r, "weapon").recent_fives;
-        assert_eq!(fives[0].outcome, None);
+        assert_eq!(fives[0].outcome.as_deref(), Some("win"));
         assert_eq!(fives[1].outcome.as_deref(), Some("loss"));
     }
 
@@ -1226,7 +1256,10 @@ mod tests {
         rules.game_mut(Game::Hk4e).standard.character = crate::rules::ItemSet::default();
         rules.game_mut(Game::Hk4e).banners[0].hard = 50;
         let r = compute_with_banners(Game::Hk4e, &pulls, &[], &rules);
-        assert_eq!(find(&r, "character").recent_fives[0].outcome, None);
+        assert_eq!(
+            find(&r, "character").recent_fives[0].outcome.as_deref(),
+            Some("win")
+        );
         assert_eq!(find(&r, "character").hard_pity, 50);
     }
 
