@@ -265,6 +265,7 @@
     {"id": "nap-character-2026-09-30", "game": "nap", "pool": "character", "name": "Cindernight Respite / Cold Rain Wanes in the Night", "start": "2026-09-30 12:00:00", "end": "2026-10-20 14:59:59", "featured_5": ["1621", "1541"]},
     {"id": "nap-character-2026-10-21", "game": "nap", "pool": "character", "name": "Into the Flames of Life / Graceful Gale", "start": "2026-10-20 15:00:00", "end": "2026-11-11 11:59:59", "featured_5": ["1641", "1561"]},
     {"id": "nap-character-2026-11-11", "game": "nap", "pool": "character", "name": "Answers in the Wind / Outlier of Prodigies", "start": "2026-11-11 12:00:00", "end": "2026-12-01 14:59:59", "featured_5": ["1631", "1571"]},
+    {"id": "nap-weapon-2026-11-11", "game": "nap", "pool": "weapon", "name": "W-Engine Channel", "start": "2026-11-11 12:00:00", "end": "2026-12-01 14:59:59", "featured_5": ["14163", "14157"]},
     {"id": "hkrpg-character-version-3-5-phase-i", "game": "hkrpg", "pool": "character", "name": "Version 3.5 Phase I", "start": "2025-08-13 11:00:00", "end": "2025-09-02 11:59:59", "featured_5": ["1410", "1005"]},
     {"id": "hkrpg-character-version-3-5-phase-ii", "game": "hkrpg", "pool": "character", "name": "Version 3.5 Phase II", "start": "2025-09-02 12:00:00", "end": "2025-09-24 10:59:59", "featured_5": ["1412", "1006"]},
     {"id": "hkrpg-character-version-3-6-phase-i", "game": "hkrpg", "pool": "character", "name": "Version 3.6 Phase I", "start": "2025-09-24 11:00:00", "end": "2025-10-15 11:59:59", "featured_5": ["1413", "1401"]},
