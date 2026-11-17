@@ -6,7 +6,7 @@ CatalogItem item(String game, String id, String kind) =>
     CatalogItem(game: game, id: id, name: 'Test', aliases: const [], rarity: 5, kind: kind, paimonKey: null);
 
 void main() {
-  final table = IconTable({}, {'10000002': 'Ayaka', '11509': 'Mistsplitter'}, {'1091': 'IconRoleCircle13'});
+  final table = IconTable({}, {'10000002': 'Ayaka', '11509': 'Mistsplitter'}, {'1091': 'IconRoleCircle13', '14102': 'Weapon_S_1021'});
 
   test('Genshin characters prefer the front-facing portrait, then the side-facing one', () {
     expect(table.iconUrls(item('hk4e', '10000002', 'character')), [
