@@ -95,7 +95,14 @@ extension BannerArt on IconTable {
             : ['$enka/ui/hsr/SpriteOutput/AvatarDrawCard/${item.id}.png', '$enka/ui/hsr/SpriteOutput/AvatarRoundIcon/Avatar/${item.id}.png'];
       case 'nap':
         final key = _zenless[item.id];
-        return key == null ? const [] : ['$enka/ui/zzz/$key.png'];
+        if (key == null) return const [];
+        // Enka names an agent's large portrait like its round icon without "Circle" (IconRoleCircle13 and
+        // IconRole13): the portrait first, the round icon only if that picture is missing.
+        final portrait = weapon ? null : key.replaceFirst('IconRoleCircle', 'IconRole');
+        return [
+          if (portrait != null && portrait != key) '$enka/ui/zzz/$portrait.png',
+          '$enka/ui/zzz/$key.png',
+        ];
     }
     return const [];
   }
