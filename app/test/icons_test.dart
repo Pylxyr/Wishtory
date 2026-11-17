@@ -49,7 +49,12 @@ void main() {
         'https://enka.network/ui/hsr/SpriteOutput/AvatarRoundIcon/Avatar/1001.png',
       ]);
       expect(table.bannerArtUrls(item('hkrpg', '23001', 'weapon')), ['https://enka.network/ui/hsr/SpriteOutput/LightConeMaxFigures/23001.png']);
-      expect(table.bannerArtUrls(item('nap', '1091', 'character')), ['https://enka.network/ui/zzz/IconRoleCircle13.png']);
+      // A Zenless agent's large portrait comes before the round icon; a W-Engine has one picture.
+      expect(table.bannerArtUrls(item('nap', '1091', 'character')), [
+        'https://enka.network/ui/zzz/IconRole13.png',
+        'https://enka.network/ui/zzz/IconRoleCircle13.png',
+      ]);
+      expect(table.bannerArtUrls(item('nap', '14102', 'weapon')), ['https://enka.network/ui/zzz/Weapon_S_1021.png']);
     });
 
     test('unknown items and bad ids give nothing, so the card shows its gradient', () {
