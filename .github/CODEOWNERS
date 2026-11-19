@@ -1,0 +1,10 @@
+# Changes to these paths are what the app trusts or what publishes it. Turn on "Require review from
+# Code Owners" in the branch protection of `main` so none of them can change without a review.
+/catalog/catalog-public-key.txt   @Pylxyr
+/.github/                         @Pylxyr
+/scripts/                         @Pylxyr
+/crates/wishtory-core/src/catalog.rs @Pylxyr
+/crates/wishtory-core/src/cloud/  @Pylxyr
+/crates/wishtory-core/src/authkey.rs @Pylxyr
+/crates/wishtory-core/src/fetch.rs @Pylxyr
+/packaging/                       @Pylxyr
