@@ -58,7 +58,9 @@ const SCHEMA: &str = "PRAGMA journal_mode = WAL;
      CREATE TABLE IF NOT EXISTS derived_state (
         name TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);";
 
-type Migration = fn(&Db) -> Result<(), AppError>;
+/// A migration runs inside the transaction that also records its version, so a crash leaves either
+/// the old database or the migrated one with its new version, never a migrated one that runs again.
+type Migration = fn(&Transaction) -> Result<(), AppError>;
 
 /// Data migrations, in order. Each entry brings the database up to `user_version` = its first
 /// number; entries at or below the stored version are skipped. To add one, append a line with
@@ -66,13 +68,50 @@ type Migration = fn(&Db) -> Result<(), AppError>;
 const MIGRATIONS: &[(u32, Migration)] =
     &[(2, migrate_dedupe_paimon), (5, migrate_reresolve_banners)];
 
-fn migrate_dedupe_paimon(db: &Db) -> Result<(), AppError> {
-    db.deduplicate_legacy_paimon_overlaps().map(|_| ())
+fn migrate_dedupe_paimon(tx: &Transaction) -> Result<(), AppError> {
+    deduplicate_legacy_paimon_overlaps(tx).map(|_| ())
 }
 
 /// Launch-day windows and Zenless Rescreening moved in banner list 4: resolve stored banners again.
-fn migrate_reresolve_banners(db: &Db) -> Result<(), AppError> {
-    db.clear_pull_banners()
+fn migrate_reresolve_banners(tx: &Transaction) -> Result<(), AppError> {
+    tx.execute("DELETE FROM pull_banners", [])?;
+    Ok(())
+}
+
+/// Remove duplicate rows written by the old Paimon importer and a later `HoYoverse` refresh.
+/// The importer marked its IDs with `pmoe-`; keep those richer rows and remove only the
+/// matching number of non-Paimon rows. Same-source repeated items remain intact.
+fn deduplicate_legacy_paimon_overlaps(tx: &Transaction) -> Result<usize, AppError> {
+    let rows = {
+        let mut query = tx.prepare(&format!(
+            "SELECT {} FROM pulls WHERE game = 'hk4e' ORDER BY time, id",
+            Pull::COLUMNS
+        ))?;
+        let mapped = query.query_map([], Pull::from_row)?;
+        mapped.collect::<Result<Vec<_>, _>>()?
+    };
+    let mut groups = HashMap::<(String, PullSignature), (Vec<String>, Vec<String>)>::new();
+    for pull in rows {
+        let Some(signature) = pull_signature(&pull) else {
+            continue;
+        };
+        let group = groups.entry((pull.uid.clone(), signature)).or_default();
+        if pull.id.starts_with("pmoe-") {
+            group.0.push(pull.id);
+        } else {
+            group.1.push(pull.id);
+        }
+    }
+    let mut removed = 0;
+    for ((uid, _), (paimon_ids, other_ids)) in groups {
+        for id in other_ids.iter().take(paimon_ids.len()) {
+            removed += tx.execute(
+                "DELETE FROM pulls WHERE game='hk4e' AND uid=?1 AND id=?2",
+                params![uid, id],
+            )?;
+        }
+    }
+    Ok(removed)
 }
 
 /// One account's worth of pulls for an all-or-nothing multi-account merge.
@@ -93,6 +132,10 @@ pub struct AccountFingerprint {
     pub pulls: i64,
     pub newest_time: String,
     pub newest_id: String,
+    /// Changes when a stored row is filled in or reclassified without adding or removing a pull
+    /// (a later fetch completing a sparse import, a rerun channel being told apart): the total
+    /// length of the names and the sum of the gacha types.
+    pub content: i64,
 }
 
 /// Cheap to clone; every clone shares the same connection.
@@ -107,16 +150,20 @@ impl Db {
         let db = Db(Arc::new(Mutex::new(conn)));
         for (version, migrate) in MIGRATIONS {
             if user_version < *version {
-                migrate(&db)?;
-                db.conn()
-                    .execute_batch(&format!("PRAGMA user_version = {version};"))?;
+                let mut conn = db.conn();
+                let tx = conn.transaction()?;
+                migrate(&tx)?;
+                tx.execute_batch(&format!("PRAGMA user_version = {version};"))?;
+                tx.commit()?;
             }
         }
         Ok(db)
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Runs blocking database (and file) work off the async runtime's worker threads.
@@ -129,45 +176,6 @@ impl Db {
         tokio::task::spawn_blocking(move || work(&db))
             .await
             .map_err(|e| AppError::Io(format!("A background task failed: {e}")))?
-    }
-
-    /// Remove duplicate rows written by the old Paimon importer and a later HoYoverse refresh.
-    /// The importer marked its IDs with `pmoe-`; keep those richer rows and remove only the
-    /// matching number of non-Paimon rows. Same-source repeated items remain intact.
-    fn deduplicate_legacy_paimon_overlaps(&self) -> Result<usize, AppError> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        let rows = {
-            let mut query = tx.prepare(&format!(
-                "SELECT {} FROM pulls WHERE game = 'hk4e' ORDER BY time, id",
-                Pull::COLUMNS
-            ))?;
-            let mapped = query.query_map([], Pull::from_row)?;
-            mapped.collect::<Result<Vec<_>, _>>()?
-        };
-        let mut groups = HashMap::<(String, PullSignature), (Vec<String>, Vec<String>)>::new();
-        for pull in rows {
-            let Some(signature) = pull_signature(&pull) else {
-                continue;
-            };
-            let group = groups.entry((pull.uid.clone(), signature)).or_default();
-            if pull.id.starts_with("pmoe-") {
-                group.0.push(pull.id);
-            } else {
-                group.1.push(pull.id);
-            }
-        }
-        let mut removed = 0;
-        for ((uid, _), (paimon_ids, other_ids)) in groups {
-            for id in other_ids.iter().take(paimon_ids.len()) {
-                removed += tx.execute(
-                    "DELETE FROM pulls WHERE game='hk4e' AND uid=?1 AND id=?2",
-                    params![uid, id],
-                )?;
-            }
-        }
-        tx.commit()?;
-        Ok(removed)
     }
 
     /// Upserts the account and merges pulls by unique id. Existing rows are kept, but blank
@@ -333,7 +341,8 @@ impl Db {
     pub fn pull_fingerprints(&self) -> Result<Vec<AccountFingerprint>, AppError> {
         let conn = self.conn();
         let mut st = conn.prepare(
-            "SELECT game, uid, COUNT(*), COALESCE(MAX(time), ''), COALESCE(MAX(id), '')
+            "SELECT game, uid, COUNT(*), COALESCE(MAX(time), ''), COALESCE(MAX(id), ''),
+                    COALESCE(SUM(LENGTH(name)), 0) + COALESCE(SUM(CAST(gacha_type AS INTEGER)), 0)
              FROM pulls GROUP BY game, uid ORDER BY game, uid",
         )?;
         let rows = st.query_map([], |r| {
@@ -343,6 +352,7 @@ impl Db {
                 pulls: r.get(2)?,
                 newest_time: r.get(3)?,
                 newest_id: r.get(4)?,
+                content: r.get(5)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)
@@ -422,7 +432,7 @@ impl Db {
 struct CrossSourceCandidates(HashMap<PullSignature, VecDeque<String>>);
 
 impl CrossSourceCandidates {
-    /// Paimon.moe and HoYoverse assign different record IDs to the same wish, so a pull whose
+    /// Paimon.moe and `HoYoverse` assign different record IDs to the same wish, so a pull whose
     /// id is unknown may still be a stored row under another id. Only stored rows whose id is
     /// NOT part of the incoming batch qualify: a row the batch names by id is already matched
     /// by that id, and pairing a genuinely new pull with it would silently drop the new pull.

@@ -4,8 +4,9 @@
 use crate::{
     authkey,
     catalog::{
-        BannerEntry, BannerSet, BannerStore, Catalog, CatalogStore, ChangeEntry, CheckOutcome,
-        Components, HistoryEntry, HttpSource, ReleaseStore, Source, StagedRelease,
+        BannerEntry, BannerSet, BannerStore, Catalog, CatalogStore, ChangeEntry, ChangeScope,
+        CheckOutcome, Components, HistoryEntry, HttpSource, ReleaseStore, Severity, Source,
+        StagedRelease,
     },
     db::Db,
     discover,
@@ -37,14 +38,14 @@ const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_LINK_TRIES: usize = 4;
 static EXPORT_SEQ: AtomicU64 = AtomicU64::new(0);
 
-fn join_err(e: JoinError) -> AppError {
+fn join_err(e: &JoinError) -> AppError {
     AppError::Io(e.to_string())
 }
 
 pub async fn discover_games() -> Result<Vec<GameInstall>, AppError> {
     spawn_blocking(discover::discover_all)
         .await
-        .map_err(join_err)
+        .map_err(|e| join_err(&e))
 }
 
 /// Where games are searched for: the extra folders the person added and, on Linux, the Wine and
@@ -53,7 +54,7 @@ async fn game_locations_view(settings: &SettingsStore) -> Result<GameLocations, 
     let locations = settings.game_locations();
     let detected = spawn_blocking(discover::detect_prefixes)
         .await
-        .map_err(join_err)?;
+        .map_err(|e| join_err(&e))?;
     Ok(GameLocations {
         supported: cfg!(unix),
         locations,
@@ -77,7 +78,7 @@ pub async fn set_game_locations(
 pub async fn extract_authkey(game: Game) -> Result<String, AppError> {
     spawn_blocking(move || authkey::extract(game))
         .await
-        .map_err(join_err)?
+        .map_err(|e| join_err(&e))?
 }
 
 #[derive(Serialize)]
@@ -214,7 +215,7 @@ pub async fn refresh_from_game(
     );
     let urls = spawn_blocking(move || authkey::extract_all(game))
         .await
-        .map_err(join_err)?
+        .map_err(|e| join_err(&e))?
         .inspect_err(|e| wlog!(Level::Warn, "{}: cache read failed: {e}", game.as_str()))?;
     wlog!(
         Level::Debug,
@@ -265,17 +266,17 @@ pub async fn refresh_from_game(
 }
 
 pub async fn list_accounts(db: &Db) -> Result<Vec<Account>, AppError> {
-    db.run(|db| db.list_accounts()).await
+    db.run(super::db::Db::list_accounts).await
 }
 
 pub async fn delete_account(db: &Db, game: Game, uid: String) -> Result<(), AppError> {
     db.run(move |db| {
-        db.delete_account(game.as_str(), &uid).inspect(|_| {
+        db.delete_account(game.as_str(), &uid).inspect(|()| {
             wlog!(
                 Level::Info,
                 "{}: removed UID {uid} from Wishtory",
                 game.as_str()
-            )
+            );
         })
     })
     .await
@@ -289,10 +290,18 @@ pub async fn clear_all_history(db: &Db) -> Result<usize, AppError> {
     .await
 }
 
+#[allow(
+    clippy::unused_async,
+    reason = "async like every operation the bridge awaits"
+)]
 pub async fn get_catalog(catalog: &CatalogStore) -> Result<Arc<Catalog>, AppError> {
     Ok(catalog.current())
 }
 
+#[allow(
+    clippy::unused_async,
+    reason = "async like every operation the bridge awaits"
+)]
 pub async fn get_banners(banners: &BannerStore) -> Result<Arc<BannerSet>, AppError> {
     Ok(banners.current())
 }
@@ -388,7 +397,7 @@ async fn impact_for(
         .release
         .impact
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     if let Some(memo) = memo.filter(|m| m.fingerprint == fingerprint) {
         return Ok(memo);
@@ -422,7 +431,10 @@ async fn impact_for(
         })
         .await?;
     let computed = Arc::new(computed);
-    *ctx.release.impact.lock().unwrap_or_else(|e| e.into_inner()) = Some(computed.clone());
+    *ctx.release
+        .impact
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(computed.clone());
     Ok(computed)
 }
 
@@ -489,7 +501,7 @@ pub(crate) async fn check_catalog_with(
     // Whatever the check found, a release staged earlier (even before a restart) is looked at.
     if let Some(staged) = ctx.release.staged() {
         let impact = impact_for(ctx, &staged).await?;
-        if impact.total_affected == 0 && ctx.auto_apply {
+        if impact.total_affected == 0 && ctx.auto_apply && !changes_pity_rules(&staged) {
             apply_staged(ctx, &staged, true, 0).await?;
             check.status = "applied".into();
         } else {
@@ -497,6 +509,17 @@ pub(crate) async fn check_catalog_with(
         }
     }
     Ok(check)
+}
+
+/// A major change to the pity rules (hard or soft pity, the 50/50 odds) changes what the Pity page
+/// tells a person about every account even when no saved pull is placed differently, so such a
+/// release always waits for a person, whatever the automatic-update setting says.
+fn changes_pity_rules(staged: &StagedRelease) -> bool {
+    staged
+        .manifest
+        .changes
+        .iter()
+        .any(|c| c.scope == ChangeScope::Rules && c.severity == Severity::Major)
 }
 
 /// Installs the staged release and re-derives every saved pull's banner in ONE database
@@ -613,6 +636,10 @@ pub async fn apply_catalog(
 }
 
 /// "Not now": keeps the release staged and stops the start-up notice for it.
+#[allow(
+    clippy::unused_async,
+    reason = "async like every operation the bridge awaits"
+)]
 pub async fn dismiss_catalog(ctx: &CatalogCtx) -> Result<(), AppError> {
     if let Some(staged) = ctx.release.staged() {
         ctx.release.dismiss(staged.manifest.manifest_version);
@@ -620,6 +647,10 @@ pub async fn dismiss_catalog(ctx: &CatalogCtx) -> Result<(), AppError> {
     Ok(())
 }
 
+#[allow(
+    clippy::unused_async,
+    reason = "async like every operation the bridge awaits"
+)]
 pub async fn get_catalog_history(ctx: &CatalogCtx) -> Result<Vec<HistoryEntry>, AppError> {
     Ok(ctx.release.history())
 }
@@ -859,7 +890,7 @@ fn merge_import(
                 r.added,
                 r.skipped,
                 r.accounts
-            )
+            );
         })
         .inspect_err(|e| wlog!(Level::Warn, "import failed: {e}"))?;
     if let Err(e) = assign_all_banners(db, banners) {
@@ -897,7 +928,7 @@ pub async fn export_file(
         let json = uigf::export_with_catalog(db, &format, game, uid.as_deref(), &catalog)
             .inspect_err(|e| wlog!(Level::Warn, "export failed: {e}"))?;
         write_export(Path::new(&path), json.as_bytes())
-            .inspect(|_| wlog!(Level::Info, "export written ({} bytes)", json.len()))
+            .inspect(|()| wlog!(Level::Info, "export written ({} bytes)", json.len()))
             .inspect_err(|e| wlog!(Level::Error, "export could not be saved: {e}"))
     })
     .await
@@ -919,13 +950,18 @@ fn write_export(target: &Path, contents: &[u8]) -> Result<(), AppError> {
             name.to_string_lossy(),
             std::process::id()
         ));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
         {
+            // The export holds account numbers and a full wish history: private to its owner until
+            // the owner shares it.
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&candidate) {
             Ok(mut file) => {
-                let result = file.write_all(contents).and_then(|_| file.sync_all());
+                let result = file.write_all(contents).and_then(|()| file.sync_all());
                 if let Err(e) = result {
                     let _ = std::fs::remove_file(&candidate);
                     return Err(e.into());
@@ -933,7 +969,7 @@ fn write_export(target: &Path, contents: &[u8]) -> Result<(), AppError> {
                 temp = Some(candidate);
                 break;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e.into()),
         }
     }
@@ -995,8 +1031,7 @@ fn resolved_path(path: &Path) -> PathBuf {
     match (path.parent(), path.file_name()) {
         (Some(parent), Some(name)) => parent
             .canonicalize()
-            .map(|p| p.join(name))
-            .unwrap_or_else(|_| path.to_path_buf()),
+            .map_or_else(|_| path.to_path_buf(), |p| p.join(name)),
         _ => path.to_path_buf(),
     }
 }
@@ -1058,7 +1093,7 @@ mod tests {
     fn decodes_utf8_with_bom_and_utf16() {
         assert_eq!(decode_text(b"{\"a\":1}").unwrap(), "{\"a\":1}");
         let mut le = vec![0xFF, 0xFE];
-        le.extend("{}".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        le.extend("{}".encode_utf16().flat_map(u16::to_le_bytes));
         assert_eq!(decode_text(&le).unwrap(), "{}");
         assert!(decode_text(&[0x80, 0x81]).is_err());
     }
@@ -1072,6 +1107,19 @@ mod tests {
         write_export(&target, b"new content").unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"new content");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_export_is_readable_by_its_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("wishtory-export-mode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("history.json");
+        write_export(&target, b"{}").unwrap();
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
@@ -1207,6 +1255,52 @@ mod catalog_tests {
         );
         let status = run(get_catalog_status(&w.ctx)).unwrap();
         assert_eq!((status.version, status.waiting.is_none()), (2, true));
+    }
+
+    #[test]
+    fn a_major_change_to_the_pity_rules_waits_even_when_no_pull_is_affected() {
+        use crate::catalog::testkit::envelopes_with_changes;
+        let w = World::new("rules-wait", true);
+        let mut c = Catalog::bundled();
+        c.catalog_version = 5;
+        let mut r = RuleSet::bundled();
+        r.rules_version = 3;
+        let rule_change = |severity| ChangeEntry {
+            id: "rules:hard-pity:hk4e:character".into(),
+            scope: ChangeScope::Rules,
+            game: "hk4e".into(),
+            ids: vec!["character".into()],
+            summary: "Hard pity changed.".into(),
+            severity,
+            note: None,
+        };
+        // A minor tweak of the rules (no pull differs) is still applied by itself ...
+        w.source.publish(&envelopes_with_changes(
+            2,
+            c.clone(),
+            banners(6, "2026-01-20 17:59:59"),
+            r.clone(),
+            vec![rule_change(Severity::Minor)],
+        ));
+        assert_eq!(w.check(true).status, "applied");
+        // ... a major one is not.
+        let w = World::new("rules-wait-major", true);
+        w.source.publish(&envelopes_with_changes(
+            2,
+            c,
+            banners(6, "2026-01-20 17:59:59"),
+            r,
+            vec![rule_change(Severity::Major)],
+        ));
+        assert_eq!(w.check(true).status, "needs-review");
+        assert_eq!(w.versions(), (1, 1, 1, 1));
+        assert_eq!(
+            run(get_catalog_review(&w.ctx))
+                .unwrap()
+                .unwrap()
+                .total_affected,
+            0
+        );
     }
 
     #[test]

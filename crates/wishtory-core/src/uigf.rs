@@ -53,6 +53,12 @@ fn normalize_time(t: &str) -> String {
     }
 }
 
+/// True for the `YYYY-MM-DD HH:MM:SS` form every stored pull must have: the rest of the app slices,
+/// sorts and compares times as text, so a pull with any other time is refused at the door.
+fn is_valid_time(t: &str) -> bool {
+    chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S").is_ok()
+}
+
 /// Server time zone guessed from the UID, used only when a file omits it.
 /// Genshin and Star Rail UIDs: 6xxxxxxxx America (UTC-5), 7xxxxxxxx Europe (UTC+1), everything else UTC+8.
 fn tz_from_uid(game: &str, uid: &str) -> i32 {
@@ -66,15 +72,20 @@ fn tz_from_uid(game: &str, uid: &str) -> i32 {
     }
 }
 
+/// The UTC offsets in use anywhere in the world; a file claiming anything else is ignored (the zone
+/// is then guessed from the UID).
+const TZ_HOURS: std::ops::RangeInclusive<i32> = -12..=14;
+
 fn read_tz(meta: &Value) -> Option<i32> {
     let v = meta
         .get("timezone")
         .or_else(|| meta.get("region_time_zone"))?;
-    match v {
-        Value::Number(n) => n.as_i64().map(|n| n as i32),
+    let hours = match v {
+        Value::Number(n) => n.as_i64().and_then(|n| i32::try_from(n).ok()),
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
-    }
+    };
+    hours.filter(|h| TZ_HOURS.contains(h))
 }
 
 /// UIGF restricts `lang` to a fixed list; map anything else onto it.
@@ -95,7 +106,7 @@ fn item_to_pull(game: &str, uid: &str, lang: &str, it: &Value) -> Option<Pull> {
     let id = get(it, "id");
     let time = normalize_time(&get(it, "time"));
     let rank_type = get(it, "rank_type").parse::<u8>().ok()?;
-    if id.is_empty() || time.is_empty() {
+    if id.is_empty() || !is_valid_time(&time) {
         return None;
     }
     let mut gacha_type = get(it, "gacha_type");
@@ -208,17 +219,17 @@ const PAIMON_BANNERS: [(&str, &str); 5] = [
 /// time share a hash prefix and `seq` (their position in the backup) decides the order.
 fn paimon_stable_id(uid: &str, banner: &str, time: &str, seq: u32) -> String {
     let source = format!("{uid}\0{banner}\0{time}");
-    let hash = source.bytes().fold(0xcbf29ce484222325u64, |h, b| {
-        (h ^ u64::from(b)).wrapping_mul(0x100000001b3)
+    let hash = source.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
     });
-    (1_000_000_000_000_000_000u64
+    (1_000_000_000_000_000_000_u64
         + (hash % 7_000_000_000_000_000u64) * 1_000
         + u64::from(seq.min(999)))
     .to_string()
 }
 
 /// Reads Paimon.moe's native local-data backup without changing the source file. Its wish
-/// records contain Paimon item keys rather than HoYoverse IDs, so the bundled item table supplies
+/// records contain Paimon item keys rather than `HoYoverse` IDs, so the bundled item table supplies
 /// the display name and rarity needed by Wishtory's normalized pull model.
 fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSummary, AppError> {
     let mut sum = ImportSummary {
@@ -296,7 +307,7 @@ fn import_paimon(db: &Db, root: &Value, catalog: &Catalog) -> Result<ImportSumma
                     sum.skipped += 1;
                     continue;
                 };
-                if item_id.is_empty() || time.is_empty() || declared_kind != kind {
+                if item_id.is_empty() || !is_valid_time(&time) || declared_kind != kind {
                     sum.skipped += 1;
                     continue;
                 }
@@ -415,6 +426,13 @@ fn export_paimon(db: &Db, account: &Account, catalog: &Catalog) -> Result<String
     let pulls = db.pulls_for("hk4e", &account.uid)?;
     let mut root = Map::new();
     root.insert("wish-uid".into(), Value::from(account.uid.clone()));
+    // One pass over the catalog, not one per exported pull.
+    let by_id: std::collections::HashMap<&str, &crate::catalog::CatalogItem> = catalog
+        .items
+        .iter()
+        .filter(|item| item.game == "hk4e")
+        .map(|item| (item.id.as_str(), item))
+        .collect();
     for (banner, types) in [
         ("beginners", &["100"][..]),
         ("standard", &["200"][..]),
@@ -434,10 +452,8 @@ fn export_paimon(db: &Db, account: &Account, catalog: &Catalog) -> Result<String
         let mut rare = 0u32;
         let mut list = Vec::with_capacity(rows.len());
         for p in rows {
-            let catalog_item = catalog
-                .items
-                .iter()
-                .find(|item| item.game == "hk4e" && item.id == p.item_id)
+            let catalog_item = by_id
+                .get(p.item_id.as_str())
                 .and_then(|item| {
                     item.paimon_key
                         .as_ref()
@@ -556,8 +572,7 @@ pub fn export_with_catalog(
                 let uid_val = a
                     .uid
                     .parse::<u64>()
-                    .map(Value::from)
-                    .unwrap_or_else(|_| Value::from(a.uid.clone()));
+                    .map_or_else(|_| Value::from(a.uid.clone()), Value::from);
                 let entry = json!({ "uid": uid_val, "timezone": a.timezone, "lang": lang_of(&pulls), "list": list });
                 root.entry(a.game.clone())
                     .or_insert_with(|| Value::Array(vec![]))
@@ -863,6 +878,34 @@ mod tests {
     }
 
     #[test]
+    fn only_complete_times_are_accepted_for_a_pull() {
+        assert!(is_valid_time("2024-01-05 03:04:05"));
+        for bad in [
+            "",
+            "x",
+            "1/5/24",
+            "2024-01-05",
+            "2024-13-45 03:04:05",
+            "garbage",
+        ] {
+            assert!(!is_valid_time(bad), "{bad}");
+            let row = json!({"id": "1", "time": bad, "rank_type": "3", "gacha_type": "301"});
+            assert!(
+                item_to_pull("hk4e", "800000001", "en-us", &row).is_none(),
+                "{bad}"
+            );
+        }
+        let row =
+            json!({"id": "1", "time": "2024-1-5 3:04:05", "rank_type": "3", "gacha_type": "301"});
+        assert_eq!(
+            item_to_pull("hk4e", "800000001", "en-us", &row)
+                .unwrap()
+                .time,
+            "2024-01-05 03:04:05"
+        );
+    }
+
+    #[test]
     fn timezone_falls_back_to_the_uid_region() {
         assert_eq!(tz_from_uid("hk4e", "600000001"), -5);
         assert_eq!(tz_from_uid("hkrpg", "700000001"), 1);
@@ -871,6 +914,11 @@ mod tests {
         assert_eq!(read_tz(&json!({"timezone": "-5"})), Some(-5));
         assert_eq!(read_tz(&json!({"region_time_zone": 1})), Some(1));
         assert_eq!(read_tz(&json!({})), None);
+        // Out-of-range and wrapped-around values are ignored instead of being truncated.
+        assert_eq!(read_tz(&json!({"timezone": 4_294_967_304_i64})), None);
+        assert_eq!(read_tz(&json!({"timezone": 99})), None);
+        assert_eq!(read_tz(&json!({"timezone": "-13"})), None);
+        assert_eq!(read_tz(&json!({"timezone": 14})), Some(14));
     }
 
     #[test]

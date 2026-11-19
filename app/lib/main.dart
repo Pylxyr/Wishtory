@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -22,12 +23,14 @@ Future<void> main() async {
   try {
     await RustLib.init(externalLibrary: ExternalLibrary.open(_nativeLibraryPath()));
     final api = await RustWishtoryApi.open();
+    final iconCache = IconCache(IconCache.defaultDirectory());
+    unawaited(iconCache.prune()); // housekeeping, in the background
     runApp(ProviderScope(
       overrides: [
         sharedPrefsProvider.overrideWithValue(prefs),
         apiProvider.overrideWithValue(api),
         iconTableProvider.overrideWithValue(icons),
-        iconCacheProvider.overrideWithValue(IconCache(IconCache.defaultDirectory())),
+        iconCacheProvider.overrideWithValue(iconCache),
       ],
       child: const WishtoryApp(),
     ));

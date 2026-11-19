@@ -97,8 +97,8 @@ fn scrub_param(message: &str, key: &str) -> String {
     out
 }
 
-pub fn push(level: Level, source: &str, message: String) {
-    let mut message = scrub(&message);
+pub fn push(level: Level, source: &str, message: &str) {
+    let mut message = scrub(message);
     if message.chars().count() > MAX_MESSAGE_CHARS {
         message = message.chars().take(MAX_MESSAGE_CHARS).collect::<String>() + "…";
     }
@@ -123,7 +123,7 @@ pub fn push(level: Level, source: &str, message: String) {
 macro_rules! wlog {
     ($level:expr, $($arg:tt)*) => {
         if $crate::logging::enabled($level) {
-            $crate::logging::push($level, module_path!(), format!($($arg)*));
+            $crate::logging::push($level, module_path!(), &format!($($arg)*));
         }
     };
 }

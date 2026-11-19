@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -35,11 +36,21 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _tutorialShown = false;
+  Timer? _recheck;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => runStartupTasks(ref));
+    // Wishtory may stay open for days: look again now and then. The core decides whether a check is
+    // actually due (once a day, or an hour after a failed one), so this costs nothing most of the time.
+    _recheck = Timer.periodic(const Duration(hours: 6), (_) => runStartupTasks(ref));
+  }
+
+  @override
+  void dispose() {
+    _recheck?.cancel();
+    super.dispose();
   }
 
   void _maybeTutorial() {

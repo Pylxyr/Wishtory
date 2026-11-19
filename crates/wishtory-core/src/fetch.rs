@@ -61,6 +61,10 @@ struct Data {
     region_time_zone: Option<i32>,
 }
 #[derive(Deserialize)]
+#[allow(
+    clippy::struct_field_names,
+    reason = "mirrors the field names of the history API"
+)]
 struct Item {
     #[serde(default)]
     uid: String,
@@ -175,7 +179,7 @@ fn is_hoyo_host(h: &str) -> bool {
 }
 
 /// Fallback only: the API normally reports `region_time_zone` itself.
-/// Covers the region names of all three games (os_usa / prod_official_usa / prod_gf_us, ...).
+/// Covers the region names of all three games (`os_usa` / `prod_official_usa` / `prod_gf_us`, ...).
 pub fn tz_from_region(region: &str) -> i32 {
     let r = region.to_ascii_lowercase();
     if r.ends_with("_usa") || r.ends_with("_us") {
@@ -245,7 +249,7 @@ pub async fn fetch_all(
     known: KnownIds<'_>,
 ) -> Result<Fetched, AppError> {
     let parsed = Url::parse(history_url.trim()).map_err(|_| AppError::InvalidUrl)?;
-    if parsed.scheme() != "https" || !parsed.host_str().map(is_hoyo_host).unwrap_or(false) {
+    if parsed.scheme() != "https" || !parsed.host_str().is_some_and(is_hoyo_host) {
         return Err(AppError::InvalidUrl);
     }
     let p: HashMap<String, String> = parsed.query_pairs().into_owned().collect();

@@ -80,7 +80,11 @@ class RefreshController extends Notifier<RefreshState> {
 
   Future<void> _finished(GameId game, FetchSummary s) async {
     ref.read(settingsProvider.notifier).markRefreshed(s.game, s.uid);
-    await ref.read(accountsProvider.notifier).reload();
+    try {
+      await ref.read(accountsProvider.notifier).reload();
+    } catch (_) {
+      // The pulls are saved; a failed reload of the list must not be reported as a failed refresh.
+    }
     ref.read(navProvider.notifier).selectAccount(s.game, s.uid);
     ref.read(dataTickProvider.notifier).bump();
     unawaited(runCloudBackupIfDue(ref.read(apiProvider)));

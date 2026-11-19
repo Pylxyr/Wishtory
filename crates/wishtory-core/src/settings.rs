@@ -94,9 +94,8 @@ impl SettingsStore {
     }
 
     fn load_file(&self) -> SettingsFile {
-        let usable = fs::metadata(&self.path)
-            .map(|m| m.is_file() && m.len() <= MAX_FILE_BYTES)
-            .unwrap_or(false);
+        let usable =
+            fs::metadata(&self.path).is_ok_and(|m| m.is_file() && m.len() <= MAX_FILE_BYTES);
         if !usable {
             return SettingsFile::default();
         }
@@ -120,7 +119,10 @@ impl SettingsStore {
         &self,
         change: impl FnOnce(&mut CloudSettings),
     ) -> Result<CloudSettings, AppError> {
-        let _guard = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self
+            .saving
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut file = self.load_file();
         change(&mut file.cloud);
         self.write(&file)?;
@@ -133,7 +135,10 @@ impl SettingsStore {
     }
 
     pub fn set_catalog_auto_apply(&self, auto_apply: bool) -> Result<CatalogSettings, AppError> {
-        let _guard = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self
+            .saving
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut file = self.load_file();
         file.catalog.auto_apply = auto_apply;
         self.write(&file)?;
@@ -151,7 +156,10 @@ impl SettingsStore {
     /// Replaces the extra folders. A folder that is new must be an existing absolute folder;
     /// ones already saved stay even if their disk is not mounted right now.
     pub fn set_game_locations(&self, requested: Vec<String>) -> Result<Vec<String>, AppError> {
-        let _guard = self.saving.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self
+            .saving
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let existing = self.load_locations();
         let wanted = clean(requested);
         for path in &wanted {
@@ -173,7 +181,21 @@ impl SettingsStore {
     }
 
     /// Writes through a private temporary file and a rename, so a crash never leaves half a file.
+    /// Keeps a file that exists but cannot be read as settings (hand-edited, cut short) next to the new
+    /// one, so saving the defaults over it does not destroy the only copy of what the person had set.
+    fn keep_damaged_copy(&self) {
+        let small =
+            fs::metadata(&self.path).is_ok_and(|m| m.is_file() && m.len() <= MAX_FILE_BYTES);
+        let damaged = small
+            && fs::read(&self.path)
+                .is_ok_and(|bytes| serde_json::from_slice::<SettingsFile>(&bytes).is_err());
+        if damaged {
+            let _ = fs::copy(&self.path, self.path.with_extension("json.damaged"));
+        }
+    }
+
     fn write(&self, file: &SettingsFile) -> Result<(), AppError> {
+        self.keep_damaged_copy();
         let bytes = serde_json::to_vec_pretty(file)?;
         let tmp = self
             .path
@@ -236,7 +258,7 @@ mod tests {
             " /a ".into(),
             "/a".into(),
             "relative/b".into(),
-            "".into(),
+            String::new(),
             "/c\0d".into(),
             "/e".into(),
         ]);
@@ -303,11 +325,32 @@ mod tests {
         assert!(SettingsStore::open(&dir).game_locations().is_empty());
         fs::write(
             dir.join("settings.json"),
-            vec![b' '; (MAX_FILE_BYTES + 1) as usize],
+            vec![b' '; usize::try_from(MAX_FILE_BYTES + 1).unwrap()],
         )
         .unwrap();
         assert!(SettingsStore::open(&dir).game_locations().is_empty());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn saving_over_a_damaged_file_keeps_a_copy_of_it() {
+        let dir = scratch();
+        fs::write(dir.join("settings.json"), b"{ not json").unwrap();
+        let store = SettingsStore::open(&dir);
+        store.set_catalog_auto_apply(true).unwrap();
+        assert_eq!(
+            fs::read(dir.join("settings.json.damaged")).unwrap(),
+            b"{ not json"
+        );
+        assert!(store.catalog().auto_apply);
+        // A healthy file is never copied.
+        let healthy = scratch();
+        let store = SettingsStore::open(&healthy);
+        store.set_catalog_auto_apply(true).unwrap();
+        store.set_catalog_auto_apply(false).unwrap();
+        assert!(!healthy.join("settings.json.damaged").exists());
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&healthy);
     }
 
     #[test]

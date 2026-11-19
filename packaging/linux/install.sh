@@ -16,6 +16,15 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 prefix="${PREFIX:-$HOME/.local}"
+# The prefix ends up in the launcher entry and in rm/mv commands: keep to plain path characters.
+case "$prefix" in
+  /*) ;;
+  *) echo "PREFIX must be an absolute path." >&2; exit 1 ;;
+esac
+if printf '%s' "$prefix" | LC_ALL=C grep -q '[^A-Za-z0-9_./+ -]'; then
+  echo "PREFIX may only contain letters, digits, spaces and . _ / + - (got: $prefix)." >&2
+  exit 1
+fi
 app_dir="$prefix/share/wishtory"
 bin_link="$prefix/bin/wishtory"
 desktop_file="$prefix/share/applications/wishtory.desktop"
@@ -222,13 +231,20 @@ done
 
 # ---- install -------------------------------------------------------------------------------------------
 echo "Installing to $prefix ..."
-rm -rf "$app_dir"
-mkdir -p "$app_dir" "$prefix/bin" "$prefix/share/applications"
-cp -a "$bundle/." "$app_dir/"
+# Copy next to the old install and swap, so a failed copy never leaves the app half removed.
+mkdir -p "$prefix/bin" "$prefix/share/applications"
+rm -rf "$app_dir.new" "$app_dir.old"
+mkdir -p "$app_dir.new"
+cp -a "$bundle/." "$app_dir.new/"
+if [ -e "$app_dir" ]; then mv "$app_dir" "$app_dir.old"; fi
+mv "$app_dir.new" "$app_dir"
+rm -rf "$app_dir.old"
 ln -sf "$app_dir/wishtory" "$bin_link"
 # The launcher entry points at the installed program by full path, so it works even when ~/.local/bin
 # is not on the desktop's PATH.
-sed "s|^Exec=.*|Exec=$app_dir/wishtory|" "$root/packaging/linux/wishtory.desktop" >"$desktop_file"
+# The path is quoted (it may contain spaces) and passed to awk as data, never parsed as a pattern.
+awk -v exec_line="Exec=\"$app_dir/wishtory\"" '/^Exec=/ { print exec_line; next } { print }' \
+  "$root/packaging/linux/wishtory.desktop" >"$desktop_file"
 chmod 644 "$desktop_file"
 for entry in "${icons[@]}"; do
   install -Dm644 "$root/assets/icons/${entry#*:}" "$prefix/share/icons/hicolor/${entry%%:*}/apps/wishtory.png"

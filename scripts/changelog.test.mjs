@@ -23,6 +23,20 @@ const one = (changes) => {
   return changes[0];
 };
 
+test('a new item whose name is already taken waits for a person (minor, not info)', () => {
+  const taken = diffItems(catalog([item('a', { name: 'Venti' })]), catalog([item('a', { name: 'Venti' }), item('b', { name: 'venti!' })]));
+  assert.equal(one(taken).severity, 'minor');
+  assert.deepEqual(one(taken).ids, ['b']);
+  // An alias counts too, in either direction.
+  const alias = diffItems(catalog([item('a', { aliases: ['Lumine'] })]), catalog([item('a', { aliases: ['Lumine'] }), item('b', { name: 'Lumine' })]));
+  assert.equal(one(alias).severity, 'minor');
+  // Another game's item with the same name is no clash, and a name clash between old items is not news.
+  const otherGame = diffItems(catalog([item('a', { name: 'Venti' })]), catalog([item('a', { name: 'Venti' }), item('b', { name: 'Venti', game: 'hkrpg' })]));
+  assert.equal(one(otherGame).severity, 'info');
+  const oldTwins = diffItems(catalog([item('a', { name: 'Traveler' }), item('b', { name: 'Traveler' })]), catalog([item('a', { name: 'Traveler' }), item('b', { name: 'Traveler' }), item('c', { name: 'Fresh' })]));
+  assert.equal(one(oldTwins).severity, 'info');
+});
+
 test('new items and new banners are info', () => {
   const items = diffItems(catalog([item('a')]), catalog([item('a'), item('b')]));
   assert.equal(one(items).severity, 'info');

@@ -217,6 +217,16 @@ class SettingsController extends Notifier<AppSettings> {
     p.setString('lastRefresh', jsonEncode(last));
     p.setString('firstFiveAnswers', jsonEncode(answers));
   }
+
+  /// Forgets what is kept about every account (nicknames, last refresh, first-5★ answers): used when all
+  /// saved history is cleared, so no UID is left behind in the preferences.
+  void forgetAllAccounts() {
+    state = state.copyWith(aliases: const {}, lastRefresh: const {}, firstFiveAnswers: const {});
+    final p = ref.read(sharedPrefsProvider);
+    p.remove('aliases');
+    p.remove('lastRefresh');
+    p.remove('firstFiveAnswers');
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsController, AppSettings>(SettingsController.new);

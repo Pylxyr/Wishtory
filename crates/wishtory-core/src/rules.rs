@@ -150,15 +150,15 @@ impl RuleSet {
         {
             return Err("rules must cover exactly the supported games".into());
         }
-        for rules in set.games.values() {
-            rules.validate()?;
+        for game in Game::ALL {
+            set.games[game.as_str()].validate(game)?;
         }
         Ok(set)
     }
 }
 
 impl GameRules {
-    fn validate(&self) -> Result<(), String> {
+    fn validate(&self, game: Game) -> Result<(), String> {
         if self.banners.is_empty() || self.banners.len() > 16 {
             return Err("rules have an invalid banner count".into());
         }
@@ -175,6 +175,18 @@ impl GameRules {
             {
                 return Err("rules contain an invalid or duplicate banner".into());
             }
+        }
+        // Every pool this app can place a pull in needs its rule, or its pity would silently vanish
+        // from the Pity page. (Keys the app does not know are fine: a newer release may add pools.)
+        let missing = crate::pity::PITY_GACHA_TYPES
+            .iter()
+            .filter_map(|t| crate::pity::banner_key(game, t))
+            .find(|key| !keys.contains(key));
+        if let Some(key) = missing {
+            return Err(format!(
+                "rules for {} lack the \"{key}\" banner",
+                game.as_str()
+            ));
         }
         for set in [&self.standard.character, &self.standard.weapon] {
             if set.ids.len() > MAX_ITEMS_PER_SET
@@ -286,5 +298,24 @@ mod tests {
         );
         assert!(RuleSet::parse_and_validate(unknown.as_bytes()).is_err());
         assert!(RuleSet::parse_and_validate(&vec![b' '; MAX_RULES_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn a_pool_the_app_can_place_a_pull_in_needs_its_rule_but_unknown_pools_are_fine() {
+        let mut rules = RuleSet::bundled();
+        let json = |r: &RuleSet| serde_json::to_vec(r).unwrap();
+        // A newer release may add a pool this app does not know: still accepted.
+        let mut extra = rules.game(Game::Hk4e).banners[0].clone();
+        extra.key = "a_future_pool".into();
+        rules.game_mut(Game::Hk4e).banners.push(extra);
+        assert!(RuleSet::parse_and_validate(&json(&rules)).is_ok());
+        // Losing a pool the app does know would silently drop it from the Pity page.
+        let mut missing = RuleSet::bundled();
+        missing
+            .game_mut(Game::Hk4e)
+            .banners
+            .retain(|b| b.key != "chronicled");
+        let error = RuleSet::parse_and_validate(&json(&missing)).unwrap_err();
+        assert!(error.contains("chronicled"), "{error}");
     }
 }

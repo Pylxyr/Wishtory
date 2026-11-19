@@ -8,13 +8,15 @@
 // SERIES_OVERRIDES below, checked against the in-game domain schedule.
 // Items are matched to the catalog through `paimon_key` and written by catalog name, which is how the app
 // finds their pictures. Anything that cannot be matched is reported, never guessed.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 const RAW = 'https://raw.githubusercontent.com/MadeBaruna/paimon-moe/main/src/data';
-const SOURCE_FILES = ['itemList', 'itemGroup', 'characters', 'weapons', 'weaponList', 'elements'];
+// Dependencies first: a module may only refer to what an earlier one exports.
+const SOURCE_FILES = ['elements', 'weapons', 'itemList', 'itemGroup', 'characters', 'weaponList'];
+// Far larger than the real files (about 1 MB in all); a runaway download is refused, not parsed.
+const MAX_SOURCE_BYTES = 4 * 1024 * 1024;
+const MAX_DEPTH = 64;
 
 const DAY_NUMBERS = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 7 };
 const MON_THU = [1, 4];
@@ -130,23 +132,200 @@ export function buildMaterials(source, catalogItems) {
   return { materials: { schema: 1, source: 'Paimon.moe', books: finish(books), weapons: finish(weapons) }, problems };
 }
 
-/** Downloads Paimon.moe's data modules and imports them (they import each other without file extensions). */
-async function loadSource() {
-  const dir = await mkdtemp(join(tmpdir(), 'wishtory-materials-'));
-  try {
-    await writeFile(join(dir, 'package.json'), '{"type":"module"}');
-    for (const name of SOURCE_FILES) {
-      const response = await fetch(`${RAW}/${name}.js`, { headers: { 'user-agent': 'Wishtory catalog maintenance' } });
-      if (!response.ok) throw new Error(`${name}.js: HTTP ${response.status}`);
-      const text = (await response.text()).replace(/from '(\.\/[A-Za-z]+)'/g, "from '$1.js'");
-      await writeFile(join(dir, `${name}.js`), text);
+/**
+ * Reads one of Paimon.moe's data modules WITHOUT running it. These files hold only data:
+ * `import { a } from './a';` lines and `export const name = <literal>;` where the literal is made of objects,
+ * arrays, strings, numbers, true/false/null and references such as `weapons.claymore` to something an earlier
+ * module exported. Anything else (calls, functions, templates, spreads, computed keys, ...) is an error, so a
+ * changed or tampered upstream file can alter the data but can never run code on this machine.
+ * `scope` holds what earlier modules exported, by name. Returns what this module exports.
+ */
+export function parseDataModule(source, scope = {}) {
+  if (typeof source !== 'string' || source.length > MAX_SOURCE_BYTES) throw new Error('The module is missing or too large.');
+  let i = 0;
+  const known = new Map(Object.entries(scope));
+  const exports = {};
+  const fail = (what) => {
+    const line = source.slice(0, i).split('\n').length;
+    throw new Error(`${what} (line ${line})`);
+  };
+  const skip = () => {
+    for (;;) {
+      const c = source[i];
+      if (c === ' ' || c === '\t' || c === '\r' || c === '\n' || c === '\uFEFF') i += 1;
+      else if (c === '/' && source[i + 1] === '/') {
+        while (i < source.length && source[i] !== '\n') i += 1;
+      } else if (c === '/' && source[i + 1] === '*') {
+        const end = source.indexOf('*/', i + 2);
+        if (end < 0) fail('Unterminated comment');
+        i = end + 2;
+      } else return;
     }
-    const load = (name) => import(pathToFileURL(join(dir, `${name}.js`)).href);
-    const [characters, weaponList, itemGroup] = await Promise.all([load('characters'), load('weaponList'), load('itemGroup')]);
-    return { characters: characters.characters, weaponList: weaponList.weaponList, itemGroup: itemGroup.itemGroup };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+  };
+  const take = (text) => {
+    skip();
+    if (!source.startsWith(text, i)) fail(`Expected "${text}"`);
+    i += text.length;
+  };
+  const peek = (text) => {
+    skip();
+    return source.startsWith(text, i);
+  };
+  const identifier = () => {
+    skip();
+    const match = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(source.slice(i, i + 200));
+    if (!match) fail('Expected a name');
+    i += match[0].length;
+    return match[0];
+  };
+  const string = () => {
+    const quote = source[i];
+    i += 1;
+    let out = '';
+    for (;;) {
+      const c = source[i];
+      if (c === undefined || c === '\n') fail('Unterminated string');
+      i += 1;
+      if (c === quote) return out;
+      if (c !== '\\') {
+        out += c;
+        continue;
+      }
+      const e = source[i];
+      i += 1;
+      if (e === 'n') out += '\n';
+      else if (e === 't') out += '\t';
+      else if (e === 'r') out += '\r';
+      else if (e === 'u' || e === 'x') {
+        const digits = e === 'u' ? 4 : 2;
+        const hex = source.slice(i, i + digits);
+        if (!new RegExp(`^[0-9a-fA-F]{${digits}}$`).test(hex)) fail('Bad escape');
+        out += String.fromCharCode(parseInt(hex, 16));
+        i += digits;
+      } else if (e === '\n' || e === undefined) fail('Bad escape');
+      else out += e;
+    }
+  };
+  const safeKey = (key) => {
+    if (key === '__proto__') fail('A "__proto__" key is not allowed');
+    return key;
+  };
+  const reference = () => {
+    const name = identifier();
+    if (!known.has(name)) fail(`"${name}" is not something an earlier module exports`);
+    let value = known.get(name);
+    for (;;) {
+      let key;
+      if (source[i] === '.') {
+        i += 1;
+        key = identifier();
+      } else if (source[i] === '[' && (source[i + 1] === "'" || source[i + 1] === '"')) {
+        i += 1;
+        key = string();
+        take(']');
+      } else return value;
+      if (value === null || typeof value !== 'object' || !Object.hasOwn(value, key)) fail(`"${name}" has no "${key}"`);
+      value = value[key];
+    }
+  };
+  const literal = (depth) => {
+    if (depth > MAX_DEPTH) fail('Nested too deeply');
+    skip();
+    const c = source[i];
+    if (c === '{') {
+      i += 1;
+      const object = {};
+      for (;;) {
+        skip();
+        if (source[i] === '}') {
+          i += 1;
+          return object;
+        }
+        let key;
+        if (source[i] === "'" || source[i] === '"') key = string();
+        else if (/[0-9]/.test(source[i] ?? '')) key = String(number());
+        else key = identifier();
+        take(':');
+        object[safeKey(key)] = literal(depth + 1);
+        skip();
+        if (source[i] === ',') i += 1;
+        else if (source[i] !== '}') fail('Expected "," or "}"');
+      }
+    }
+    if (c === '[') {
+      i += 1;
+      const list = [];
+      for (;;) {
+        skip();
+        if (source[i] === ']') {
+          i += 1;
+          return list;
+        }
+        list.push(literal(depth + 1));
+        skip();
+        if (source[i] === ',') i += 1;
+        else if (source[i] !== ']') fail('Expected "," or "]"');
+      }
+    }
+    if (c === "'" || c === '"') return string();
+    if (c === '-' || /[0-9]/.test(c ?? '')) return number();
+    const word = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(source.slice(i, i + 200))?.[0];
+    if (word === 'true' || word === 'false' || word === 'null') {
+      i += word.length;
+      return word === 'null' ? null : word === 'true';
+    }
+    if (word) return reference();
+    return fail('Unexpected character');
+  };
+  const number = () => {
+    const match = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(source.slice(i, i + 64));
+    if (!match) fail('Bad number');
+    i += match[0].length;
+    return Number(match[0]);
+  };
+
+  for (;;) {
+    skip();
+    if (i >= source.length) return exports;
+    if (peek('import')) {
+      take('import');
+      take('{');
+      const names = [];
+      for (;;) {
+        names.push(identifier());
+        if (peek(',')) take(',');
+        if (peek('}')) break;
+      }
+      take('}');
+      take('from');
+      skip();
+      if (source[i] !== "'" && source[i] !== '"') fail('Expected a module path');
+      string();
+      if (peek(';')) take(';');
+      for (const name of names) if (!known.has(name)) fail(`Cannot import "${name}"`);
+    } else if (peek('export')) {
+      take('export');
+      take('const');
+      const name = identifier();
+      take('=');
+      const value = literal(0);
+      if (peek(';')) take(';');
+      exports[safeKey(name)] = value;
+      known.set(name, value);
+    } else fail('Only imports and "export const" are allowed');
   }
+}
+
+/** Downloads Paimon.moe's data modules and reads them as data (see parseDataModule). */
+async function loadSource() {
+  const scope = {};
+  for (const name of SOURCE_FILES) {
+    const response = await fetch(`${RAW}/${name}.js`, { headers: { 'user-agent': 'Wishtory catalog maintenance' } });
+    if (!response.ok) throw new Error(`${name}.js: HTTP ${response.status}`);
+    const text = await response.text();
+    Object.assign(scope, parseDataModule(text, scope));
+  }
+  return { characters: scope.characters, weaponList: scope.weaponList, itemGroup: scope.itemGroup };
 }
 
 /** Refuses a result that lost most of what it had: a broken source must not empty the app's data. */

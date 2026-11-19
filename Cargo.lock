@@ -2774,6 +2774,7 @@ dependencies = [
  "chrono",
  "dirs",
  "keyring",
+ "miniz_oxide",
  "regex",
  "reqwest",
  "ring",

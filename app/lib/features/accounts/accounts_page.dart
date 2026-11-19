@@ -67,6 +67,9 @@ class AccountsPage extends ConsumerWidget {
     if (!ok) return;
     try {
       final n = await ref.read(apiProvider).clearAllHistory();
+      // The pulls are gone, and so is everything kept about their accounts: nicknames, last refresh, answers.
+      ref.read(settingsProvider.notifier).forgetAllAccounts();
+      ref.read(navProvider.notifier).forgetAllAccounts();
       await ref.read(accountsProvider.notifier).reload();
       ref.read(dataTickProvider.notifier).bump();
       ref.read(toastProvider.notifier).ok('Removed ${plural(n, 'pull')}.');
@@ -159,6 +162,7 @@ class _AccountCard extends ConsumerWidget {
     try {
       await ref.read(apiProvider).deleteAccount(account.game, account.uid);
       ref.read(settingsProvider.notifier).forgetAccount(account.game, account.uid);
+      ref.read(navProvider.notifier).forgetAccount(account.game, account.uid);
       await ref.read(accountsProvider.notifier).reload();
       ref.read(dataTickProvider.notifier).bump();
       ref.read(toastProvider.notifier).ok('Removed UID ${account.uid}.');

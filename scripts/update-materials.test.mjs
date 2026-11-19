@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMaterials, dayNumbers, sanityCheck, SERIES_OVERRIDES } from './update-materials.mjs';
+import { buildMaterials, dayNumbers, parseDataModule, sanityCheck, SERIES_OVERRIDES } from './update-materials.mjs';
 
 const catalog = [
   { game: 'hk4e', kind: 'character', id: '1', name: 'Venti', rarity: 5, paimon_key: 'venti' },
@@ -84,4 +84,50 @@ test('a broken or shrunken result is refused', () => {
   sanityCheck(good, null);
   assert.throws(() => sanityCheck({ books: series(10), weapons: series(10) }, { books: series(30), weapons: series(30) }), /fewer/i);
   sanityCheck(good, { books: series(12), weapons: series(12) });
+});
+
+const parserBase = parseDataModule(`export const weapons = { sword: { id: 'sword', name: "Sword" }, bow: { id: 'bow', name: 'Bow' } };`);
+
+test('parseDataModule reads literals, comments, trailing commas, escapes and references to earlier modules', () => {
+  const out = parseDataModule(
+    `import { weapons } from './weapons'; // comment
+    /* block */
+    export const things = {
+      a: { id: 'a', n: 4.5, neg: -2, ok: true, none: null, w: weapons.sword, q: weapons['bow'], list: [1, 'two', [3],], },
+      "quoted key": 'it\\'s \\u0041',
+    };`,
+    parserBase,
+  );
+  assert.deepEqual(out.things.a, { id: 'a', n: 4.5, neg: -2, ok: true, none: null, w: { id: 'sword', name: 'Sword' }, q: { id: 'bow', name: 'Bow' }, list: [1, 'two', [3]] });
+  assert.equal(out.things['quoted key'], "it's A");
+});
+
+test('parseDataModule refuses anything that is not plain data', () => {
+  for (const bad of [
+    `export const x = process.exit(1);`,
+    `export const x = (() => 1)();`,
+    `export const x = { a: () => 1 };`,
+    `export const x = { a: function () {} };`,
+    'export const x = `template`;',
+    `export const x = { ...other };`,
+    `export const x = { [k]: 1 };`,
+    `export const x = require('fs');`,
+    `export const x = import('node:fs');`,
+    `export const x = { __proto__: { polluted: true } };`,
+    `export const x = unknownName;`,
+    `export const x = weapons.constructor;`,
+    `import { nothing } from './nothing'; export const x = 1;`,
+    `const x = 1;`,
+    `export const x = 'unterminated;`,
+    `export const x = { a: 1 `,
+    `export default {};`,
+  ]) {
+    assert.throws(() => parseDataModule(bad, parserBase), undefined, bad);
+  }
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+test('parseDataModule refuses very deep nesting and oversized input', () => {
+  assert.throws(() => parseDataModule(`export const x = ${'['.repeat(200)}${']'.repeat(200)};`), /deeply/);
+  assert.throws(() => parseDataModule(' '.repeat(5 * 1024 * 1024)), /too large/);
 });

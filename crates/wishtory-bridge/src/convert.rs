@@ -1,6 +1,13 @@
 //! Conversions between `wishtory-core` types and the bridge types in `api::types`.
 
-use crate::api::types::*;
+use crate::api::types::{
+    AboutInfo, Account, AccountImpact, AffectedPull, AppUpdate, ApplyResult, BannerEntry,
+    BannerFilter, BannerList, BannerPity, CatalogCheck, CatalogComponents, CatalogHistoryEntry,
+    CatalogItem, CatalogReview, CatalogStatus, ChangeEntry, ChangeScope, ChangeSeverity,
+    CheckStatus, CloudBackup, CloudStatus, Credit, CreditGroup, DetectedPrefix, FetchSummary,
+    FiveStar, FourStar, GameCatalog, GameId, GameInstall, GameLocations, GameMeta, HistoryPull,
+    ImpactReason, ImportSummary, LogEntry, PullOutcome, ShownItem, WaitingRelease,
+};
 use wishtory_core::{
     about::{About as CoreAbout, Credit as CoreCredit, CreditGroup as CoreCreditGroup},
     catalog::{
@@ -185,7 +192,7 @@ impl GameMeta {
 impl From<&Catalog> for GameCatalog {
     fn from(c: &Catalog) -> Self {
         Self {
-            catalog_version: c.catalog_version as i64,
+            catalog_version: wide(c.catalog_version),
             generated_at: c.generated_at.clone(),
             items: c
                 .items
@@ -223,7 +230,7 @@ impl BannerEntry {
 impl From<&BannerSet> for BannerList {
     fn from(s: &BannerSet) -> Self {
         Self {
-            banners_version: s.banners_version as i64,
+            banners_version: wide(s.banners_version),
             generated_at: s.generated_at.clone(),
             banners: s
                 .banners
@@ -284,24 +291,24 @@ impl From<CoreCheck> for CatalogCheck {
 impl From<CoreStatus> for CatalogStatus {
     fn from(s: CoreStatus) -> Self {
         Self {
-            version: s.version as i64,
+            version: wide(s.version),
             components: CatalogComponents {
-                catalog: s.components.catalog as i64,
-                banners: s.components.banners as i64,
-                rules: s.components.rules as i64,
+                catalog: wide(s.components.catalog),
+                banners: wide(s.components.banners),
+                rules: wide(s.components.rules),
             },
             generated_at: s.generated_at,
-            last_check: s.last_check.map(|v| v as i64),
+            last_check: s.last_check.map(wide),
             auto_apply: s.auto_apply,
             waiting: s.waiting.map(|w| WaitingRelease {
-                version: w.manifest_version as i64,
+                version: wide(w.manifest_version),
                 generated_at: w.generated_at,
-                major: w.major as i64,
-                minor: w.minor as i64,
-                info: w.info as i64,
+                major: i64::from(w.major),
+                minor: i64::from(w.minor),
+                info: i64::from(w.info),
                 dismissed: w.dismissed,
-                affected_pulls: w.affected_pulls as i64,
-                affected_accounts: w.affected_accounts as i64,
+                affected_pulls: wide(w.affected_pulls),
+                affected_accounts: i64::from(w.affected_accounts),
             }),
         }
     }
@@ -313,9 +320,9 @@ impl AccountImpact {
             game: game_from_str(&a.game)?,
             uid: a.uid,
             nickname: a.nickname,
-            pulls: a.pulls as i64,
-            affected: a.affected as i64,
-            listed: a.listed as i64,
+            pulls: wide(a.pulls),
+            affected: wide(a.affected),
+            listed: wide(a.listed),
         })
     }
 }
@@ -323,8 +330,8 @@ impl AccountImpact {
 impl From<CoreReview> for CatalogReview {
     fn from(r: CoreReview) -> Self {
         Self {
-            version: r.manifest_version as i64,
-            current_version: r.current_version as i64,
+            version: wide(r.manifest_version),
+            current_version: wide(r.current_version),
             generated_at: r.generated_at,
             changes: r
                 .changes
@@ -337,8 +344,8 @@ impl From<CoreReview> for CatalogReview {
                 .into_iter()
                 .filter_map(AccountImpact::from_core)
                 .collect(),
-            total_affected: r.total_affected as i64,
-            not_listed: r.not_listed as i64,
+            total_affected: wide(r.total_affected),
+            not_listed: wide(r.not_listed),
             dismissed: r.dismissed,
         }
     }
@@ -347,7 +354,7 @@ impl From<CoreReview> for CatalogReview {
 fn shown(s: CoreShown) -> ShownItem {
     ShownItem {
         name: s.name,
-        rarity: s.rarity as i64,
+        rarity: i64::from(s.rarity),
     }
 }
 
@@ -360,7 +367,7 @@ impl AffectedPull {
             time: p.time,
             item_id: p.item_id,
             name: p.name,
-            rank: p.rank as i64,
+            rank: i64::from(p.rank),
             banner_before: p.banner_before,
             banner_after: p.banner_after,
             result_before: outcome(p.result_before.as_deref()),
@@ -393,10 +400,10 @@ impl From<CoreApply> for ApplyResult {
 impl From<CoreHistory> for CatalogHistoryEntry {
     fn from(h: CoreHistory) -> Self {
         Self {
-            version: h.manifest_version as i64,
-            applied_at: h.applied_at as i64,
+            version: wide(h.manifest_version),
+            applied_at: wide(h.applied_at),
             automatic: h.automatic,
-            affected_pulls: h.affected_pulls as i64,
+            affected_pulls: wide(h.affected_pulls),
             changes_total: i64::from(h.changes_total),
             changes: h
                 .changes
@@ -412,8 +419,8 @@ impl FetchSummary {
         Some(Self {
             game: game_from_str(&f.game)?,
             uid: f.uid,
-            fetched: f.fetched as i64,
-            added: f.added as i64,
+            fetched: wide(f.fetched),
+            added: wide(f.added),
             warning: f.warning,
         })
     }
@@ -423,9 +430,9 @@ impl From<CoreImport> for ImportSummary {
     fn from(i: CoreImport) -> Self {
         Self {
             format: i.format,
-            accounts: i.accounts as i64,
-            added: i.added as i64,
-            skipped: i.skipped as i64,
+            accounts: wide(i.accounts),
+            added: wide(i.added),
+            skipped: wide(i.skipped),
         }
     }
 }
@@ -449,7 +456,11 @@ impl From<CoreAbout> for AboutInfo {
             description: a.description.into(),
             copyright: a.copyright.into(),
             license: a.license.into(),
-            disclaimers: a.disclaimers.iter().map(|d| d.to_string()).collect(),
+            disclaimers: a
+                .disclaimers
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             repository: a.repository.into(),
             releases: a.releases.into(),
             issues: a.issues.into(),
@@ -474,7 +485,7 @@ impl From<CoreAppUpdate> for AppUpdate {
 impl From<CoreLogEntry> for LogEntry {
     fn from(l: CoreLogEntry) -> Self {
         Self {
-            seq: l.seq as i64,
+            seq: wide(l.seq),
             time: l.time,
             level: l.level.into(),
             source: l.source,
@@ -503,4 +514,9 @@ impl From<CoreBackup> for CloudBackup {
             size: i64::try_from(b.size).unwrap_or(i64::MAX),
         }
     }
+}
+
+/// Counts and versions are unsigned in the core and signed in Dart; none can really exceed `i64::MAX`.
+pub(crate) fn wide(n: impl TryInto<i64>) -> i64 {
+    n.try_into().unwrap_or(i64::MAX)
 }

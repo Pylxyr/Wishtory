@@ -156,21 +156,27 @@ fn game_of(text: &str) -> Option<Game> {
 }
 
 /// A short stable fingerprint of what the analysis depends on besides the data itself: the two
-/// release versions and, per account, how many pulls there are and which are the newest.
+/// release versions and, per account, how many pulls there are, which are the newest and a digest of
+/// their names and gacha types (so a filled-in or reclassified row is noticed too).
 pub fn fingerprint(db: &Db, current: u64, staged: u64) -> Result<String, AppError> {
+    use std::fmt::Write;
     let mut text = format!("{current}>{staged}");
     for a in db.pull_fingerprints()? {
-        text.push_str(&format!(
-            "|{}/{}/{}/{}/{}",
-            a.game, a.uid, a.pulls, a.newest_time, a.newest_id
-        ));
+        let _ = write!(
+            text,
+            "|{}/{}/{}/{}/{}/{}",
+            a.game, a.uid, a.pulls, a.newest_time, a.newest_id, a.content
+        );
     }
     let hash = digest::digest(&digest::SHA256, text.as_bytes());
-    Ok(hash.as_ref().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hash.as_ref().iter().fold(String::new(), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    }))
 }
 
-fn result_label(result: &Option<String>) -> &'static str {
-    match result.as_deref() {
+fn result_label(result: Option<&str>) -> &'static str {
+    match result {
         Some("win") => "won",
         Some("loss") => "lost",
         Some("guaranteed") => "guaranteed",
@@ -248,8 +254,8 @@ fn reasons(
         out.push(Reason {
             text: format!(
                 "Its result changes from {} to {}, because the featured items or the pity rules changed.",
-                result_label(&before.result),
-                result_label(&after.result)
+                result_label(before.result.as_deref()),
+                result_label(after.result.as_deref())
             ),
             change_ids,
         });
@@ -376,7 +382,7 @@ impl Impact {
     }
 
     pub fn affected_accounts(&self) -> u32 {
-        self.accounts.iter().filter(|a| a.affected > 0).count() as u32
+        u32::try_from(self.accounts.iter().filter(|a| a.affected > 0).count()).unwrap_or(u32::MAX)
     }
 }
 
@@ -432,6 +438,10 @@ mod tests {
     }
 
     impl Rig {
+        #[allow(
+            clippy::needless_pass_by_value,
+            reason = "a test helper that callers build values for"
+        )]
         fn new(tag: &str, pulls: Vec<Pull>) -> Rig {
             let dir = scratch(tag);
             let db = Db::open(&dir.join("wishtory.db")).unwrap();
@@ -760,6 +770,24 @@ mod tests {
             )
             .unwrap();
         assert_ne!(a, fingerprint(&rig.db, 1, 2).unwrap());
+    }
+
+    #[test]
+    fn the_fingerprint_notices_a_row_that_was_filled_in_without_adding_a_pull() {
+        let mut sparse = pull(1, "301", 3, "x", "2026-01-05 12:00:00");
+        sparse.name = String::new();
+        let rig = Rig::new("print-fill", vec![sparse]);
+        let before = fingerprint(&rig.db, 1, 2).unwrap();
+        // A later fetch completes the sparse row: same pull count, same newest pull.
+        rig.db
+            .merge(
+                "hk4e",
+                "1",
+                8,
+                &[pull(1, "301", 3, "x", "2026-01-05 12:00:00")],
+            )
+            .unwrap();
+        assert_ne!(before, fingerprint(&rig.db, 1, 2).unwrap());
     }
 
     #[test]

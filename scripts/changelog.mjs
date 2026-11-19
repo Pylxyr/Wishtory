@@ -54,6 +54,15 @@ function emit(out, scope, kind, game, subjects, severity, one, many) {
 
 const byKey = (list, key) => new Map(list.map((x) => [x[key], x]));
 
+/** Same normal form as the app's name lookup: lower case, ASCII letters, digits, spaces and hyphens only. */
+const nameKey = (text) =>
+  String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9 -]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ');
+
 export function diffItems(before, after) {
   const out = [];
   for (const game of Object.keys(GAMES)) {
@@ -91,7 +100,24 @@ export function diffItems(before, after) {
     emit(out, 'items', 'details', game, traits, 'minor',
       (i) => `The details of ${label(i)} (${g}) were corrected.`,
       (n) => `The details of ${n} ${g} items were corrected.`);
-    emit(out, 'items', 'added', game, added, 'info',
+    // A new item whose name (or alias) is already taken by another item is not harmless: lookups by name
+    // may find either one. It is held for a person's review instead of being added silently.
+    const names_in_use = new Map();
+    for (const item of [...oldItems.values(), ...newItems.values()]) {
+      for (const text of [item.name, ...(item.aliases ?? [])]) {
+        const key = nameKey(text);
+        if (!key) continue;
+        if (!names_in_use.has(key)) names_in_use.set(key, new Set());
+        names_in_use.get(key).add(item.id);
+      }
+    }
+    const taken = (item) => [item.name, ...(item.aliases ?? [])].some((text) => (names_in_use.get(nameKey(text))?.size ?? 0) > 1);
+    const clashing = added.filter(taken);
+    const plainAdded = added.filter((item) => !taken(item));
+    emit(out, 'items', 'name-clash', game, clashing, 'minor',
+      (i) => `New in ${g}: ${label(i)} (${i.rarity}-star), but another item already has this name, so it needs a look.`,
+      (n) => `${n} new ${g} items share a name with another item and need a look.`);
+    emit(out, 'items', 'added', game, plainAdded, 'info',
       (i) => `New in ${g}: ${label(i)} (${i.rarity}-star).`,
       (n) => `${n} new items were added for ${g}.`);
   }

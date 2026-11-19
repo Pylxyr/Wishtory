@@ -111,9 +111,31 @@ class IconCache {
     }
   }
 
+  /// How many redirects one picture request follows.
+  static const _maxRedirects = 3;
+
+  /// The final response of a request, following a few redirects by hand: never from https down to http,
+  /// and never more than [_maxRedirects] of them.
+  Future<HttpClientResponse?> _fetch(Uri first) async {
+    var uri = first;
+    for (var hop = 0; hop <= _maxRedirects; hop++) {
+      final request = await _client.getUrl(uri).timeout(timeout);
+      request.followRedirects = false;
+      final response = await request.close().timeout(timeout);
+      if (!response.isRedirect) return response;
+      final location = response.headers.value(HttpHeaders.locationHeader);
+      await response.drain<void>();
+      if (location == null) return null;
+      final next = uri.resolve(location);
+      if (next.scheme != uri.scheme) return null;
+      uri = next;
+    }
+    return null;
+  }
+
   Future<File?> _download(String url, File target, int limit) async {
-    final request = await _client.getUrl(Uri.parse(url)).timeout(timeout);
-    final response = await request.close().timeout(timeout);
+    final response = await _fetch(Uri.parse(url));
+    if (response == null) return null;
     if (response.statusCode != 200) {
       await response.drain<void>();
       return null;
@@ -170,6 +192,42 @@ class IconCache {
     } else {
       _running--;
     }
+  }
+
+  /// Keeps the cache from growing for ever (banner artwork changes with every banner): deletes the oldest
+  /// pictures until what is saved fits in [maxTotalBytes], and any half-finished download left behind
+  /// more than an hour ago. Returns the bytes freed. Safe to run while pictures are being requested: a
+  /// picture that was deleted is simply downloaded again.
+  Future<int> prune({int maxTotalBytes = 256 * 1024 * 1024}) async {
+    var freed = 0;
+    try {
+      if (!await directory.exists()) return 0;
+      final kept = <(File, FileStat)>[];
+      var total = 0;
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final stat = await entity.stat();
+        if (entity.path.endsWith('.part')) {
+          if (DateTime.now().difference(stat.modified) > const Duration(hours: 1)) {
+            await entity.delete();
+            freed += stat.size;
+          }
+          continue;
+        }
+        kept.add((entity, stat));
+        total += stat.size;
+      }
+      kept.sort((a, b) => a.$2.modified.compareTo(b.$2.modified));
+      for (final (file, stat) in kept) {
+        if (total <= maxTotalBytes) break;
+        await file.delete();
+        total -= stat.size;
+        freed += stat.size;
+      }
+    } catch (_) {
+      // Housekeeping only: whatever could not be removed stays until the next run.
+    }
+    return freed;
   }
 
   /// Total size of the saved pictures in bytes.

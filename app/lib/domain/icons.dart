@@ -118,7 +118,8 @@ extension MaterialPictures on IconTable {
 class CatalogIndex {
   CatalogIndex(GameCatalog? catalog) {
     for (final item in catalog?.items ?? const <CatalogItem>[]) {
-      _byName['${item.game}|${item.name.toLowerCase()}'] = item;
+      // The first item with a name wins, like the app's own name lookup in the Rust core.
+      _byName.putIfAbsent('${item.game}|${item.name.toLowerCase()}', () => item);
       for (final alias in item.aliases) {
         _byName.putIfAbsent('${item.game}|${alias.toLowerCase()}', () => item);
       }

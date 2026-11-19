@@ -1,7 +1,15 @@
 //! The calls the Flutter app makes. One opaque [`WishtoryCore`] handle holds the open database and
 //! the cached feeds; a few app-level helpers are free functions.
 
-use super::{error::ApiError, types::*};
+use super::{
+    error::ApiError,
+    types::{
+        AboutInfo, Account, AffectedPull, AppUpdate, ApplyResult, BannerList, BannerPity,
+        CatalogCheck, CatalogHistoryEntry, CatalogReview, CatalogStatus, CloudBackup, CloudStatus,
+        FetchSummary, GameCatalog, GameId, GameInstall, GameLocations, GameMeta, HistoryPull,
+        ImportSummary, LogEntry,
+    },
+};
 use crate::frb_generated::StreamSink;
 use std::{path::PathBuf, sync::Arc};
 use wishtory_core::{Core, about, logging, models::Game, ops, update};
@@ -47,6 +55,11 @@ pub struct WishtoryCore {
 impl WishtoryCore {
     /// Opens (creating if needed) Wishtory's data. `data_dir` is for tests; `None` uses the same
     /// folder every earlier release used, so saved history carries over.
+    #[allow(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "the generated bridge needs an async constructor"
+    )]
     pub async fn open(data_dir: Option<String>) -> Result<WishtoryCore, ApiError> {
         let dir = match data_dir {
             Some(d) => PathBuf::from(d),
@@ -122,7 +135,7 @@ impl WishtoryCore {
     }
     /// Returns how many pulls were removed.
     pub async fn clear_all_history(&self) -> Result<i64, ApiError> {
-        Ok(self.inner.clear_all_history().await? as i64)
+        Ok(crate::convert::wide(self.inner.clear_all_history().await?))
     }
 
     /// Newest first. `banner` is one of the keys from [`game_meta`], or `None` for every banner.
@@ -184,8 +197,8 @@ impl WishtoryCore {
             .get_impact_page(
                 game.into(),
                 uid,
-                offset.max(0) as usize,
-                limit.clamp(0, 200) as usize,
+                usize::try_from(offset.max(0)).unwrap_or(usize::MAX),
+                usize::try_from(limit.clamp(0, 200)).unwrap_or(200),
             )
             .await?;
         Ok(pulls
@@ -202,7 +215,10 @@ impl WishtoryCore {
     ) -> Result<ApplyResult, ApiError> {
         Ok(self
             .inner
-            .apply_catalog(Some((version.max(0) as u64, fingerprint)))
+            .apply_catalog(Some((
+                u64::try_from(version.max(0)).unwrap_or(0),
+                fingerprint,
+            )))
             .await?
             .into())
     }
@@ -331,8 +347,12 @@ pub fn get_about() -> AboutInfo {
     about::get_about().into()
 }
 /// Opens one of the links Wishtory shows. Anything outside the fixed allow-list is refused.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "the generated bridge passes owned strings"
+)]
 pub fn open_external(url: String) -> Result<(), ApiError> {
-    Ok(about::open_external(url)?)
+    Ok(about::open_external(&url)?)
 }
 pub async fn check_app_update() -> Result<AppUpdate, ApiError> {
     Ok(update::check_app_update().await?.into())

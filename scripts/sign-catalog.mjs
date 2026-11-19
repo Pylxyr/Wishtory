@@ -11,8 +11,13 @@ if (!pem) throw new Error('Set CATALOG_SIGNING_KEY or CATALOG_SIGNING_KEY_FILE.'
 const privateKey = createPrivateKey(pem);
 const publicKey = createPublicKey(privateKey);
 const rawPublicKey = publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64');
-const pinned = (await readFile('catalog/catalog-public-key.txt', 'utf8')).trim();
-if (rawPublicKey !== pinned) throw new Error('Signing key does not match the public key pinned by Wishtory.');
+// One key per line (blank lines and "#" comments are ignored). During a key replacement the old and the
+// new key are both pinned; the signing key may be either of them.
+const pinned = (await readFile('catalog/catalog-public-key.txt', 'utf8'))
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line && !line.startsWith('#'));
+if (!pinned.includes(rawPublicKey)) throw new Error('Signing key does not match the public key pinned by Wishtory.');
 
 const payload = await readFile(inputPath);
 const parsed = JSON.parse(payload);

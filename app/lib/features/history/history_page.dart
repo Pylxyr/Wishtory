@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../bridge/wishtory_api.dart';
 import '../../domain/game_info.dart';
 import '../../domain/recovery.dart';
+import '../../domain/time_text.dart';
 import '../../state/providers.dart';
 import '../../state/refresh.dart';
 import '../../state/settings.dart';
@@ -506,7 +507,7 @@ class _RareTile extends ConsumerWidget {
     };
     final outcomeColor = outcome == null ? c.faint : tint;
     final pity = pull.pity;
-    final date = pull.time.length >= 10 ? pull.time.substring(0, 10) : pull.time;
+    final date = dayOf(pull.time);
     final words = '${pull.name}, ${rankLabel(account.game, pull.rank)}, pity ${pity ?? 'unknown'}, ${pull.time}'
         '${pull.bannerName == null ? '' : ', ${pull.bannerName}'}${tracked ? '. ${resultWords(outcome, odds)}' : ''}';
     final pityColor = pull.rank == 5 ? tint : c.purple;

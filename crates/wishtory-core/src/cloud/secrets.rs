@@ -1,7 +1,7 @@
 //! Where the two secrets live: the Google refresh token and the backup passphrase.
 //!
 //! They go in the operating system's credential store: Windows Credential Manager, or the Secret
-//! Service on Linux (KWallet, GNOME Keyring and others provide it). Wishtory never falls back to a
+//! Service on Linux (`KWallet`, GNOME Keyring and others provide it). Wishtory never falls back to a
 //! plain file: if the system has no credential store, cloud backup says so and stays off.
 
 use crate::error::AppError;
@@ -21,7 +21,7 @@ pub trait SecretStore: Send + Sync {
 /// The real thing.
 pub struct OsKeyring;
 
-fn unavailable(e: keyring::Error) -> AppError {
+fn unavailable(e: &keyring::Error) -> AppError {
     AppError::Message(format!(
         "Wishtory keeps your Google sign-in in your system's password storage (Windows Credential \
          Manager, or a Secret Service keyring such as KWallet or GNOME Keyring), and it is not \
@@ -30,7 +30,7 @@ fn unavailable(e: keyring::Error) -> AppError {
 }
 
 fn entry(name: &str) -> Result<keyring::Entry, AppError> {
-    keyring::Entry::new(SERVICE, name).map_err(unavailable)
+    keyring::Entry::new(SERVICE, name).map_err(|e| unavailable(&e))
 }
 
 impl SecretStore for OsKeyring {
@@ -38,18 +38,20 @@ impl SecretStore for OsKeyring {
         match entry(name)?.get_password() {
             Ok(value) => Ok(Some(Zeroizing::new(value))),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(unavailable(e)),
+            Err(e) => Err(unavailable(&e)),
         }
     }
 
     fn set(&self, name: &str, value: &str) -> Result<(), AppError> {
-        entry(name)?.set_password(value).map_err(unavailable)
+        entry(name)?
+            .set_password(value)
+            .map_err(|e| unavailable(&e))
     }
 
     fn delete(&self, name: &str) -> Result<(), AppError> {
         match entry(name)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(unavailable(e)),
+            Err(e) => Err(unavailable(&e)),
         }
     }
 }
@@ -60,14 +62,26 @@ pub use memory::MemoryStore;
 #[cfg(test)]
 mod memory {
     use super::*;
-    use std::{collections::HashMap, sync::Mutex};
+    use std::{
+        collections::HashMap,
+        sync::{
+            Mutex,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
 
-    /// An in-memory stand-in for tests.
+    /// An in-memory stand-in for tests. `fail_reads` makes every read fail, like a locked or missing
+    /// system credential store.
     #[derive(Default)]
-    pub struct MemoryStore(Mutex<HashMap<String, String>>);
+    pub struct MemoryStore(Mutex<HashMap<String, String>>, AtomicBool);
 
     impl SecretStore for MemoryStore {
         fn get(&self, name: &str) -> Result<Option<Zeroizing<String>>, AppError> {
+            if self.1.load(Ordering::SeqCst) {
+                return Err(AppError::Message(
+                    "the credential store is unavailable".into(),
+                ));
+            }
             Ok(self
                 .0
                 .lock()
@@ -87,6 +101,10 @@ mod memory {
     }
 
     impl MemoryStore {
+        pub fn fail_reads(&self, fail: bool) {
+            self.1.store(fail, Ordering::SeqCst);
+        }
+
         pub fn is_empty(&self) -> bool {
             self.0.lock().unwrap().is_empty()
         }

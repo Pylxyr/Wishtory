@@ -19,7 +19,7 @@ The **Merge safe game catalog updates** workflow (`catalog-automerge.yml`) merge
 - CI passed on the exact commit that is merged, and the branch is up to date with `main`, so the merged tree is the tree CI tested.
 - Every commit is the bot's own: a commit by a person means a person wants to review it.
 - The only files changed are `catalog/catalog.json` and `catalog/manifest.json` (the weekly run keeps the manifest's component versions in step with the feeds through `npm run catalog:sync`; a Rust test requires them to match). A change to `catalog/banners.json` always waits for you.
-- Every entry of the change log this release would publish is `info` (new items). A rename, trait fix, rarity change or removal (`minor` or `major`) waits for you.
+- Every entry of the change log this release would publish is `info` (new items with a name no other item has). A rename, trait fix, rarity change or removal (`minor` or `major`) waits for you.
 
 New 5★ characters need a banner entry that no script can draft for Honkai: Star Rail or Zenless Zone Zero. When a merged PR listed any, the workflow opens the issue "New 5-star character needs a banner entry" (or adds to the open one), because the PR description is gone from view after the merge and the weekly check no longer reports a character that is already in the catalog.
 
@@ -87,7 +87,7 @@ People see one **Game catalog** with one version. Underneath, the three feeds ab
 
 ### What users see
 
-Wishtory downloads and verifies a newer release but does not use it yet, then checks on the person's own PC which saved pulls it would read differently (banner, 50/50 result, pity number, displayed name or rarity). A release that affects no pull is applied by itself (a setting turns that off) and noted in the catalog history. A release that affects even one pull waits: a notice at start-up and a badge on Settings, and a review page with the change log by severity and the affected pulls per account, with **Apply** and **Not now**. Severity does not decide this; any affected pull needs a review. Nothing about the person's history leaves the PC: the check is a plain request for the fixed public files.
+Wishtory downloads and verifies a newer release but does not use it yet, then checks on the person's own PC which saved pulls it would read differently (banner, 50/50 result, pity number, displayed name or rarity). A release that affects no pull is applied by itself (a setting turns that off) and noted in the catalog history. A release that affects even one pull waits: a notice at start-up and a badge on Settings, and a review page with the change log by severity and the affected pulls per account, with **Apply** and **Not now**. Severity does not decide this for items and banners: any affected pull needs a review. The one exception is a `major` change to the pity rules (hard or soft pity, the 50/50 odds): it changes what the Pity page says about every account even when no saved pull is placed differently, so it always waits for a person, whatever the setting says. Nothing about the person's history leaves the PC: the check is a plain request for the fixed public files.
 
 ## One-time setup
 
@@ -96,6 +96,16 @@ Wishtory downloads and verifies a newer release but does not use it yet, then ch
 3. Set its value to the complete PEM text from the ignored local file `catalog/catalog-signing-key.pem`.
 
 The public half is checked in at `catalog/catalog-public-key.txt` and embedded into the app for signature verification. Never commit or paste the private key into an issue, PR, or chat. The private file is excluded by `.gitignore`.
+
+## Replacing the signing key
+
+Every installed app trusts only the key(s) built into it (`catalog/catalog-public-key.txt`, one base64 key per line; `#` comments and blank lines are ignored; at most two). An app can only learn a new key from an **app release**, so replace the key in two steps, never one:
+
+1. **Pin both.** Generate the new key pair and add the new public key as a second line below the current one. Release the app. Keep signing with the old key (`CATALOG_SIGNING_KEY` unchanged): every app, old or new, still accepts the feeds. `scripts/sign-catalog.mjs` accepts a signing key that matches either line.
+2. **Switch the signer.** Once most people run a release that carries both keys, set `CATALOG_SIGNING_KEY` to the new private key and run **Publish signed game catalog** by hand (`workflow_dispatch`, force). Apps that carry the new key accept it; apps that do not keep their current data and the app update notice reaches them.
+3. **Drop the old key.** In a later app release remove the old line, so a leaked old key can no longer sign anything those apps accept.
+
+Replacing the key in a single step (what a one-line change to `catalog-public-key.txt` does) stops catalog updates for every app released before it, and the published feeds must be re-signed at the same time or new builds reject them. If the old private key has leaked, do step 1 and 2 as fast as possible: apps that only carry the old key keep trusting it until they are updated.
 
 ## Rollback
 

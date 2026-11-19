@@ -35,7 +35,7 @@ fn fold(name: &str) -> String {
     name.trim().replace('\u{2019}', "'").to_lowercase()
 }
 
-/// HoYoverse's live history API frequently omits `item_id`, even when it provides a usable
+/// `HoYoverse`'s live history API frequently omits `item_id`, even when it provides a usable
 /// localized `name`. Older records must still identify permanent-pool items by name.
 fn is_standard_five(rules: &GameRules, banner: &str, pull: &Pull) -> bool {
     let pool = if banner == "weapon" {
@@ -203,7 +203,21 @@ pub fn history_filters(game: Game) -> &'static [(&'static str, &'static str)] {
     }
 }
 
+/// The average of `sum` over `count` pulls, for the pity figures on screen (small numbers: the cast
+/// to the single-precision type the bridge uses loses nothing visible).
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "an average of small whole numbers"
+)]
+fn mean(sum: u32, count: u32) -> f32 {
+    (f64::from(sum) / f64::from(count)) as f32
+}
+
 /// Short pool name for the history table's "Wish" column.
+#[allow(
+    clippy::match_same_arms,
+    reason = "one arm per game and pool documents each label on its own"
+)]
 pub fn pool_label(game: Game, gacha_type: &str) -> Option<&'static str> {
     Some(match (game, gacha_type) {
         (Game::Hk4e, "100") => "Beginners'",
@@ -268,6 +282,16 @@ pub fn resolve_banner<'a>(
     }
 }
 
+/// Every gacha type [`banner_key`] knows about, for any game.
+pub const PITY_GACHA_TYPES: [&str; 16] = [
+    "1", "2", "3", "5", "11", "12", "21", "22", "100", "102", "103", "200", "301", "302", "400",
+    "500",
+];
+
+#[allow(
+    clippy::match_same_arms,
+    reason = "one arm per game and pool documents each rule on its own"
+)]
 pub fn banner_key(game: Game, gacha_type: &str) -> Option<&'static str> {
     Some(match (game, gacha_type) {
         (Game::Hk4e, "100") => "beginner",
@@ -408,7 +432,7 @@ pub struct BannerPity {
     pub recent_fours: Vec<FourStar>,
 }
 
-/// `pulls` must be sorted oldest → newest (Db::pulls_for does this).
+/// `pulls` must be sorted oldest → newest (`Db::pulls_for` does this).
 #[cfg(test)]
 pub fn compute(game: Game, pulls: &[Pull]) -> Vec<BannerPity> {
     compute_with_banners(game, pulls, &[], &RuleSet::bundled())
@@ -503,8 +527,8 @@ pub fn compute_with_banners(
                 total,
                 five_stars: fives,
                 four_stars: fours,
-                avg_five_pity: (fives > 0).then(|| sum_five as f32 / fives as f32),
-                avg_four_pity: (fours > 0).then(|| sum_four as f32 / fours as f32),
+                avg_five_pity: (fives > 0).then(|| mean(sum_five, fives)),
+                avg_four_pity: (fours > 0).then(|| mean(sum_four, fours)),
                 recent_fives,
                 recent_fours,
             })
@@ -772,7 +796,15 @@ mod tests {
         let pulls: Vec<Pull> = fives
             .iter()
             .enumerate()
-            .map(|(i, item)| pull(game.as_str(), gacha_type, i as u32 + 1, 5, item))
+            .map(|(i, item)| {
+                pull(
+                    game.as_str(),
+                    gacha_type,
+                    u32::try_from(i).unwrap() + 1,
+                    5,
+                    item,
+                )
+            })
             .collect();
         let r = compute(game, &pulls);
         find(&r, "weapon")
@@ -952,7 +984,7 @@ mod tests {
             gacha_ids: vec![],
             start: start.into(),
             end: end.into(),
-            featured_5: featured.iter().map(|f| f.to_string()).collect(),
+            featured_5: featured.iter().map(ToString::to_string).collect(),
             featured_4: vec![],
         }
     }

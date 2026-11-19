@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../bridge/wishtory_api.dart';
 import '../../domain/first_five.dart';
 import '../../domain/game_info.dart';
+import '../../domain/time_text.dart';
 import '../../state/providers.dart';
 import '../../state/settings.dart';
 import '../../ui/tokens.dart';
@@ -59,7 +60,7 @@ class FirstFivePrompt extends ConsumerWidget {
           Text('Was your 1st ${info.r5} here a $odds/${100 - odds} win?', style: Ty.h3),
           const SizedBox(height: 4),
           Text(
-            '${first.name} (${first.time.length >= 10 ? first.time.substring(0, 10) : first.time}) is the oldest ${info.r5} in your history and it was the featured one. '
+            '${first.name} (${dayOf(first.time)}) is the oldest ${info.r5} in your history and it was the featured one. '
             'The game only keeps part of your history, so Wishtory cannot see whether it came from the $odds/${100 - odds} or from a guarantee after an older loss. '
             'If you know, say so and the result will be counted; if you are not sure, it stays unknown.',
             style: Ty.small.copyWith(color: c.muted),

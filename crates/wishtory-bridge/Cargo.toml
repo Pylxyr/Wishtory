@@ -4,6 +4,12 @@ version.workspace = true
 description = "flutter_rust_bridge API over wishtory-core: plain data types and one Core handle for the Flutter app"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
 
 [lib]
 name = "wishtory_bridge"

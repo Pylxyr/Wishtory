@@ -225,13 +225,13 @@ fn is_allowed(url: &str) -> bool {
             .any(|credit| credit.url == url)
 }
 
-pub fn open_external(url: String) -> Result<(), AppError> {
-    if !is_allowed(&url) {
+pub fn open_external(url: &str) -> Result<(), AppError> {
+    if !is_allowed(url) {
         return Err(AppError::Message(
             "Wishtory only opens the links it shows.".into(),
         ));
     }
-    open_in_browser(&url).map_err(AppError::Message)
+    open_in_browser(url).map_err(AppError::Message)
 }
 
 #[cfg(windows)]
@@ -266,7 +266,7 @@ pub(crate) fn open_in_browser(url: &str) -> Result<(), String> {
                 });
                 return Ok(());
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(format!("Could not open the browser: {e}")),
         }
     }

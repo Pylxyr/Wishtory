@@ -16,7 +16,11 @@ pub const MAX_CATALOG_BYTES: usize = 8 * 1024 * 1024;
 const MAX_ITEMS: usize = 20_000;
 const MAX_BANNER_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BANNERS: usize = 5_000;
-const UPDATE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const UPDATE_INTERVAL: Duration = Duration::from_hours(24);
+/// After a check failed to reach the server (offline, a timeout, a server error) the next automatic
+/// check is due after this much, not after a whole day: a bad moment at launch should not delay an
+/// update until tomorrow, and an offline start must still not be retried on every launch.
+const RETRY_AFTER_FAILURE: Duration = Duration::from_hours(1);
 /// Every signed feed is published on this rolling release as `<asset>.envelope.json` (see
 /// `.github/workflows/catalog-release.yml`). Copies named `catalog.json` and `banners.json` are
 /// published too for app versions up to 0.0.2, which asked for those names.
@@ -54,10 +58,44 @@ fn feed_url<F: Feed>() -> String {
 /// Checks the signature against the pinned key and returns the validated document together
 /// with the signed payload bytes.
 pub fn verify_envelope<F: Feed>(envelope: &[u8]) -> Result<(F, Vec<u8>), String> {
-    let public_key = BASE64
-        .decode(PINNED_PUBLIC_KEY.trim())
-        .map_err(|_| "invalid pinned catalog key".to_string())?;
-    verify_envelope_with_key(envelope, &public_key)
+    let mut failure = None;
+    for public_key in parse_pinned_keys(PINNED_PUBLIC_KEY)? {
+        match verify_envelope_with_key(envelope, &public_key) {
+            Ok(verified) => return Ok(verified),
+            Err(e) => failure = Some(e),
+        }
+    }
+    Err(failure.unwrap_or_else(|| "invalid pinned catalog key".to_string()))
+}
+
+/// The pinned keys: one base64 key per line (blank lines and `#` comments are ignored). Normally
+/// there is one. While the signing key is being replaced both the old and the new key are listed, so
+/// every installed app accepts feeds signed with either until the old one is dropped (see
+/// docs/game-catalog-updates.md, "Replacing the signing key").
+fn parse_pinned_keys(text: &str) -> Result<Vec<Vec<u8>>, String> {
+    let keys = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            BASE64
+                .decode(line)
+                .ok()
+                .filter(|key| key.len() == 32)
+                .ok_or_else(|| "invalid pinned catalog key".to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if keys.is_empty() || keys.len() > 2 {
+        return Err("invalid pinned catalog key".into());
+    }
+    Ok(keys)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignedEnvelope {
+    payload: String,
+    signature: String,
 }
 
 fn verify_envelope_with_key<F: Feed>(
@@ -69,12 +107,6 @@ fn verify_envelope_with_key<F: Feed>(
         return Err(format!(
             "{label} envelope is empty or exceeds the size limit"
         ));
-    }
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct SignedEnvelope {
-        payload: String,
-        signature: String,
     }
     let envelope: SignedEnvelope =
         serde_json::from_slice(envelope).map_err(|e| format!("invalid {label} envelope: {e}"))?;
@@ -130,13 +162,12 @@ impl Source for HttpSource {
     ) -> impl std::future::Future<Output = Result<Vec<u8>, SourceError>> + Send {
         let url = asset_url(asset);
         async move {
-            download_limited(&url, max_bytes).await.map_err(|e| {
-                if e.contains("404") {
-                    SourceError::NotFound
-                } else {
-                    SourceError::Failed(e)
-                }
-            })
+            download_limited(&url, max_bytes)
+                .await
+                .map_err(|e| match e {
+                    DownloadError::NotFound => SourceError::NotFound,
+                    DownloadError::Failed(text) => SourceError::Failed(text),
+                })
         }
     }
 }
@@ -222,7 +253,7 @@ impl<F: Feed> FeedStore<F> {
     pub fn current(&self) -> Arc<F> {
         self.current
             .read()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 
@@ -236,7 +267,10 @@ impl<F: Feed> FeedStore<F> {
     }
 
     fn set_current(&self, doc: Arc<F>) {
-        *self.current.write().unwrap_or_else(|e| e.into_inner()) = doc;
+        *self
+            .current
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = doc;
     }
 }
 
@@ -291,7 +325,28 @@ fn redirect_allowed(target: &url::Url, hops_so_far: usize) -> bool {
         })
 }
 
-pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+/// Why a download did not produce bytes. "Not found" is told apart by the HTTP status, never by the
+/// text of an error message.
+#[derive(Debug)]
+pub(crate) enum DownloadError {
+    NotFound,
+    Failed(String),
+}
+
+impl std::fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => f.write_str("download returned 404 Not Found"),
+            Self::Failed(text) => f.write_str(text),
+        }
+    }
+}
+
+pub(crate) async fn download_limited(
+    url: &str,
+    max_bytes: usize,
+) -> Result<Vec<u8>, DownloadError> {
+    let failed = |e: reqwest::Error| DownloadError::Failed(e.to_string());
     let client = crate::net::client_builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -302,21 +357,31 @@ pub(crate) async fn download_limited(url: &str, max_bytes: usize) -> Result<Vec<
             }
         }))
         .build()
-        .map_err(|e| e.to_string())?;
-    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
+        .map_err(failed)?;
+    let mut response = client.get(url).send().await.map_err(failed)?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(DownloadError::NotFound);
+    }
     if !response.status().is_success() {
-        return Err(format!("download returned {}", response.status()));
+        return Err(DownloadError::Failed(format!(
+            "download returned {}",
+            response.status()
+        )));
     }
     if response
         .content_length()
         .is_some_and(|len| len > max_bytes as u64)
     {
-        return Err("download exceeds the size limit".into());
+        return Err(DownloadError::Failed(
+            "download exceeds the size limit".into(),
+        ));
     }
     let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+    while let Some(chunk) = response.chunk().await.map_err(failed)? {
         if bytes.len() + chunk.len() > max_bytes {
-            return Err("download exceeds the size limit".into());
+            return Err(DownloadError::Failed(
+                "download exceeds the size limit".into(),
+            ));
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -801,7 +866,10 @@ impl Manifest {
 
     /// How many entries are major, minor and info.
     pub fn counts(&self) -> (u32, u32, u32) {
-        let count = |s: Severity| self.changes.iter().filter(|c| c.severity == s).count() as u32;
+        let count = |s: Severity| {
+            u32::try_from(self.changes.iter().filter(|c| c.severity == s).count())
+                .unwrap_or(u32::MAX)
+        };
         (
             count(Severity::Major),
             count(Severity::Minor),
@@ -833,6 +901,7 @@ const STAGED_DIR: &str = "catalog-staged";
 const HISTORY_FILE: &str = "catalog-history.json";
 const DISMISSED_FILE: &str = "catalog-dismissed";
 const CHECK_FILE: &str = "manifest-last-check";
+const FAILED_FILE: &str = "manifest-check-failed";
 const HISTORY_KEEP: usize = 20;
 const HISTORY_CHANGES_KEPT: usize = 100;
 const MAX_HISTORY_BYTES: u64 = 8 * 1024 * 1024;
@@ -1049,9 +1118,31 @@ impl ReleaseStore {
         let _ = std::fs::write(self.app_data.join(CHECK_FILE), unix_now().to_string());
     }
 
+    /// Unix seconds of the last check that could not reach the server, if the last one failed so.
+    fn last_failure(&self) -> Option<u64> {
+        std::fs::read_to_string(self.app_data.join(FAILED_FILE))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
+    }
+
+    fn mark_failed(&self) {
+        let _ = std::fs::write(self.app_data.join(FAILED_FILE), unix_now().to_string());
+    }
+
+    fn clear_failed(&self) {
+        let _ = std::fs::remove_file(self.app_data.join(FAILED_FILE));
+    }
+
     fn check_due(&self) -> bool {
-        self.last_check()
-            .is_none_or(|v| unix_now().saturating_sub(v) >= UPDATE_INTERVAL.as_secs())
+        let waited = |since: u64| unix_now().saturating_sub(since);
+        match self.last_failure() {
+            Some(failed) => waited(failed) >= RETRY_AFTER_FAILURE.as_secs(),
+            None => self
+                .last_check()
+                .is_none_or(|v| waited(v) >= UPDATE_INTERVAL.as_secs()),
+        }
     }
 
     /// Asks for a newer release and, when there is one, downloads and verifies the manifest and
@@ -1066,11 +1157,15 @@ impl ReleaseStore {
         if !force && !self.check_due() {
             return Ok(CheckOutcome::NotDue);
         }
-        // Count a failed download as a check too, so an offline start is not retried on every launch.
+        // Count a failed download as a check too, so an offline start is not retried on every launch
+        // (a failure is retried after an hour, see `RETRY_AFTER_FAILURE`; success clears it).
         self.mark_checked();
-        let fail = |e: SourceError| match e {
-            SourceError::NotFound => "the release is not published yet".to_string(),
-            SourceError::Failed(message) => message,
+        let fail = |e: SourceError| {
+            self.mark_failed();
+            match e {
+                SourceError::NotFound => "the release is not published yet".to_string(),
+                SourceError::Failed(message) => message,
+            }
         };
         let manifest_bytes = match source
             .get(Manifest::ASSET, max_envelope_bytes::<Manifest>())
@@ -1078,10 +1173,12 @@ impl ReleaseStore {
         {
             Ok(bytes) => bytes,
             Err(SourceError::NotFound) => {
+                self.clear_failed(); // the server answered
                 return Ok(CheckOutcome::NotReady("no release is published yet".into()));
             }
             Err(e) => return Err(fail(e)),
         };
+        self.clear_failed();
         let (manifest, _) = self.manifest.verify(&manifest_bytes)?;
         if manifest.manifest_version <= self.current().manifest_version {
             return Ok(CheckOutcome::Current);
@@ -1122,8 +1219,14 @@ impl ReleaseStore {
         };
         self.write_staged(&envelopes)?;
         let staged = Arc::new(staged);
-        *self.staged.lock().unwrap_or_else(|e| e.into_inner()) = Some(staged.clone());
-        *self.impact.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .staged
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(staged.clone());
+        *self
+            .impact
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         Ok(CheckOutcome::Staged(staged))
     }
 
@@ -1186,7 +1289,10 @@ impl ReleaseStore {
     /// run. A copy that fails verification, is not newer than the release in use, or no longer
     /// has all its parts is dropped.
     pub fn staged(&self) -> Option<Arc<StagedRelease>> {
-        let mut memo = self.staged.lock().unwrap_or_else(|e| e.into_inner());
+        let mut memo = self
+            .staged
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let present = self.staged_dir().join(Envelopes::FILES[0].0).is_file();
         if !present {
             *memo = None;
@@ -1199,17 +1305,14 @@ impl ReleaseStore {
         }
         *memo = None;
         let loaded = self.load_staged();
-        match loaded {
-            Some(staged) => {
-                let staged = Arc::new(staged);
-                *memo = Some(staged.clone());
-                Some(staged)
-            }
-            None => {
-                drop(memo);
-                self.drop_staged();
-                None
-            }
+        if let Some(staged) = loaded {
+            let staged = Arc::new(staged);
+            *memo = Some(staged.clone());
+            Some(staged)
+        } else {
+            drop(memo);
+            self.drop_staged();
+            None
         }
     }
 
@@ -1227,8 +1330,14 @@ impl ReleaseStore {
 
     /// Forgets the staged release (a newer one replaced it, it was applied, or it failed to load).
     pub fn drop_staged(&self) {
-        *self.staged.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        *self.impact.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .staged
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        *self
+            .impact
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
         let _ = std::fs::remove_dir_all(self.staged_dir());
         let _ = std::fs::remove_file(self.app_data.join(DISMISSED_FILE));
     }
@@ -1308,7 +1417,7 @@ impl ReleaseStore {
             applied_at: unix_now(),
             automatic,
             affected_pulls,
-            changes_total: changes.len() as u32,
+            changes_total: u32::try_from(changes.len()).unwrap_or(u32::MAX),
             changes: changes.into_iter().take(HISTORY_CHANGES_KEPT).collect(),
         };
         let mut history = self.history();
@@ -1324,7 +1433,7 @@ impl ReleaseStore {
     pub fn history(&self) -> Vec<HistoryEntry> {
         read_limited(
             &self.app_data.join(HISTORY_FILE),
-            MAX_HISTORY_BYTES as usize,
+            usize::try_from(MAX_HISTORY_BYTES).unwrap_or(usize::MAX),
         )
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default()
@@ -1467,20 +1576,21 @@ mod tests {
         let cache = app_data.join("catalog-cache");
         let _ = std::fs::remove_dir_all(&app_data);
         std::fs::create_dir_all(&cache).unwrap();
-        let good = include_bytes!("../../../catalog/catalog-test-envelope.json");
+        let key = testkit::public_key();
+        let good = testkit::sign_catalog(2);
         std::fs::write(cache.join("2.json"), good).unwrap();
         std::fs::write(cache.join("1.json"), b"older and never needed").unwrap();
         std::fs::write(cache.join("3.json"), b"tampered newest copy").unwrap();
         std::fs::write(cache.join("notes.txt"), b"ignored").unwrap();
         assert_eq!(
-            CatalogStore::newest_cached(&cache, None)
+            CatalogStore::newest_cached(&cache, Some(&key))
                 .unwrap()
                 .catalog_version,
             2
         );
         std::fs::remove_file(cache.join("2.json")).unwrap();
-        assert!(CatalogStore::newest_cached(&cache, None).is_none());
-        assert!(CatalogStore::newest_cached(&app_data.join("missing"), None).is_none());
+        assert!(CatalogStore::newest_cached(&cache, Some(&key)).is_none());
+        assert!(CatalogStore::newest_cached(&app_data.join("missing"), Some(&key)).is_none());
         std::fs::remove_dir_all(app_data).unwrap();
     }
 
@@ -1511,22 +1621,45 @@ mod tests {
     }
 
     #[test]
+    fn the_pinned_key_file_holds_one_key_or_two_during_a_replacement() {
+        let a = BASE64.encode([1u8; 32]);
+        let b = BASE64.encode([2u8; 32]);
+        assert_eq!(parse_pinned_keys(&format!("{a}\n")).unwrap().len(), 1);
+        let two = format!("# old key, until the next release\n{a}\n\n{b}\n");
+        assert_eq!(parse_pinned_keys(&two).unwrap().len(), 2);
+        for bad in [
+            "",
+            "# only a comment\n",
+            "not base64!",
+            &format!("{a}\n{b}\n{a}"),
+            &BASE64.encode([1u8; 31]),
+        ] {
+            assert!(parse_pinned_keys(bad).is_err(), "{bad}");
+        }
+        // The key actually pinned in this repository must parse.
+        assert!(parse_pinned_keys(PINNED_PUBLIC_KEY).is_ok());
+    }
+
+    #[test]
     fn a_release_loads_the_named_version_or_nothing() {
         let app_data =
             std::env::temp_dir().join(format!("wishtory-catalog-open-{}", std::process::id()));
         let cache = app_data.join("catalog-cache");
         let _ = std::fs::remove_dir_all(&app_data);
         std::fs::create_dir_all(&cache).unwrap();
-        std::fs::write(
-            cache.join("2.json"),
-            include_bytes!("../../../catalog/catalog-test-envelope.json"),
-        )
-        .unwrap();
+        std::fs::write(cache.join("2.json"), testkit::sign_catalog(2)).unwrap();
         let older_bundle = || Catalog {
             catalog_version: 1,
             ..Catalog::bundled()
         };
-        let named = |version| CatalogStore::open_exact(&app_data, version, older_bundle(), None);
+        let named = |version| {
+            CatalogStore::open_exact(
+                &app_data,
+                version,
+                older_bundle(),
+                Some(testkit::public_key()),
+            )
+        };
         assert_eq!(named(2).unwrap().current().catalog_version, 2);
         // The bundled copy serves its own version; any other version must be on disk.
         assert_eq!(named(1).unwrap().current().catalog_version, 1);
@@ -1678,6 +1811,14 @@ pub(crate) mod testkit {
         keypair().public_key().as_ref().to_vec()
     }
 
+    /// A signed envelope of the bundled catalog stamped with `version`. Tests sign with the test key
+    /// above so they never depend on the real signing key (which is rotated from time to time).
+    pub fn sign_catalog(version: u64) -> Vec<u8> {
+        let mut catalog = Catalog::bundled();
+        catalog.catalog_version = version;
+        sign(&erased::Json::json(&catalog))
+    }
+
     pub fn sign(payload: &[u8]) -> Vec<u8> {
         serde_json::json!({
             "payload": BASE64.encode(payload),
@@ -1699,7 +1840,34 @@ pub(crate) mod testkit {
     }
 
     /// A signed release made of exactly these documents (their versions are what it names).
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "a test helper that callers build values for"
+    )]
     pub fn envelopes_of(manifest: u64, c: Catalog, b: BannerSet, r: RuleSet) -> Envelopes {
+        let changes = vec![ChangeEntry {
+            id: "banners:window:hk4e:x".into(),
+            scope: ChangeScope::Banners,
+            game: "hk4e".into(),
+            ids: vec!["x".into()],
+            summary: "The dates of a banner changed.".into(),
+            severity: Severity::Major,
+            note: None,
+        }];
+        envelopes_with_changes(manifest, c, b, r, changes)
+    }
+
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "a test helper that callers build values for"
+    )]
+    pub fn envelopes_with_changes(
+        manifest: u64,
+        c: Catalog,
+        b: BannerSet,
+        r: RuleSet,
+        changes: Vec<ChangeEntry>,
+    ) -> Envelopes {
         let (catalog, banners, rules) = (c.catalog_version, b.banners_version, r.rules_version);
         let m = Manifest {
             schema_version: 1,
@@ -1710,15 +1878,7 @@ pub(crate) mod testkit {
                 banners,
                 rules,
             },
-            changes: vec![ChangeEntry {
-                id: "banners:window:hk4e:x".into(),
-                scope: ChangeScope::Banners,
-                game: "hk4e".into(),
-                ids: vec!["x".into()],
-                summary: "The dates of a banner changed.".into(),
-                severity: Severity::Major,
-                note: None,
-            }],
+            changes,
         };
         let json = |v: &dyn erased::Json| sign(&v.json());
         Envelopes {
@@ -1880,7 +2040,7 @@ mod release_tests {
                     "ids": [], "summary": "s", "severity": "info"})
                     })
                     .collect::<Vec<_>>()
-                    .into()
+                    .into();
             })
             .is_err()
         );
@@ -2055,6 +2215,27 @@ mod release_tests {
         );
         assert!(run(feeds.release.check(&source, true)).is_err());
         assert_eq!(versions(&feeds), (1, 1, 1, 1));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_check_that_could_not_reach_the_server_is_retried_after_an_hour_not_a_day() {
+        let dir = scratch("retry");
+        let feeds = open(&dir);
+        let source = Fake::default();
+        source.offline.store(true, Ordering::Relaxed);
+        assert!(run(feeds.release.check(&source, false)).is_err());
+        // Just failed: not due again yet.
+        assert!(!feeds.release.check_due());
+        // An hour later it is, although the last check was far less than a day ago.
+        let long_ago = (unix_now() - RETRY_AFTER_FAILURE.as_secs() - 1).to_string();
+        std::fs::write(dir.join(FAILED_FILE), long_ago).unwrap();
+        assert!(feeds.release.check_due());
+        // Once the server answers, the one-day rhythm is back.
+        source.offline.store(false, Ordering::Relaxed);
+        assert!(run(feeds.release.check(&source, false)).is_ok());
+        assert!(!dir.join(FAILED_FILE).exists());
+        assert!(!feeds.release.check_due());
         let _ = std::fs::remove_dir_all(dir);
     }
 

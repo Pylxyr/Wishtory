@@ -219,7 +219,13 @@ impl Cloud {
                 }
                 wlog!(Level::Info, "cloud: backups deleted from Drive");
             }
-            if let Some(token) = self.secrets.get(REFRESH_TOKEN)?
+            // A credential store that cannot be read must not keep the person signed in: the sign-in
+            // simply cannot be revoked then, and the local state is forgotten below all the same.
+            let token = self.secrets.get(REFRESH_TOKEN).unwrap_or_else(|e| {
+                wlog!(Level::Warn, "cloud: could not read the saved sign-in: {e}");
+                None
+            });
+            if let Some(token) = token
                 && let Err(e) = parts.oauth.revoke(&token).await
             {
                 wlog!(Level::Warn, "cloud: could not revoke the sign-in: {e}");
@@ -780,6 +786,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn signing_out_still_works_when_the_credential_store_cannot_be_read() {
+        let r = rig("signout-broken", None).await;
+        seed(&r);
+        r.secrets.fail_reads(true);
+        let status = r.cloud.sign_out(&r.settings, false).await.unwrap();
+        assert!(!status.signed_in && !status.auto_backup);
+        // Nothing could be revoked without the token, but the person is signed out on this PC.
+        assert!(r.fake.state.lock().unwrap().revoked.is_empty());
+        r.secrets.fail_reads(false);
+        assert!(r.secrets.is_empty());
+        let _ = std::fs::remove_dir_all(&r.dir);
+    }
+
+    #[tokio::test]
     async fn the_daily_backup_is_opt_in_and_runs_once_a_day() {
         let r = rig("auto", None).await;
         seed(&r);
@@ -810,7 +830,7 @@ mod tests {
         r.settings
             .update_cloud(|c| {
                 c.last_backup =
-                    Some((chrono::Utc::now() - chrono::Duration::hours(25)).to_rfc3339())
+                    Some((chrono::Utc::now() - chrono::Duration::hours(25)).to_rfc3339());
             })
             .unwrap();
         assert!(

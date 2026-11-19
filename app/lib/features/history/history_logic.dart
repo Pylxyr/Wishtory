@@ -1,4 +1,5 @@
 import '../../bridge/wishtory_api.dart';
+import '../../domain/time_text.dart';
 
 enum GroupBy { none, banner, month }
 
@@ -70,7 +71,7 @@ List<HistoryPull> applyFilters(List<HistoryPull> all, HistoryFilter f, {required
     }
     if (f.bannerKey != null && p.bannerKey != f.bannerKey) continue;
     if (q.isNotEmpty && !p.name.toLowerCase().contains(q)) continue;
-    final day = p.time.length >= 10 ? p.time.substring(0, 10) : p.time;
+    final day = dayOf(p.time);
     if (f.from != null && day.compareTo(f.from!) < 0) continue;
     if (f.to != null && day.compareTo(f.to!) > 0) continue;
     out.add(p);
@@ -133,7 +134,7 @@ List<HistoryRow> flatten(List<HistoryPull> rows, GroupBy group) {
   if (group == GroupBy.none) return [for (final p in rows) HistoryRow.pull(p)];
   String keyOf(HistoryPull p) => switch (group) {
         GroupBy.banner => p.bannerName ?? 'Unplaced',
-        GroupBy.month => p.time.length >= 7 ? p.time.substring(0, 7) : 'Unknown',
+        GroupBy.month => monthOf(p.time) ?? 'Unknown',
         GroupBy.none => '',
       };
   final order = <String>[];

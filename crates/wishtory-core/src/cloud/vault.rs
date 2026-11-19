@@ -7,6 +7,8 @@
 //! "WSHB" | version u8 | kdf u8 | m_cost_kib u32 | t_cost u32 | p_cost u32 | salt 16 | nonce 12 | ciphertext + tag
 //! ```
 //!
+//! * Version 1 encrypts the JSON as it is. Version 2 (what is written now) compresses it first with
+//!   DEFLATE, so a large history stays small for the upload; both are read.
 //! * The key is Argon2id(passphrase, salt), 256 bits, with a fresh random salt for every backup, so a
 //!   key (and therefore a nonce) is never used twice.
 //! * The cipher is ChaCha20-Poly1305. The whole header is authenticated as associated data, so
@@ -23,7 +25,13 @@ use ring::{
 use zeroize::Zeroizing;
 
 const MAGIC: &[u8; 4] = b"WSHB";
-const FORMAT_VERSION: u8 = 1;
+/// The JSON is encrypted as it is.
+const FORMAT_PLAIN: u8 = 1;
+/// The JSON is compressed, then encrypted. What is written.
+const FORMAT_DEFLATE: u8 = 2;
+/// A backup that unpacks to more than this is refused (a real history is a few megabytes).
+const MAX_UNPACKED_BYTES: usize = 256 * 1024 * 1024;
+const DEFLATE_LEVEL: u8 = 6;
 const KDF_ARGON2ID: u8 = 1;
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 12;
@@ -98,6 +106,16 @@ pub fn seal(passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>, AppError> {
 }
 
 fn seal_with(passphrase: &str, plaintext: &[u8], cost: Cost) -> Result<Vec<u8>, AppError> {
+    seal_format(passphrase, plaintext, cost, FORMAT_DEFLATE)
+}
+
+/// Seals in the given format; only tests ask for the old one.
+fn seal_format(
+    passphrase: &str,
+    plaintext: &[u8],
+    cost: Cost,
+    format: u8,
+) -> Result<Vec<u8>, AppError> {
     validate_passphrase(passphrase)?;
     let rng = SystemRandom::new();
     let mut salt = [0u8; SALT_LEN];
@@ -106,10 +124,14 @@ fn seal_with(passphrase: &str, plaintext: &[u8], cost: Cost) -> Result<Vec<u8>, 
     rng.fill(&mut salt).map_err(random_failed)?;
     rng.fill(&mut nonce).map_err(random_failed)?;
 
-    let mut out =
-        Vec::with_capacity(HEADER_LEN + plaintext.len() + aead::CHACHA20_POLY1305.tag_len());
+    let mut body = if format == FORMAT_DEFLATE {
+        miniz_oxide::deflate::compress_to_vec(plaintext, DEFLATE_LEVEL)
+    } else {
+        plaintext.to_vec()
+    };
+    let mut out = Vec::with_capacity(HEADER_LEN + body.len() + aead::CHACHA20_POLY1305.tag_len());
     out.extend_from_slice(MAGIC);
-    out.push(FORMAT_VERSION);
+    out.push(format);
     out.push(KDF_ARGON2ID);
     out.extend_from_slice(&cost.m_kib.to_le_bytes());
     out.extend_from_slice(&cost.t.to_le_bytes());
@@ -120,7 +142,6 @@ fn seal_with(passphrase: &str, plaintext: &[u8], cost: Cost) -> Result<Vec<u8>, 
 
     let key = derive_key(passphrase, &salt, cost)?;
     let (header, _) = out.split_at(HEADER_LEN);
-    let mut body = plaintext.to_vec();
     cipher(&key)?
         .seal_in_place_append_tag(
             Nonce::assume_unique_for_key(nonce),
@@ -138,7 +159,11 @@ pub fn open(passphrase: &str, blob: &[u8]) -> Result<Zeroizing<Vec<u8>>, AppErro
     if blob.len() < HEADER_LEN + aead::CHACHA20_POLY1305.tag_len() || &blob[..4] != MAGIC {
         return Err(not_a_backup());
     }
-    if blob[4] != FORMAT_VERSION || blob[5] != KDF_ARGON2ID {
+    let version = blob[4];
+    if version == 0 {
+        return Err(not_a_backup());
+    }
+    if version > FORMAT_DEFLATE || blob[5] != KDF_ARGON2ID {
         return Err(AppError::Message(
             "This backup was made by a newer Wishtory. Update Wishtory, then try again.".into(),
         ));
@@ -173,7 +198,13 @@ pub fn open(passphrase: &str, blob: &[u8]) -> Result<Zeroizing<Vec<u8>>, AppErro
         })?
         .len();
     body.truncate(plain_len);
-    Ok(body)
+    if version == FORMAT_PLAIN {
+        return Ok(body);
+    }
+    // The file was authenticated, so it is what a Wishtory wrote; the limit is a seat belt.
+    miniz_oxide::inflate::decompress_to_vec_with_limit(&body, MAX_UNPACKED_BYTES)
+        .map(Zeroizing::new)
+        .map_err(|_| AppError::Format("the backup could not be unpacked".into()))
 }
 
 #[cfg(test)]
@@ -241,5 +272,41 @@ mod tests {
         assert!(validate_passphrase(&"x".repeat(MAX_PASSPHRASE_CHARS + 1)).is_err());
         assert!(validate_passphrase("ten chars!!").is_ok());
         assert!(seal_with("short", b"x", FAST).is_err());
+    }
+
+    #[test]
+    fn a_history_is_compressed_before_it_is_encrypted() {
+        let history =
+            br#"{"id":"1700000000000000001","item":"Skyward Harp","rank":3}"#.repeat(2000);
+        let blob = seal_with(PASS, &history, FAST).unwrap();
+        assert_eq!(blob[4], FORMAT_DEFLATE);
+        assert!(
+            blob.len() < history.len() / 10,
+            "{} vs {}",
+            blob.len(),
+            history.len()
+        );
+        assert_eq!(&*open(PASS, &blob).unwrap(), history.as_slice());
+    }
+
+    #[test]
+    fn backups_made_before_compression_still_open() {
+        let blob = seal_format(PASS, b"{\"old\":true}", FAST, FORMAT_PLAIN).unwrap();
+        assert_eq!(blob[4], FORMAT_PLAIN);
+        assert_eq!(&*open(PASS, &blob).unwrap(), b"{\"old\":true}");
+    }
+
+    #[test]
+    fn an_unknown_version_is_told_apart_from_garbage() {
+        let blob = seal_with(PASS, b"data", FAST).unwrap();
+        let mut newer = blob.clone();
+        newer[4] = FORMAT_DEFLATE + 1;
+        match open(PASS, &newer) {
+            Err(AppError::Message(m)) => assert!(m.contains("newer Wishtory"), "{m}"),
+            other => panic!("{other:?}"),
+        }
+        let mut zero = blob;
+        zero[4] = 0;
+        assert!(matches!(open(PASS, &zero), Err(AppError::Format(_))));
     }
 }

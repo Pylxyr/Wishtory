@@ -39,6 +39,15 @@ void main() {
           request.response.add([0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 1, 2, 3, 4]);
         case '/page.png':
           request.response.write('<html>this is not a picture</html>');
+        case '/moved.png':
+          request.response.statusCode = HttpStatus.movedPermanently;
+          request.response.headers.set(HttpHeaders.locationHeader, '/ok.png');
+        case '/loop.png':
+          request.response.statusCode = HttpStatus.found;
+          request.response.headers.set(HttpHeaders.locationHeader, '/loop.png');
+        case '/downgrade.png':
+          request.response.statusCode = HttpStatus.found;
+          request.response.headers.set(HttpHeaders.locationHeader, 'https://127.0.0.1:1/ok.png');
         default:
           request.response.statusCode = HttpStatus.notFound;
       }
@@ -128,5 +137,45 @@ void main() {
     expect(const IconRequest(['a', 'b']), const IconRequest(['a', 'b']));
     expect(const IconRequest(['a', 'b']).hashCode, const IconRequest(['a', 'b']).hashCode);
     expect(const IconRequest(['a']), isNot(const IconRequest(['a', 'b'])));
+  });
+
+  test('a redirect is followed, but a loop, too many hops or a downgrade to another scheme are not', () async {
+    final moved = await cache.get(url('/moved.png'));
+    expect(moved, isNotNull);
+    expect(await moved!.readAsBytes(), _png);
+    expect(await cache.get(url('/loop.png')), isNull);
+    expect(hits['/loop.png'], 4); // the first request and three redirects, then it gives up
+    expect(await cache.get(url('/downgrade.png')), isNull);
+    expect(hits['/downgrade.png'], 1);
+  });
+
+  test('prune removes the oldest pictures first until the cache fits, and old half-finished downloads', () async {
+    await dir.create(recursive: true);
+    final now = DateTime.now();
+    Future<File> put(String name, int ageMinutes) async {
+      final f = File('${dir.path}/$name');
+      await f.writeAsBytes(List<int>.filled(10, 1));
+      await f.setLastModified(now.subtract(Duration(minutes: ageMinutes)));
+      return f;
+    }
+
+    final oldest = await put('a.png', 300);
+    final middle = await put('b.png', 200);
+    final newest = await put('c.png', 100);
+    final staleDownload = await put('d.png.part', 120);
+    final freshDownload = await put('e.png.part', 5);
+
+    // 30 bytes of pictures and a limit of 25: only the oldest goes.
+    expect(await cache.prune(maxTotalBytes: 25), 20);
+    expect(await oldest.exists(), isFalse);
+    expect(await middle.exists(), isTrue);
+    expect(await newest.exists(), isTrue);
+    expect(await staleDownload.exists(), isFalse);
+    expect(await freshDownload.exists(), isTrue);
+
+    // Nothing to do when it already fits, or when there is no folder at all.
+    expect(await cache.prune(maxTotalBytes: 1000), 0);
+    await dir.delete(recursive: true);
+    expect(await cache.prune(), 0);
   });
 }

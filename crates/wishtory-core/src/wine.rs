@@ -134,8 +134,12 @@ fn prefix_at(dir: &Path) -> Option<Prefix> {
 
 /// Prefixes at `root` or at most `depth` folders below it.
 pub fn find_prefixes(root: &Path, depth: usize) -> Vec<Prefix> {
+    find_prefixes_within(root, depth, MAX_ENTRIES_PER_SEARCH)
+}
+
+/// [`find_prefixes`] looking at no more than `budget` folder entries in all.
+fn find_prefixes_within(root: &Path, depth: usize, mut budget: usize) -> Vec<Prefix> {
     let mut found = Vec::new();
-    let mut budget = MAX_ENTRIES_PER_SEARCH;
     let mut seen = HashSet::new();
     walk(root, depth, &mut budget, &mut seen, &mut found);
     found
@@ -164,7 +168,7 @@ fn walk(
     let mut children = Vec::new();
     for entry in entries.flatten() {
         if *budget == 0 {
-            return;
+            break; // stop listing, but still look in the folders already found
         }
         *budget -= 1;
         let name = entry.file_name().to_string_lossy().to_lowercase();
@@ -192,9 +196,7 @@ pub fn default_roots_for(
         roots.push((prefix.to_path_buf(), 0));
     }
     let Some(home) = home else { return roots };
-    let data = xdg_data
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| home.join(".local").join("share"));
+    let data = xdg_data.map_or_else(|| home.join(".local").join("share"), Path::to_path_buf);
     roots.push((home.join(".wine"), 0));
     roots.push((home.join("Games"), 3));
     roots.push((data.clone(), 3));
@@ -307,6 +309,17 @@ mod tests {
         let proton = find_prefixes(&s.path().join("compat"), 1);
         assert_eq!(proton.len(), 1);
         assert!(proton[0].root.ends_with("compat/1234/pfx"));
+    }
+
+    #[test]
+    fn running_out_of_budget_still_searches_the_folders_already_listed() {
+        let s = Scratch::new();
+        for name in ["a", "b", "c"] {
+            make_prefix(&s.dir(name));
+        }
+        // Only two of the three entries may be looked at; those two are still searched.
+        assert_eq!(find_prefixes_within(s.path(), 1, 2).len(), 2);
+        assert_eq!(find_prefixes_within(s.path(), 1, 100).len(), 3);
     }
 
     #[test]

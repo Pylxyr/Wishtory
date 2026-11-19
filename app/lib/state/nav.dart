@@ -100,6 +100,20 @@ class NavController extends Notifier<NavState> {
     p.setString(_kUids, jsonEncode(uids));
   }
 
+  /// Stops remembering [uid] as the selected account of [game] (the account was deleted).
+  void forgetAccount(GameId game, String uid) {
+    if (state.uids[gameKey(game)] != uid) return;
+    final uids = {...state.uids}..remove(gameKey(game));
+    state = state.copyWith(uids: uids);
+    ref.read(sharedPrefsProvider).setString(_kUids, jsonEncode(uids));
+  }
+
+  /// Stops remembering any selected account (all saved history was cleared).
+  void forgetAllAccounts() {
+    state = state.copyWith(uids: const {});
+    ref.read(sharedPrefsProvider).remove(_kUids);
+  }
+
   /// Show a specific account's data (used after a refresh or an import).
   void showAccount(Account a) {
     selectAccount(a.game, a.uid);

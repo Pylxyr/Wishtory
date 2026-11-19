@@ -124,7 +124,7 @@ impl Drive {
             .bearer_auth(token)
             .send()
             .await?;
-        let about: About = check(response).await?.json().await?;
+        let about: About = check(response)?.json().await?;
         Ok(about.user.and_then(|u| u.email).unwrap_or_default())
     }
 
@@ -156,7 +156,7 @@ impl Drive {
                 .bearer_auth(token)
                 .send()
                 .await?;
-            let list: FileList = check(response).await?.json().await?;
+            let list: FileList = check(response)?.json().await?;
             out.extend(list.files.into_iter().filter_map(RawFile::into_backup));
             match list.next_page_token {
                 Some(next) => page = Some(next),
@@ -203,7 +203,7 @@ impl Drive {
             .body(body)
             .send()
             .await?;
-        let file: RawFile = check(response).await?.json().await?;
+        let file: RawFile = check(response)?.json().await?;
         file.into_backup().ok_or_else(|| {
             DriveError::Failed(AppError::Api(
                 "Drive stored the backup under an unexpected name".into(),
@@ -225,8 +225,7 @@ impl Drive {
                 .bearer_auth(token)
                 .send()
                 .await?,
-        )
-        .await?;
+        )?;
         if response
             .content_length()
             .is_some_and(|n| n > max_bytes as u64)
@@ -255,7 +254,7 @@ impl Drive {
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(());
         }
-        check(response).await.map(|_| ())
+        check(response).map(|_| ())
     }
 }
 
@@ -276,7 +275,7 @@ fn too_big() -> DriveError {
 
 /// Turns Drive's HTTP errors into messages written for the person. Response bodies are not shown:
 /// they are Google's text, not ours, and may repeat parts of the request.
-async fn check(response: reqwest::Response) -> Result<reqwest::Response, DriveError> {
+fn check(response: reqwest::Response) -> Result<reqwest::Response, DriveError> {
     use reqwest::StatusCode as S;
     let status = response.status();
     if status.is_success() {

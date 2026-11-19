@@ -1,6 +1,6 @@
 # Wishtory Privacy Policy
 
-_Last updated: 16 November 2026_
+_Last updated: 19 November 2026_
 
 Wishtory is a free, open-source desktop app for Windows and Linux. It shows your wish history, pity and 50/50s for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero.
 
@@ -29,7 +29,7 @@ Where your data lives:
 - Windows: `%APPDATA%\app.wishtory.desktop`
 - Linux: `~/.local/share/app.wishtory.desktop`
 
-Uninstalling Wishtory does not delete this folder, so your history survives a reinstall. Delete the folder to remove everything Wishtory stored.
+Uninstalling Wishtory does not delete this folder, so your history survives a reinstall. Deleting the folder removes your history, your saved catalog updates and your settings file. Three other things live elsewhere: the app's small preferences file (theme, nicknames, which account was last shown) in your user profile's application-data folder, the picture cache described above (`%LOCALAPPDATA%\app.wishtory.desktop\icons` on Windows, `~/.cache/app.wishtory.desktop/icons` on Linux), and, only if you turned cloud backup on, the Google sign-in and passphrase in your operating system's credential store (**Disconnect** in Settings removes them).
 
 ## 2. Where Wishtory connects to the internet
 
@@ -70,7 +70,7 @@ Cloud backup is off until you turn it on in **Settings, then Cloud backup**.
 ## 4. Security
 
 - Backups are encrypted before they leave your PC. Each backup uses its own random salt, and any change to a backup file is detected when it is opened.
-- All connections use HTTPS.
+- All connections to other computers use HTTPS. The one exception stays on your own PC: while you sign in to Google, a temporary address on `127.0.0.1` receives the sign-in answer from your browser and closes again.
 - Google sign-in happens on Google's own page in your browser, so your Google password never reaches Wishtory.
 - The diagnostics log removes history links, tokens and passphrases from anything it records.
 
@@ -80,7 +80,7 @@ No software can promise perfect security. If you find a problem, please report i
 
 | To | Do this |
 | :--- | :--- |
-| Delete your history on this PC | Delete the data folder shown in section 1, or use **Clear all saved history** on the Accounts page |
+| Delete your history on this PC | Use **Clear all saved history** on the Accounts page (it also forgets nicknames and last-refresh times), or delete the data folder shown in section 1 |
 | Stop cloud backup | Press **Disconnect** in Settings, then Cloud backup. This revokes Wishtory's access with Google and removes your sign-in and passphrase from your PC |
 | Delete your backups from Google Drive | Choose **Disconnect and delete backups**. Google Drive's settings (Manage apps) can also delete an app's hidden data |
 | Remove Wishtory's access from outside the app | Open [myaccount.google.com/permissions](https://myaccount.google.com/permissions) and remove Wishtory |

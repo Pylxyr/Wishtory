@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../bridge/wishtory_api.dart';
 import '../../domain/game_info.dart';
+import '../../domain/time_text.dart';
 import '../../state/settings.dart';
 import '../../ui/density.dart';
 import '../../ui/pull_tiles.dart';
@@ -385,7 +386,7 @@ class FiveChip extends StatelessWidget {
     final outcome = _outcomeStyle(c, f.outcome);
     final tracked = p.guaranteeOdds != null;
     final border = tracked && f.outcome != null ? outcome.color.withValues(alpha: 0.85) : c.line;
-    final words = '${f.name}, ${f.time.substring(0, 10)}. Pity ${f.pity} of ${p.hardPity} (${pityTierWords(tier).toLowerCase()}). ${resultWords(f.outcome, p.guaranteeOdds)}.';
+    final words = '${f.name}, ${dayOf(f.time)}. Pity ${f.pity} of ${p.hardPity} (${pityTierWords(tier).toLowerCase()}). ${resultWords(f.outcome, p.guaranteeOdds)}.';
 
     if (view == PullView.iconsOnly) {
       return PullIconTile(
@@ -461,7 +462,7 @@ class FourChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
-    final words = '${f.name}, ${f.time.substring(0, 10)}. Pity ${f.pity}. ${f.isCharacter ? 'Character' : 'Weapon'}.';
+    final words = '${f.name}, ${dayOf(f.time)}. Pity ${f.pity}. ${f.isCharacter ? 'Character' : 'Weapon'}.';
     final border = c.purple.withValues(alpha: 0.55);
     if (view == PullView.iconsOnly) {
       return PullIconTile(game: game, name: f.name, rank: 4, pity: f.pity, pityColor: c.purple, border: border, tooltip: words, size: 44);

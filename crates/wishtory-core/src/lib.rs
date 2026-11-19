@@ -4,8 +4,9 @@
 // * We never attach to / inject into / talk to the game process.
 // * We never write to game folders, never set proxies, never require admin rights.
 // * Network traffic is the official HoYoverse history API (fetch.rs), the signed catalog, banner
-//   list and pity rules (catalog.rs, rules.rs) and a version check of this project's GitHub releases (update.rs). None of
-//   them is sent an account or wish data.
+//   list and pity rules (catalog.rs, rules.rs), a version check of this project's GitHub releases
+//   (update.rs) and, from the app (not this crate), item pictures from enka.network and Paimon.moe's
+//   GitHub repository. None of them is sent an account or wish data.
 // * Cloud backup (cloud/) is OFF until the person signs in to Google. Then, and only then, wish
 //   history is uploaded, encrypted on this PC with the person's passphrase, to the hidden app-data
 //   folder of their own Google Drive. The Google sign-in and passphrase are kept in the operating
@@ -71,6 +72,26 @@ pub struct Core {
     pub rules: Arc<RulesStore>,
     pub settings: SettingsStore,
     pub cloud: cloud::Cloud,
+    /// Held for as long as this copy of Wishtory runs: a second copy on the same data folder would race
+    /// on the settings file and on cloud backups. The system releases it when the process ends, however.
+    _instance_lock: std::fs::File,
+}
+
+/// Takes the exclusive lock on the data folder, or says that another copy of Wishtory has it. A file
+/// system that cannot lock (some network shares) is not a reason to refuse to start.
+fn lock_data_dir(dir: &Path) -> Result<std::fs::File, AppError> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("wishtory.lock"))?;
+    match file.try_lock() {
+        Err(std::fs::TryLockError::WouldBlock) => Err(AppError::Message(
+            "Wishtory is already open. Close the other window first: two copies must not use the same data."
+                .into(),
+        )),
+        Ok(()) | Err(std::fs::TryLockError::Error(_)) => Ok(file),
+    }
 }
 
 /// Status lines while a refresh runs. Plain text only: never a link or authkey.
@@ -79,6 +100,7 @@ pub type Progress = Arc<dyn Fn(String) + Send + Sync>;
 impl Core {
     pub fn open(dir: &Path) -> Result<Self, AppError> {
         std::fs::create_dir_all(dir)?;
+        let instance_lock = lock_data_dir(dir)?;
         let feeds = ReleaseStore::open(dir);
         let db = Db::open(&dir.join("wishtory.db"))?;
         // Saved banners always belong to the banner list in use (this also repairs a crash
@@ -95,6 +117,7 @@ impl Core {
             rules: Arc::new(feeds.rules),
             settings: SettingsStore::open(dir),
             cloud: cloud::Cloud::new(),
+            _instance_lock: instance_lock,
         })
     }
 
@@ -265,5 +288,28 @@ impl Core {
                 passphrase,
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_second_copy_on_the_same_data_folder_is_refused_until_the_first_closes() {
+        let dir = std::env::temp_dir().join(format!("wishtory-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let first = Core::open(&dir).unwrap();
+        match Core::open(&dir) {
+            Err(AppError::Message(m)) => assert!(m.contains("already open"), "{m}"),
+            Err(other) => panic!("{other:?}"),
+            Ok(_) => panic!("a second copy was allowed"),
+        }
+        // Another data folder is no problem, and closing the first one frees the folder.
+        let other_dir = dir.join("elsewhere");
+        assert!(Core::open(&other_dir).is_ok());
+        drop(first);
+        assert!(Core::open(&dir).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

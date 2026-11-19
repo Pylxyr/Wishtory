@@ -56,7 +56,7 @@ fn data_2_candidates(data_dir: &Path) -> Vec<PathBuf> {
         return vec![];
     };
     let mut v: Vec<(std::time::SystemTime, PathBuf)> = rd
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.path().join("Cache").join("Cache_Data").join("data_2"))
         .filter(|p| p.is_file())
         .map(|p| {

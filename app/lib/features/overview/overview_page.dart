@@ -5,6 +5,7 @@ import '../../bridge/wishtory_api.dart';
 import '../../domain/game_info.dart';
 import '../../domain/planning.dart';
 import '../../domain/recovery.dart';
+import '../../domain/time_text.dart';
 import '../../state/loadable.dart';
 import '../../state/nav.dart';
 import '../../state/providers.dart';
@@ -146,7 +147,7 @@ class _StatusStrip extends StatelessWidget {
       _Stat('Total pulls', groupDigits(total), sub: '≈ ${groupDigits(total * info.pullCost)} ${info.currency}'),
       _Stat('${info.r5} pulls', groupDigits(fives), sub: total == 0 ? null : '${(fives * 100 / total).toStringAsFixed(2)}% of pulls'),
       _Stat('Average ${info.r5} pity', avg ?? '–', sub: avg == null ? 'No ${info.r5} yet' : 'pulls per ${info.r5}'),
-      _Stat('Latest ${info.r5}', latest?.name ?? '–', sub: latest == null ? null : '${latest.pity} pulls · ${latest.time.substring(0, 10)}', text: true),
+      _Stat('Latest ${info.r5}', latest?.name ?? '–', sub: latest == null ? null : '${latest.pity} pulls · ${dayOf(latest.time)}', text: true),
     ];
     return LayoutBuilder(builder: (context, box) {
       final gap = Density.of(context).gap;
