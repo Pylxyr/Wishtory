@@ -21,6 +21,14 @@ struct Source {
 
 impl Source {
     /// A Windows path from a log as the real folder on this machine.
+    #[cfg_attr(
+        not(unix),
+        allow(
+            clippy::unused_self,
+            clippy::unnecessary_wraps,
+            reason = "the same signature as on Linux, where the Wine prefix is needed and a path can fail to resolve"
+        )
+    )]
     fn resolve(&self, windows_path: &str) -> Option<PathBuf> {
         #[cfg(unix)]
         {
