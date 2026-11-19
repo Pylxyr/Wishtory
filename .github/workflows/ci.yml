@@ -32,6 +32,13 @@ jobs:
         with:
           flutter: "false"
       - run: cargo fmt --all --check
+      # The lint policy (deny correctness, suspicious, complexity, perf, style and pedantic, with a few
+      # allows) lives in Cargo.toml's [workspace.lints]; rustc warnings are denied too. Runs on both
+      # systems so the Windows-only code paths are checked as well.
+      - name: Clippy
+        env:
+          CARGO_BUILD_WARNINGS: deny
+        run: cargo clippy --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace
 
   # The Flutter app on Linux: analysis, tests, and a real release build with the Rust library inside
