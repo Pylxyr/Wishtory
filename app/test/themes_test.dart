@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wishtory/bridge/wishtory_api.dart';
 import 'package:wishtory/ui/themes.dart';
 import 'package:wishtory/ui/tokens.dart';
 
@@ -58,5 +59,17 @@ void main() {
         expect(_contrast(c.accent, c.bg), greaterThanOrEqualTo(3), reason: '${p.id} $b accent on page');
       }
     }
+  });
+
+  test('follow-the-game picks the open game\'s preset, and Genshin Impact\'s when none is given', () {
+    for (final g in GameId.values) {
+      for (final b in Brightness.values) {
+        final followed = paletteFor(followGameId, b, game: g);
+        final direct = paletteFor(themeIdForGame(g), b);
+        expect([followed.bg, followed.panel, followed.accent], [direct.bg, direct.panel, direct.accent], reason: '$g $b');
+      }
+    }
+    expect(paletteFor(followGameId, Brightness.dark).accent, paletteFor('teyvat', Brightness.dark).accent);
+    expect(themePresets.map((p) => p.id), containsAll(GameId.values.map(themeIdForGame)));
   });
 }

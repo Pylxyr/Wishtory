@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/shell/shell.dart';
+import 'state/nav.dart';
 import 'state/settings.dart';
 import 'ui/density.dart';
 import 'ui/themes.dart';
@@ -15,12 +16,14 @@ class WishtoryApp extends ConsumerWidget {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final comfortable = ref.watch(settingsProvider.select((s) => s.comfortable));
     final themeId = ref.watch(settingsProvider.select((s) => s.themeId));
+    // Only the 'follow the game' theme depends on the open game; the others ignore it.
+    final game = ref.watch(navProvider.select((n) => n.game));
     return MaterialApp(
       title: 'Wishtory',
       debugShowCheckedModeBanner: false,
       themeMode: mode,
-      theme: buildTheme(Brightness.light, comfortable: comfortable, palette: paletteFor(themeId, Brightness.light)),
-      darkTheme: buildTheme(Brightness.dark, comfortable: comfortable, palette: paletteFor(themeId, Brightness.dark)),
+      theme: buildTheme(Brightness.light, comfortable: comfortable, palette: paletteFor(themeId, Brightness.light, game: game)),
+      darkTheme: buildTheme(Brightness.dark, comfortable: comfortable, palette: paletteFor(themeId, Brightness.dark, game: game)),
       builder: (context, child) => DensityScope(comfortable: comfortable, child: child ?? const SizedBox.shrink()),
       home: const AppShell(),
     );

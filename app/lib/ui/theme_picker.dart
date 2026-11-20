@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../state/nav.dart';
 import '../state/settings.dart';
 import 'themes.dart';
 import 'tokens.dart';
@@ -14,14 +15,22 @@ class ThemePicker extends ConsumerWidget {
     final current = ref.watch(settingsProvider.select((s) => s.themeId));
     final brightness = Theme.of(context).brightness;
     final prefs = ref.read(settingsProvider.notifier);
+    final game = ref.watch(navProvider.select((n) => n.game));
     return Wrap(spacing: 10, runSpacing: 10, children: [
       for (final preset in themePresets)
         _Swatch(
           name: preset.name,
           colors: paletteFor(preset.id, brightness),
-          selected: themePreset(current).id == preset.id,
+          selected: current != followGameId && themePreset(current).id == preset.id,
           onTap: () => prefs.setThemeId(preset.id),
         ),
+      // Not a palette: Teyvat, Astral or New Eridu, whichever game is open.
+      _Swatch(
+        name: 'Follow game',
+        colors: paletteFor(followGameId, brightness, game: game),
+        selected: current == followGameId,
+        onTap: () => prefs.setThemeId(followGameId),
+      ),
     ]);
   }
 }

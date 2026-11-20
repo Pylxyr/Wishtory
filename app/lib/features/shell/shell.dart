@@ -14,6 +14,7 @@ import '../../state/refresh.dart';
 import '../../state/settings.dart';
 import '../../state/toasts.dart';
 import '../../ui/tokens.dart';
+import '../../ui/game_backdrop.dart';
 import '../../ui/widgets.dart';
 import '../about/about_page.dart';
 import '../accounts/accounts_page.dart';
@@ -84,6 +85,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         child: Focus(
           autofocus: true,
           child: Stack(children: [
+            Positioned.fill(child: GameBackdrop(game: nav.game)),
             Column(children: [
               Expanded(
                 child: Row(children: [
