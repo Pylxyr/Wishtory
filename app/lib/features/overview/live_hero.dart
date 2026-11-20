@@ -210,7 +210,7 @@ class _LiveCardView extends StatelessWidget {
       label: words,
       onTap: p == null ? null : () => onSelect(_banner.pool),
       child: ExcludeSemantics(
-        child: game == GameId.zenless ? Transform(alignment: Alignment.center, transform: Matrix4.skewX(-0.1), child: card) : card,
+        child: game == GameId.zenless ? Transform(alignment: Alignment.center, transform: Matrix4.skewX(-0.1), child: face) : face,
       ),
     );
   }
