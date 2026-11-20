@@ -57,11 +57,10 @@ Widget _bannerChips(BuildContext context, BannerPity p, GameId game, {Color? ink
 
 /// A small four-sided ornament, a square turned on its corner.
 class _Diamond extends StatelessWidget {
-  const _Diamond({required this.color, this.size = 8, this.filled = true});
+  const _Diamond({required this.color, this.size = 8});
 
   final Color color;
   final double size;
-  final bool filled;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
@@ -71,7 +70,7 @@ class _Diamond extends StatelessWidget {
             width: size,
             height: size,
             child: DecoratedBox(
-              decoration: BoxDecoration(color: filled ? color : null, border: Border.all(color: color, width: 1.2)),
+              decoration: BoxDecoration(color: color, border: Border.all(color: color, width: 1.2)),
             ),
           ),
         ),
