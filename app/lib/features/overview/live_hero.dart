@@ -6,6 +6,8 @@ import '../../domain/planning.dart';
 import '../../state/providers.dart';
 import '../../ui/banner_art.dart';
 import '../../ui/tokens.dart';
+import '../../ui/widgets.dart';
+import 'game_boards.dart';
 
 /// The banners running right now, large and centered at the top of the Overview, each on the artwork of
 /// what it features. A character banner that features two characters is two cards, one per character
@@ -44,9 +46,9 @@ class LiveHero extends ConsumerWidget {
         Semantics(
           header: true,
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: c.ok, shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Text('LIVE NOW', style: Ty.label.copyWith(color: c.muted)),
+            PulseDot(color: c.ok),
+            const SizedBox(width: 2),
+            Text(liveLabelFor(account.game), style: Ty.label.copyWith(color: c.muted)),
           ]),
         ),
         const SizedBox(height: 12),
@@ -68,14 +70,19 @@ class LiveHero extends ConsumerWidget {
             spacing: gap,
             runSpacing: gap,
             children: [
-              for (final card in cards)
-                SizedBox(
-                  width: width,
-                  child: _LiveCardView(
-                    game: account.game,
-                    card: card,
-                    pity: pity.where((p) => p.banner == card.banner.pool).firstOrNull,
-                    onSelect: onSelect,
+              for (final (i, card) in cards.indexed)
+                PopIn(
+                  index: i,
+                  child: SizedBox(
+                    width: width,
+                    child: LiftOnHover(
+                      child: _LiveCardView(
+                        game: account.game,
+                        card: card,
+                        pity: pity.where((p) => p.banner == card.banner.pool).firstOrNull,
+                        onSelect: onSelect,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -107,15 +114,9 @@ class _LiveCardView extends StatelessWidget {
     final c = context.wc;
     final p = pity;
     final words = '${card.title}. $_kind. ${card.featured.join(', ')}. ${timeLeft(_banner.msLeft)}.${p == null ? '' : ' Your pity ${p.pity} of ${p.hardPity}.'}';
-    final radius = BorderRadius.circular(18);
-    return Semantics(
-      button: p != null,
-      label: words,
-      onTap: p == null ? null : () => onSelect(_banner.pool),
-      child: ExcludeSemantics(
-        child: Container(
+    final face = Container(
           height: 250,
-          decoration: BoxDecoration(borderRadius: radius, border: Border.all(color: c.line2)),
+          decoration: _frame(c),
           clipBehavior: Clip.antiAlias,
           child: Material(
             color: Colors.transparent,
@@ -203,8 +204,26 @@ class _LiveCardView extends StatelessWidget {
               }),
             ),
           ),
-        ),
+        );
+    return Semantics(
+      button: p != null,
+      label: words,
+      onTap: p == null ? null : () => onSelect(_banner.pool),
+      child: ExcludeSemantics(
+        child: game == GameId.zenless ? Transform(alignment: Alignment.center, transform: Matrix4.skewX(-0.1), child: card) : card,
       ),
     );
   }
+
+  /// The card's outline: rounded and gold-edged for Genshin, bevelled for Star Rail, square and bright for Zenless.
+  Decoration _frame(WishColors c) => switch (game) {
+        GameId.genshin => BoxDecoration(borderRadius: BorderRadius.circular(22), border: Border.all(color: c.gold.withValues(alpha: 0.55), width: 1.5)),
+        GameId.starRail => ShapeDecoration(
+            shape: BeveledRectangleBorder(
+              side: BorderSide(color: c.line2),
+              borderRadius: const BorderRadius.only(topLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+            ),
+          ),
+        GameId.zenless => BoxDecoration(borderRadius: BorderRadius.circular(4), border: Border.all(color: c.accent, width: 2)),
+      };
 }

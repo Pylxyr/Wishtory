@@ -9,8 +9,9 @@ import '../state/providers.dart';
 import 'density.dart';
 import 'tokens.dart';
 
-/// A bordered surface. Structure comes from hairlines, not shadows.
-class Panel extends StatelessWidget {
+/// A bordered surface. Structure comes from hairlines; a card that can be pressed lifts a little and glows in the
+/// accent colour when the pointer is over it, and a selected card keeps a softer glow.
+class Panel extends StatefulWidget {
   const Panel({super.key, required this.child, this.padding, this.tint, this.onTap, this.selected = false});
 
   final Widget child;
@@ -21,22 +22,159 @@ class Panel extends StatelessWidget {
   final bool selected;
 
   @override
+  State<Panel> createState() => _PanelState();
+}
+
+class _PanelState extends State<Panel> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
     final c = context.wc;
-    final box = Container(
-      padding: padding ?? EdgeInsets.all(Density.of(context).pad),
+    final w = widget;
+    final tappable = w.onTap != null;
+    final lifted = tappable && _hover;
+    final glow = lifted || w.selected;
+    final box = AnimatedContainer(
+      duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      padding: w.padding ?? EdgeInsets.all(Density.of(context).pad),
       decoration: BoxDecoration(
-        color: tint ?? c.panel,
+        color: w.tint ?? c.panel,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: selected ? c.accent : c.line, width: selected ? 1.5 : 1),
+        border: Border.all(
+          color: w.selected ? c.accent : (lifted ? c.accent.withValues(alpha: 0.55) : c.line),
+          width: w.selected ? 1.5 : 1,
+        ),
+        boxShadow: glow ? [BoxShadow(color: c.accent.withValues(alpha: w.selected ? 0.16 : 0.12), blurRadius: 16, offset: const Offset(0, 4))] : const [],
       ),
-      child: child,
+      child: w.child,
     );
-    if (onTap == null) return box;
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(borderRadius: BorderRadius.circular(12), onTap: onTap, child: box),
+    if (!tappable) return box;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(borderRadius: BorderRadius.circular(12), onTap: w.onTap, child: box),
+      ),
+    );
+  }
+}
+
+/// Slides its child up a few pixels while fading it in, once, when it first appears. [index] staggers siblings so a
+/// row of cards arrives one after another. With reduced motion switched on the child simply appears.
+class PopIn extends StatelessWidget {
+  const PopIn({super.key, required this.child, this.index = 0});
+
+  final Widget child;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.of(context).disableAnimations) return child;
+    final steps = index < 8 ? index : 8;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: Duration(milliseconds: 320 + 70 * steps),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * 14), child: child),
+      ),
+    );
+  }
+}
+
+/// Grows its child a touch while the pointer is over it.
+class LiftOnHover extends StatefulWidget {
+  const LiftOnHover({super.key, required this.child, this.scale = 1.012});
+
+  final Widget child;
+  final double scale;
+
+  @override
+  State<LiftOnHover> createState() => _LiftOnHoverState();
+}
+
+class _LiftOnHoverState extends State<LiftOnHover> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.of(context).disableAnimations;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedScale(
+        scale: _hover && !still ? widget.scale : 1,
+        duration: still ? Duration.zero : const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// A dot with a ring that swells and fades around it, for something that is happening now. Still (no ring) when
+/// reduced motion is switched on.
+class PulseDot extends StatefulWidget {
+  const PulseDot({super.key, required this.color, this.size = 8});
+
+  final Color color;
+  final double size;
+
+  @override
+  State<PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).disableAnimations) {
+      _ctl.stop();
+      _ctl.value = 1;
+    } else if (!_ctl.isAnimating) {
+      _ctl.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = widget.size;
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: size * 3,
+        height: size * 3,
+        child: AnimatedBuilder(
+          animation: _ctl,
+          builder: (context, _) {
+            final t = _ctl.value;
+            final ring = size * (1 + t * 1.8);
+            return Center(
+              child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+                SizedBox(
+                  width: ring,
+                  height: ring,
+                  child: DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color.withValues(alpha: (1 - t) * 0.45))),
+                ),
+                SizedBox(width: size, height: size, child: DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle, color: widget.color))),
+              ]),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -70,6 +208,7 @@ class RarityChip extends StatelessWidget {
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.5)),
+        boxShadow: rank >= 5 ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 8)] : null,
       ),
       child: Text(rankLabel(game, rank), style: Ty.small.copyWith(color: color, fontWeight: FontWeight.w600)),
     );
@@ -192,7 +331,7 @@ class PityBar extends StatelessWidget {
           final w = box.maxWidth;
           return SizedBox(
             height: height,
-            child: Stack(children: [
+            child: Stack(clipBehavior: Clip.none, children: [
               Container(decoration: BoxDecoration(color: c.panel3, borderRadius: BorderRadius.circular(height))),
               if (soft != null)
                 Positioned(
@@ -210,7 +349,11 @@ class PityBar extends StatelessWidget {
               AnimatedContainer(
                 duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 250),
                 width: w * frac,
-                decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(height)),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [fill, Color.alphaBlend(Colors.white.withValues(alpha: 0.28), fill)]),
+                  borderRadius: BorderRadius.circular(height),
+                  boxShadow: inSoft ? [BoxShadow(color: fill.withValues(alpha: 0.5), blurRadius: 8)] : null,
+                ),
               ),
             ]),
           );
@@ -237,8 +380,21 @@ class EmptyState extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 40, color: c.faint),
-            const SizedBox(height: 14),
+            Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [c.accent.withValues(alpha: 0.22), c.gold.withValues(alpha: 0.12)],
+                ),
+                border: Border.all(color: c.accent.withValues(alpha: 0.35)),
+              ),
+              child: Icon(icon, size: 34, color: c.accent),
+            ),
+            const SizedBox(height: 16),
             Text(title, style: Ty.h2, textAlign: TextAlign.center),
             const SizedBox(height: 6),
             Text(body, style: Ty.body.copyWith(color: c.muted), textAlign: TextAlign.center),

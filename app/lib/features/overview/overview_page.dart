@@ -10,12 +10,12 @@ import '../../state/loadable.dart';
 import '../../state/nav.dart';
 import '../../state/providers.dart';
 import '../../state/refresh.dart';
-import '../../ui/density.dart';
 import '../../ui/tokens.dart';
 import '../../ui/view_controls.dart';
 import '../../ui/widgets.dart';
 import '../shell/shell.dart';
 import 'banner_stats.dart';
+import 'game_boards.dart';
 import 'first_five_prompt.dart';
 import 'live_hero.dart';
 
@@ -85,8 +85,8 @@ class OverviewPage extends ConsumerWidget {
         height: 360,
         child: EmptyState(
           icon: Icons.hourglass_empty,
-          title: 'This account has no pulls yet',
-          body: 'Press Refresh after opening the history page in the game.',
+          title: 'A clean slate',
+          body: 'This account has no pulls yet. Open the history page in the game, then press Refresh and your first wishes will land here.',
           actions: [FilledButton(onPressed: () => ref.read(refreshProvider.notifier).run(), child: const Text('Refresh'))],
         ),
       );
@@ -97,8 +97,8 @@ class OverviewPage extends ConsumerWidget {
       LiveHero(account: account, pity: list, onSelect: (key) => ref.read(selectedBannerProvider.notifier).select(key)),
       _StatusStrip(game: account.game, list: list),
       const SizedBox(height: 20),
-      const SectionLabel('Banners'),
-      _BannerGrid(list: list, game: account.game, selected: selected.banner),
+      SectionLabel(bannersLabelFor(account.game)),
+      BannerBoard(game: account.game, list: list, selected: selected.banner, onSelect: (key) => ref.read(selectedBannerProvider.notifier).select(key)),
       const SizedBox(height: 20),
       _BannerDetail(p: selected, game: account.game),
     ]);
@@ -143,116 +143,13 @@ class _StatusStrip extends StatelessWidget {
       }
     }
     final avg = weight == 0 ? null : (weighted / weight).toStringAsFixed(1);
-    final tiles = [
-      _Stat('Total pulls', groupDigits(total), sub: '≈ ${groupDigits(total * info.pullCost)} ${info.currency}'),
-      _Stat('${info.r5} pulls', groupDigits(fives), sub: total == 0 ? null : '${(fives * 100 / total).toStringAsFixed(2)}% of pulls'),
-      _Stat('Average ${info.r5} pity', avg ?? '–', sub: avg == null ? 'No ${info.r5} yet' : 'pulls per ${info.r5}'),
-      _Stat('Latest ${info.r5}', latest?.name ?? '–', sub: latest == null ? null : '${latest.pity} pulls · ${dayOf(latest.time)}', text: true),
+    final stats = [
+      StatData('Total pulls', groupDigits(total), sub: '≈ ${groupDigits(total * info.pullCost)} ${info.currency}'),
+      StatData('${info.r5} pulls', groupDigits(fives), sub: total == 0 ? null : '${(fives * 100 / total).toStringAsFixed(2)}% of pulls'),
+      StatData('Average ${info.r5} pity', avg ?? '–', sub: avg == null ? 'No ${info.r5} yet' : 'pulls per ${info.r5}'),
+      StatData('Latest ${info.r5}', latest?.name ?? '–', sub: latest == null ? null : '${latest.pity} pulls · ${dayOf(latest.time)}', text: true),
     ];
-    return LayoutBuilder(builder: (context, box) {
-      final gap = Density.of(context).gap;
-      final cols = box.maxWidth >= 900 ? 4 : 2;
-      final w = (box.maxWidth - (cols - 1) * gap) / cols;
-      return Wrap(spacing: gap, runSpacing: gap, children: [for (final t in tiles) SizedBox(width: w, child: t)]);
-    });
-  }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat(this.label, this.value, {this.sub, this.text = false});
-  final String label;
-  final String value;
-  final String? sub;
-  final bool text;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.wc;
-    return Panel(
-      padding: const EdgeInsets.all(14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: Ty.small.copyWith(color: c.muted)),
-        const SizedBox(height: 4),
-        Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: text ? Ty.h1 : Ty.bigNum.copyWith(fontSize: 26)),
-        if (sub != null) Text(sub!, maxLines: 1, overflow: TextOverflow.ellipsis, style: Ty.small.copyWith(color: c.faint)),
-      ]),
-    );
-  }
-}
-
-// ------------------------------------------------------------------ live banners
-
-// ------------------------------------------------------------------ banner cards
-
-class _BannerGrid extends ConsumerWidget {
-  const _BannerGrid({required this.list, required this.game, required this.selected});
-  final List<BannerPity> list;
-  final GameId game;
-  final String selected;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return LayoutBuilder(builder: (context, box) {
-      final gap = Density.of(context).gap;
-      // As many cards per row as fit at a sensible width, balanced so no row ends with a lone card.
-      var fit = ((box.maxWidth + gap) / (280 + gap)).floor();
-      if (fit < 1) fit = 1;
-      if (fit > 6) fit = 6;
-      final rows = (list.length / fit).ceil();
-      final cols = (list.length / rows).ceil();
-      final w = (box.maxWidth - (cols - 1) * gap) / cols;
-      return Wrap(spacing: gap, runSpacing: gap, children: [
-        for (final p in list)
-          SizedBox(
-            width: w,
-            child: _BannerCard(p: p, game: game, selected: p.banner == selected, onTap: () => ref.read(selectedBannerProvider.notifier).select(p.banner)),
-          ),
-      ]);
-    });
-  }
-}
-
-class _BannerCard extends StatelessWidget {
-  const _BannerCard({required this.p, required this.game, required this.selected, required this.onTap});
-  final BannerPity p;
-  final GameId game;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.wc;
-    final info = GameInfo.of(game);
-    final inSoft = p.softPity != null && p.pity >= p.softPity!;
-    final odds = p.guaranteeOdds;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: '${p.label}: ${p.pity} of ${p.hardPity} pulls${inSoft ? ', soft pity reached' : ''}',
-      child: Panel(
-        selected: selected,
-        onTap: onTap,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(p.label, style: Ty.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 8),
-          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-            Text('${p.pity}', style: Ty.bigNum),
-            Text(' / ${p.hardPity}', style: Ty.num.copyWith(color: c.faint)),
-            const Spacer(),
-            Text('${groupDigits(p.total)} pulls', style: Ty.small.copyWith(color: c.faint)),
-          ]),
-          const SizedBox(height: 8),
-          PityBar(value: p.pity, hard: p.hardPity, soft: p.softPity),
-          const SizedBox(height: 10),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            if (odds != null && p.guaranteed == true) StatusChip('Guaranteed ${info.r5}', color: c.blue, icon: Icons.verified_outlined),
-            if (odds != null && p.guaranteed == false) StatusChip('$odds/${100 - odds}', color: c.muted, icon: Icons.casino_outlined),
-            if (inSoft) StatusChip('Soft pity', color: c.accent, icon: Icons.trending_up),
-            if (p.guaranteed == null && !inSoft) Text('${p.fiveStars} ${info.fives}', style: Ty.small.copyWith(color: c.faint)),
-          ]),
-        ]),
-      ),
-    );
+    return StatStrip(game: game, stats: stats);
   }
 }
 
