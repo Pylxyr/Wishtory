@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../bridge/wishtory_api.dart';
+import 'game_skin.dart';
+
 /// Wishtory's design tokens: graphite surfaces, one blue accent for every game, gold reserved for
 /// 5★ and purple for 4★. Values carry over from the audited CSS of the previous UI.
 @immutable
@@ -114,7 +117,8 @@ class Ty {
 }
 
 /// The Material theme for [brightness]; [palette] is a colour theme from `paletteFor`, the graphite default otherwise.
-ThemeData buildTheme(Brightness brightness, {bool comfortable = false, WishColors? palette}) {
+/// With a [game] the buttons, dialogs and menus take that game's cut and the theme carries its [GameSkin].
+ThemeData buildTheme(Brightness brightness, {bool comfortable = false, WishColors? palette, GameId? game}) {
   final c = palette ?? (brightness == Brightness.dark ? WishColors.dark : WishColors.light);
   final scheme = ColorScheme(
     brightness: brightness,
@@ -129,6 +133,14 @@ ThemeData buildTheme(Brightness brightness, {bool comfortable = false, WishColor
     outline: c.control,
     outlineVariant: c.line,
   );
+  final skin = GameSkin(game);
+  // The original look keeps Material's own shapes; a game swaps in its own.
+  final button = game == null ? null : skin.pill();
+  final buttonText = switch (game) {
+    GameId.starRail => const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.5),
+    GameId.zenless => const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.4),
+    _ => null,
+  };
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
@@ -139,6 +151,10 @@ ThemeData buildTheme(Brightness brightness, {bool comfortable = false, WishColor
     dividerColor: c.line,
     splashFactory: NoSplash.splashFactory,
     visualDensity: comfortable ? VisualDensity.standard : VisualDensity.compact,
-    extensions: [c],
+    filledButtonTheme: game == null ? null : FilledButtonThemeData(style: FilledButton.styleFrom(shape: button, textStyle: buttonText)),
+    outlinedButtonTheme: game == null ? null : OutlinedButtonThemeData(style: OutlinedButton.styleFrom(shape: button, textStyle: buttonText)),
+    dialogTheme: game == null ? null : DialogThemeData(shape: skin.shape(r: 18, side: BorderSide(color: c.line2))),
+    popupMenuTheme: game == null ? null : PopupMenuThemeData(shape: skin.shape(r: 8, side: BorderSide(color: c.line2))),
+    extensions: [c, skin],
   );
 }

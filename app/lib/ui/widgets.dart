@@ -7,6 +7,7 @@ import '../domain/icon_cache.dart';
 import '../domain/recovery.dart';
 import '../state/providers.dart';
 import 'density.dart';
+import 'game_skin.dart';
 import 'tokens.dart';
 
 /// A bordered surface. Structure comes from hairlines; a card that can be pressed lifts a little and glows in the
@@ -31,33 +32,46 @@ class _PanelState extends State<Panel> {
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
+    final skin = context.skin;
     final w = widget;
     final tappable = w.onTap != null;
     final lifted = tappable && _hover;
     final glow = lifted || w.selected;
-    final box = AnimatedContainer(
+    final edge = w.selected ? c.accent : (lifted ? c.accent.withValues(alpha: 0.55) : c.line);
+    final shape = skin.shape(side: BorderSide(color: edge, width: w.selected ? 1.5 : 1));
+    Widget box = AnimatedContainer(
       duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 160),
       curve: Curves.easeOut,
       padding: w.padding ?? EdgeInsets.all(Density.of(context).pad),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: w.tint ?? c.panel,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: w.selected ? c.accent : (lifted ? c.accent.withValues(alpha: 0.55) : c.line),
-          width: w.selected ? 1.5 : 1,
-        ),
-        boxShadow: glow ? [BoxShadow(color: c.accent.withValues(alpha: w.selected ? 0.16 : 0.12), blurRadius: 16, offset: const Offset(0, 4))] : const [],
+        shape: shape,
+        shadows: glow ? [BoxShadow(color: c.accent.withValues(alpha: w.selected ? 0.16 : 0.12), blurRadius: 16, offset: const Offset(0, 4))] : const [],
       ),
       child: w.child,
     );
+    // Zenless Zone Zero panels carry a bright tab on their left edge that lights up when they are in play.
+    if (skin.isZenless) {
+      box = Stack(children: [
+        box,
+        Positioned(
+          left: 0,
+          top: 12,
+          bottom: 12,
+          width: 3,
+          child: IgnorePointer(child: ColoredBox(color: glow ? c.accent : c.line2)),
+        ),
+      ]);
+    }
     if (!tappable) return box;
+    final clip = skin.shape();
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(borderRadius: BorderRadius.circular(12), onTap: w.onTap, child: box),
+        shape: clip,
+        child: InkWell(customBorder: clip, onTap: w.onTap, child: box),
       ),
     );
   }
@@ -184,13 +198,18 @@ class SectionLabel extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Semantics(
-          header: true,
-          child: Text(text.toUpperCase(), style: Ty.label.copyWith(color: context.wc.faint)),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final c = context.wc;
+    final mark = context.skin.headerMark(c.accent);
+    final label = Text(text.toUpperCase(), style: Ty.label.copyWith(color: c.faint));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Semantics(
+        header: true,
+        child: mark == null ? label : Row(mainAxisSize: MainAxisSize.min, children: [mark, const SizedBox(width: 8), label]),
+      ),
+    );
+  }
 }
 
 /// "5★" / "S-rank" in the rarity colour. The text carries the meaning, the colour only reinforces it.
@@ -204,11 +223,10 @@ class RarityChip extends StatelessWidget {
     final color = context.wc.rarity(rank);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-        boxShadow: rank >= 5 ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 8)] : null,
+        shape: context.skin.shape(r: 6, side: BorderSide(color: color.withValues(alpha: 0.5))),
+        shadows: rank >= 5 ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 8)] : null,
       ),
       child: Text(rankLabel(game, rank), style: Ty.small.copyWith(color: color, fontWeight: FontWeight.w600)),
     );
@@ -226,10 +244,9 @@ class StatusChip extends StatelessWidget {
     final c = color ?? context.wc.muted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: c.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: c.withValues(alpha: 0.45)),
+        shape: context.skin.pill(side: BorderSide(color: c.withValues(alpha: 0.45))),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         if (icon != null) ...[Icon(icon, size: 13, color: c), const SizedBox(width: 4)],
