@@ -16,14 +16,14 @@ class WishtoryApp extends ConsumerWidget {
     final mode = ref.watch(settingsProvider.select((s) => s.themeMode));
     final comfortable = ref.watch(settingsProvider.select((s) => s.comfortable));
     final themeId = ref.watch(settingsProvider.select((s) => s.themeId));
-    // Only the 'follow the game' theme depends on the open game; the others ignore it.
+    // The open game picks the 'follow the game' colours and the cut of the interface (shapes, lettering, ornaments).
     final game = ref.watch(navProvider.select((n) => n.game));
     return MaterialApp(
       title: 'Wishtory',
       debugShowCheckedModeBanner: false,
       themeMode: mode,
-      theme: buildTheme(Brightness.light, comfortable: comfortable, palette: paletteFor(themeId, Brightness.light, game: game)),
-      darkTheme: buildTheme(Brightness.dark, comfortable: comfortable, palette: paletteFor(themeId, Brightness.dark, game: game)),
+      theme: buildTheme(Brightness.light, comfortable: comfortable, palette: paletteFor(themeId, Brightness.light, game: game), game: game),
+      darkTheme: buildTheme(Brightness.dark, comfortable: comfortable, palette: paletteFor(themeId, Brightness.dark, game: game), game: game),
       builder: (context, child) => DensityScope(comfortable: comfortable, child: child ?? const SizedBox.shrink()),
       home: const AppShell(),
     );

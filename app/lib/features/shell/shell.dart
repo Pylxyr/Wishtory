@@ -15,6 +15,7 @@ import '../../state/settings.dart';
 import '../../state/toasts.dart';
 import '../../ui/tokens.dart';
 import '../../ui/game_backdrop.dart';
+import '../../ui/game_skin.dart';
 import '../../ui/widgets.dart';
 import '../about/about_page.dart';
 import '../accounts/accounts_page.dart';
@@ -163,8 +164,8 @@ class AppRail extends ConsumerWidget {
             alignment: wide ? Alignment.centerLeft : Alignment.center,
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.line))),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.auto_awesome, color: c.accent, size: 20),
-              if (wide) ...[const SizedBox(width: 9), const Text('Wishtory', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3))],
+              Icon(context.skin.brandIcon, color: c.accent, size: 20),
+              if (wide) ...[const SizedBox(width: 9), Text(context.skin.wordmark, style: context.skin.wordmarkStyle(const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.3)))],
             ]),
           ),
           Expanded(
@@ -252,26 +253,30 @@ class _RailItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
-    final fg = selected ? c.text : c.muted;
+    final skin = context.skin;
+    // In Zenless Zone Zero the page you are on is a solid block of the accent colour.
+    final inverted = selected && skin.isZenless;
+    final mark = inverted ? c.accentInk : c.accent;
+    final fg = inverted ? c.accentInk : (selected ? c.text : c.muted);
     final lead = abbr != null
         ? Container(
             width: 30,
             height: 22,
             alignment: Alignment.center,
-            decoration: BoxDecoration(border: Border.all(color: selected ? c.accent : c.control), borderRadius: BorderRadius.circular(6)),
-            child: Text(abbr!, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: selected ? c.accent : c.muted)),
+            decoration: ShapeDecoration(shape: skin.shape(r: 6, side: BorderSide(color: selected ? mark : c.control))),
+            child: Text(abbr!, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: selected ? mark : c.muted)),
           )
         : Stack(clipBehavior: Clip.none, children: [
-            Icon(icon, size: 20, color: selected ? c.accent : c.muted),
-            if (dot) Positioned(right: -3, top: -3, child: Container(width: 8, height: 8, decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle))),
+            Icon(icon, size: 20, color: selected ? mark : c.muted),
+            if (dot) Positioned(right: -3, top: -3, child: Container(width: 8, height: 8, decoration: BoxDecoration(color: mark, shape: BoxShape.circle))),
           ]);
     final row = Row(mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center, children: [
       lead,
       if (wide) ...[
         const SizedBox(width: 10),
         Expanded(child: Text(label, overflow: TextOverflow.ellipsis, style: TextStyle(color: fg, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
-        if (count != null && count! > 0) Text('$count', style: Ty.small.copyWith(fontFamily: Ty.mono, color: c.faint)),
-        if (dot) Text(dotLabel, style: Ty.small.copyWith(color: c.accent)),
+        if (count != null && count! > 0) Text('$count', style: Ty.small.copyWith(fontFamily: Ty.mono, color: inverted ? c.accentInk : c.faint)),
+        if (dot) Text(dotLabel, style: Ty.small.copyWith(color: mark)),
       ],
     ]);
     return Semantics(
@@ -283,10 +288,10 @@ class _RailItem extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: Material(
-            color: selected ? c.panel2 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: inverted ? c.accent : (selected ? c.panel2 : Colors.transparent),
+            shape: skin.shape(r: 8),
             child: InkWell(
-              borderRadius: BorderRadius.circular(8),
+              customBorder: skin.shape(r: 8),
               onTap: onTap,
               child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7), child: row),
             ),
@@ -313,7 +318,7 @@ class PageBar extends ConsumerWidget {
 
     // Who and when, on one line: the game, the account, and how fresh the data is.
     final title = Row(mainAxisSize: MainAxisSize.min, children: [
-      Text(GameInfo.of(nav.game).name, style: Ty.h1),
+      Text(context.skin.title(GameInfo.of(nav.game).name), style: context.skin.titleStyle(Ty.h1)),
       const SizedBox(width: 12),
       const AccountMenu(),
       if (account != null) ...[

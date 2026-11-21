@@ -11,6 +11,7 @@ import '../../state/refresh.dart';
 import '../../state/settings.dart';
 import '../../state/toasts.dart';
 import '../../ui/density.dart';
+import '../../ui/game_skin.dart';
 import '../../ui/pull_tiles.dart';
 import '../../ui/tokens.dart';
 import '../../ui/view_controls.dart';
@@ -463,14 +464,18 @@ class _GroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.wc;
+    final mark = context.skin.headerMark(c.accent);
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 16, 0, 6),
       child: Semantics(
         header: true,
         child: Row(children: [
+          if (mark != null) ...[mark, const SizedBox(width: 10)],
           Flexible(child: Text(title, style: Ty.h3.copyWith(color: c.muted), overflow: TextOverflow.ellipsis)),
           const SizedBox(width: 8),
           Text('$count', style: Ty.small.copyWith(color: c.faint, fontFamily: Ty.mono)),
+          // Each game rules the heading off from its tiles with a hairline.
+          if (mark != null) ...[const SizedBox(width: 12), Expanded(child: Divider(height: 1, color: c.line))],
         ]),
       ),
     );
@@ -486,6 +491,7 @@ class _RareTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.wc;
+    final skin = context.skin;
     final facts = ref.watch(pityFactsProvider);
     final selected = ref.watch(selectedPullProvider) == pull.id;
     final hard = facts.hardPity[pull.bannerKey] ?? (pull.rank == 5 ? 90 : 10);
@@ -548,7 +554,11 @@ class _RareTile extends ConsumerWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(child: Text(pull.name, style: Ty.h3.copyWith(color: nameColor), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              if (pull.rank != 5) ...[const SizedBox(width: 6), RarityChip(game: account.game, rank: pull.rank)],
+              // Genshin Impact rates by stars; the other games keep the labelled chip.
+              if (skin.isGenshin)
+                ...[const SizedBox(width: 6), _Stars(rank: pull.rank, color: nameColor)]
+              else if (pull.rank != 5)
+                ...[const SizedBox(width: 6), RarityChip(game: account.game, rank: pull.rank)],
             ]),
             Text(
               [pull.bannerName ?? pull.pool, date].join('  ·  '),
@@ -564,16 +574,50 @@ class _RareTile extends ConsumerWidget {
         if (tracked) ...[const SizedBox(width: 6), Icon(outcomeIcon, size: 16, color: outcomeColor)],
       ]);
     }
+    // Star Rail marks the rarity with a bar down the tile's edge, Zenless Zone Zero with the rank letter.
+    final Widget? lead = skin.isStarRail
+        ? ExcludeSemantics(
+            child: SizedBox(
+              width: 3,
+              height: view == PullView.namesOnly ? 18 : 32,
+              child: DecoratedBox(decoration: BoxDecoration(color: nameColor, borderRadius: BorderRadius.circular(2))),
+            ),
+          )
+        : skin.isZenless
+            ? ExcludeSemantics(
+                child: SizedBox(
+                  width: 20,
+                  child: Text(
+                    pull.rank >= 5 ? 'S' : (pull.rank == 4 ? 'A' : 'B'),
+                    textAlign: TextAlign.center,
+                    style: Ty.bigNum.copyWith(fontSize: 18, fontWeight: FontWeight.w800, color: nameColor),
+                  ),
+                ),
+              )
+            : null;
+    final marked = lead == null ? row : Row(children: [lead, const SizedBox(width: 8), Expanded(child: row)]);
     return Tooltip(
       message: words,
       child: Panel(
         selected: selected,
         padding: EdgeInsets.symmetric(horizontal: 10, vertical: view == PullView.namesOnly ? 6 : 7),
         onTap: open,
-        child: Semantics(label: words, child: row),
+        child: Semantics(label: words, child: marked),
       ),
     );
   }
+}
+
+/// A row of small stars, one per rank.
+class _Stars extends StatelessWidget {
+  const _Stars({required this.rank, required this.color});
+  final int rank;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+        child: Row(mainAxisSize: MainAxisSize.min, children: [for (var i = 0; i < rank; i++) Icon(Icons.star_rounded, size: 11, color: color)]),
+      );
 }
 
 /// Wide windows show the detail panel beside the list; narrow ones use a dialog.
