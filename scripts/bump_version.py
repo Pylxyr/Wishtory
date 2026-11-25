@@ -6,9 +6,8 @@ python scripts/bump_version.py --check v0.2.0 fail unless every file equals the 
 python scripts/bump_version.py --next patch   print the next version (patch, minor or major)
 python scripts/bump_version.py --current      print the current version
 
-Files: package.json, app/pubspec.yaml (its +build number is kept), the `[workspace.package]` version
-in Cargo.toml (both crates inherit it) and the `wishtory-core` and `wishtory-bridge` entries of
-Cargo.lock. Text is edited in place, so formatting and line endings stay as they are. Standard
+Files: package.json, src-tauri/tauri.conf.json, the `[workspace.package]` version in Cargo.toml (every
+crate inherits it) and the `wishtory`, `wishtory-api` and `wishtory-core` entries of Cargo.lock. Text is edited in place, so formatting and line endings stay as they are. Standard
 library only.
 """
 
@@ -20,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = ROOT / "package.json"
-PUBSPEC = ROOT / "app" / "pubspec.yaml"
+TAURI_CONF = ROOT / "src-tauri" / "tauri.conf.json"
 CARGO_TOML = ROOT / "Cargo.toml"
 CARGO_LOCK = ROOT / "Cargo.lock"
 
@@ -29,10 +28,9 @@ NL = r"\r?\n"
 # (path, label, pattern with three groups: before, version, after, expected number of matches)
 TARGETS = [
     (PACKAGE, "package.json", re.compile(r'(^\s*"version": ")([^"]*)(")', re.M), 1),
-    # `version: 0.3.0+1`: the part after `+` is Flutter's build number and stays as it is.
-    (PUBSPEC, "app/pubspec.yaml", re.compile(r"(^version: )([^\s+]+)((?:\+\d+)?)(?=\r?$)", re.M), 1),
+    (TAURI_CONF, "src-tauri/tauri.conf.json", re.compile(r'(^\s*"version": ")([^"]*)(")', re.M), 1),
     (CARGO_TOML, "Cargo.toml", re.compile(r'(\[workspace\.package\][^\[]*?^version = ")([^"]*)(")', re.M | re.S), 1),
-    (CARGO_LOCK, "Cargo.lock", re.compile(r'(^name = "wishtory-(?:core|bridge)"' + NL + r'version = ")([^"]*)(")', re.M), 2),
+    (CARGO_LOCK, "Cargo.lock", re.compile(r'(^name = "wishtory(?:-core|-api)?"' + NL + r'version = ")([^"]*)(")', re.M), 3),
 ]
 
 
@@ -112,7 +110,7 @@ def bump(version: str) -> int:
         edits.append((path, text))
     for path, text in edits:
         _write(path, text)
-    print(f"Version set to {version} in package.json, app/pubspec.yaml, Cargo.toml and Cargo.lock.")
+    print(f"Version set to {version} in package.json, src-tauri/tauri.conf.json, Cargo.toml and Cargo.lock.")
     return 0
 
 

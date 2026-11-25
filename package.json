@@ -1,13 +1,19 @@
 {
-  "name": "wishtory-tools",
+  "name": "wishtory",
   "private": true,
   "version": "0.6.0-rc2",
   "type": "module",
   "engines": {
-    "node": ">=26"
+    "node": ">=22"
   },
-  "description": "Catalog and release tooling only. The app itself is Flutter (app/) over Rust (crates/).",
+  "description": "Wishtory: a Svelte 5 interface in a Tauri 2 shell over the Rust core. Also holds the catalog and release tooling.",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "tauri",
+    "shots": "node e2e/shots.mjs",
     "catalog:update": "node scripts/update-catalog.mjs",
     "catalog:test": "node --test scripts/update-catalog.test.mjs scripts/prepare-catalog.test.mjs scripts/track-banners.test.mjs scripts/changelog.test.mjs scripts/sync-manifest.test.mjs scripts/update-materials.test.mjs",
     "banners:track": "node scripts/track-banners.mjs",
@@ -15,5 +21,22 @@
     "materials:update": "node scripts/update-materials.mjs",
     "scripts:test": "python3 -m unittest discover -s scripts -p \"test_*.py\"",
     "catalog:sign": "node scripts/sign-catalog.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/google-sans": "^5.3.2",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-dialog": "^2.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@tsconfig/svelte": "^5.0.0",
+    "playwright": "^1.50.0",
+    "svelte": "^5.20.0",
+    "svelte-check": "^4.0.0",
+    "tslib": "^2.6.0",
+    "typescript": "~5.6.0",
+    "vite": "^6.0.0"
   }
 }

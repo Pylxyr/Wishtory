@@ -9,11 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bump_version as bv  # noqa: E402
 
 PACKAGE = '{\n  "name": "wishtory-tools",\n  "version": "{v}",\n  "type": "module"\n}\n'
-PUBSPEC = "name: wishtory\nversion: {v}+7\nenvironment:\n  sdk: ^3.13.0\n"
+TAURI = '{\n  "productName": "Wishtory",\n  "version": "{v}",\n  "identifier": "app.wishtory.desktop"\n}\n'
 CARGO = '[workspace]\nmembers = ["a"]\n\n[workspace.package]\nversion = "{v}"\n\n[profile.release]\nopt-level = "s"\n'
 LOCK = (
     'version = 4\n\n[[package]]\nname = "serde"\nversion = "1.0.1"\n\n'
-    '[[package]]\nname = "wishtory-bridge"\nversion = "{v}"\n\n'
+    '[[package]]\nname = "wishtory"\nversion = "{v}"\n\n'
+    '[[package]]\nname = "wishtory-api"\nversion = "{v}"\n\n'
     '[[package]]\nname = "wishtory-core"\nversion = "{v}"\n'
 )
 
@@ -28,7 +29,7 @@ class Repo(unittest.TestCase):
         root = Path(self.dir.name)
         files = {
             "package.json": PACKAGE,
-            "pubspec.yaml": PUBSPEC,
+            "tauri.conf.json": TAURI,
             "Cargo.toml": CARGO,
             "Cargo.lock": LOCK,
         }
@@ -38,7 +39,7 @@ class Repo(unittest.TestCase):
             path.write_bytes(template.replace("{v}", "0.2.1").replace("\n", self.newline).encode())
             self.paths[name] = path
         self.saved = bv.TARGETS
-        names = ["package.json", "pubspec.yaml", "Cargo.toml", "Cargo.lock"]
+        names = ["package.json", "tauri.conf.json", "Cargo.toml", "Cargo.lock"]
         bv.TARGETS = [(self.paths[name], label, pattern, expected) for name, (_, label, pattern, expected) in zip(names, bv.TARGETS)]
 
     def tearDown(self):
@@ -50,13 +51,13 @@ class Repo(unittest.TestCase):
 
 
 class Bump(Repo):
-    def test_sets_every_file_and_keeps_the_flutter_build_number(self):
+    def test_sets_every_file(self):
         self.assertEqual(bv.bump("0.3.0"), 0)
         self.assertIn('"version": "0.3.0"', self.text("package.json"))
-        self.assertIn("version: 0.3.0+7", self.text("pubspec.yaml"))
+        self.assertIn('"version": "0.3.0"', self.text("tauri.conf.json"))
         self.assertRegex(self.text("Cargo.toml"), r'\[workspace\.package\]\r?\nversion = "0\.3\.0"')
         lock = self.text("Cargo.lock")
-        self.assertEqual(lock.count('version = "0.3.0"'), 2)
+        self.assertEqual(lock.count('version = "0.3.0"'), 3)
         self.assertRegex(lock, r'name = "serde"\r?\nversion = "1\.0\.1"')
 
     def test_check_agrees_after_a_bump_and_fails_before(self):
@@ -67,7 +68,7 @@ class Bump(Repo):
 
     def test_a_pre_release_version_is_accepted(self):
         self.assertEqual(bv.bump("0.3.0-rc1"), 0)
-        self.assertIn("version: 0.3.0-rc1+7", self.text("pubspec.yaml"))
+        self.assertIn('"version": "0.3.0-rc1"', self.text("tauri.conf.json"))
         self.assertEqual(bv.check("v0.3.0-rc1"), 0)
 
     def test_a_bad_version_changes_nothing(self):

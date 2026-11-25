@@ -4,32 +4,40 @@ For installing and using Wishtory, see the [README](../README.md).
 
 ## Build
 
-Prerequisites: Rust (the version pinned in `rust-toolchain.toml`; rustup installs it on first use) and Flutter (the version in `flutter-toolchain.txt`) with desktop support. [Node.js 26](https://nodejs.org) (the current LTS) is only needed for the catalog scripts. System libraries:
+Prerequisites: Rust (the version pinned in `rust-toolchain.toml`; rustup installs it on first use) and [Node.js](https://nodejs.org) 22 or newer for the Svelte interface and the catalog scripts. System libraries:
 
-- **Windows 10/11:** Visual Studio Build Tools (the C++ desktop workload).
-- **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust clang cmake ninja gtk3 xdg-utils`, plus Flutter (your own install, or the AUR `flutter` package).
-- **Any Linux, the easy way:** `bash packaging/linux/install.sh` installs the build packages, downloads Flutter, builds, installs under `~/.local` and cleans up.
-- **Debian / Ubuntu:** `sudo apt install build-essential clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils`.
+- **Windows 10/11:** Visual Studio Build Tools (the C++ desktop workload) and WebView2 (included in Windows 11).
+- **Arch / CachyOS:** `sudo pacman -S --needed base-devel git rust nodejs npm webkit2gtk-4.1 libappindicator-gtk3 xdg-utils`.
+- **Debian / Ubuntu:** `sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev xdg-utils`.
 
 ```sh
-cargo build -p wishtory-bridge --release    # the Rust core, as a library the app loads
-cd app
-flutter pub get
-flutter run -d windows                      # or: -d linux
-flutter build windows --release             # or: flutter build linux --release
+npm install
+npm run tauri dev         # the app, with hot reload
+npm run tauri build       # an installer for this system
 ```
 
-The full steps, including regenerating the Dart <-> Rust glue, are in [Building the Flutter app](redesign/BUILDING.md). Releases are described in [Releasing](releasing.md).
+### Looking at the interface without the game
 
-Checks that CI also runs: `cargo fmt --all --check` and `cargo test --locked --workspace`; in `app/`, `flutter analyze` and `flutter test`; `npm run catalog:test`; `python3 -m unittest discover -s scripts -p "test_*.py"`; and `actionlint` for the release automation.
+The Svelte interface can run in a plain browser against a mock backend (`src/lib/mock.ts`: real catalog and banner data, a made-up wish history). `npm run shots` starts it, drives it with Playwright (Overview and History of every game, Settings, a refresh, light mode) and saves screenshots to `e2e/out/`. Run `npx playwright install chromium` once first. Set `PW_CHROMIUM` to use a browser you already have.
+
+```sh
+VITE_MOCK=1 npm run dev   # http://localhost:1420, no Rust needed
+npm run check             # svelte-check
+```
+
+Releases are described in [Releasing](releasing.md).
+
+Checks to run: `cargo fmt --all --check` and `cargo test --locked --workspace`; `npm run check`; `npm run catalog:test`; `python3 -m unittest discover -s scripts -p "test_*.py"`.
 
 ## Project layout
 
 ```
-app/                  Flutter app: lib/ (screens, state, bridge), test/, and the Windows and Linux runners
+src/                  Svelte 5 interface: pages/, components/ and lib/ (state, themes, per-game motion, API, mock)
+src-tauri/            Tauri 2 shell: commands that forward the window's calls to wishtory-api
+e2e/                  Playwright script that screenshots the interface against the mock backend
 crates/wishtory-core/ Rust core: discover, authkey (read-only cache parsing), fsutil, wine, fetch, db, pity,
                       uigf, paimon_items, catalog (signed feeds), rules (pity rules), update, about, settings
-crates/wishtory-bridge/ flutter_rust_bridge API over the core (src/api) and its generated glue
+crates/wishtory-api/  The calls and serialisable data types the interface uses, over the core (src/api)
 catalog/              Banner list, pity rules and signing public key (the item catalog is generated and signed in CI)
 assets/icons/         App icons
 packaging/            Windows installer script, Linux package script and desktop file, Arch PKGBUILDs

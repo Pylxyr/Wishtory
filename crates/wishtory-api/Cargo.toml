@@ -1,0 +1,19 @@
+[package]
+name = "wishtory-api"
+version.workspace = true
+description = "The calls and plain data types the Wishtory UI uses: one Core handle over wishtory-core, serialisable for the Tauri shell"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "wishtory_api"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+wishtory-core = { path = "../wishtory-core" }

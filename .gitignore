@@ -1,5 +1,7 @@
-# Node (catalog and release scripts only)
+# Node
 node_modules/
+dist/
+e2e/out/
 npm-debug.log*
 .agents/
 .env
@@ -18,15 +20,10 @@ Thumbs.db
 .idea/
 __pycache__/
 
-# Rust
+# Rust and Tauri
 /target/
+/src-tauri/gen/
 **/*.rs.bk
-
-# Flutter
-app/.dart_tool/
-app/build/
-app/.flutter-plugins*
-app/.packages
 
 # Tools downloaded by packaging/linux/install.sh --keep-build
 /.wishtory-tools/

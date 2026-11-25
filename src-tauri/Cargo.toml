@@ -1,0 +1,20 @@
+[package]
+name = "wishtory"
+version.workspace = true
+description = "Wishtory desktop app: the Tauri shell over wishtory-api"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+wishtory-api = { path = "../crates/wishtory-api" }

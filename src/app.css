@@ -1,0 +1,343 @@
+:root {
+  --ui: 'Google Sans Variable', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Mono', monospace;
+  --rail-w: 236px;
+  --row-h: 32px;
+  color-scheme: dark;
+}
+:root[data-mode='light'] { color-scheme: light; }
+:root[data-density='comfortable'] { --row-h: 44px; }
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body { font-family: var(--ui); font-size: 14px; background: var(--bg); color: var(--text); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.gold { color: var(--gold); } .purple { color: var(--purple); } .ok { color: var(--ok); } .err { color: var(--err); }
+.label { font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---------------------------------------------------------------- the game's cut ----------------
+   Genshin Impact   soft and rounded, pill buttons.
+   Honkai: Star Rail  bevelled top left and bottom right.
+   Zenless Zone Zero  bevelled top right and bottom left, slanted blocks.                              */
+:root { --r: 12px; --pill: 999px; --cut: 0px; --clip: none; --clip-in: none; --skew: 0deg; }
+:root[data-game='genshin'] { --r: 18px; --pill: 999px; }
+:root[data-game='star_rail'] {
+  --r: 0px; --pill: 0px; --cut: 14px;
+  --clip: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  --clip-in: polygon(calc(var(--cut) - 0.4px) 0, 100% 0, 100% calc(100% - var(--cut) + 0.4px), calc(100% - var(--cut) + 0.4px) 100%, 0 100%, 0 calc(var(--cut) - 0.4px));
+}
+:root[data-game='zenless'] {
+  --r: 0px; --pill: 0px; --cut: 14px; --skew: -6deg;
+  --clip: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  --clip-in: polygon(0 0, calc(100% - var(--cut) + 0.4px) 0, 100% calc(var(--cut) - 0.4px), 100% 100%, calc(var(--cut) - 0.4px) 100%, 0 calc(100% - var(--cut) + 0.4px));
+}
+
+.panel { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+:root[data-game='star_rail'] .panel, :root[data-game='zenless'] .panel { border: 0; background: var(--line2); clip-path: var(--clip); }
+:root[data-game='star_rail'] .panel::before, :root[data-game='zenless'] .panel::before { content: ''; position: absolute; inset: 1px; background: var(--panel); clip-path: var(--clip-in); z-index: 0; transition: background 0.25s; }
+:root[data-game='star_rail'] .panel > *:not(.line, .train, .art, .meteor-done), :root[data-game='zenless'] .panel > *:not(.line, .train, .art, .meteor-done) { position: relative; z-index: 1; }
+.panel.solid::before { background: var(--accent) !important; }
+.panel.lit::before { background: color-mix(in oklab, var(--accent) 14%, var(--panel)) !important; }
+:root[data-game='genshin'] .panel.lit { border-color: color-mix(in oklab, var(--gold) 60%, var(--line)); }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--line2); background: var(--panel2); border-radius: var(--pill); font-weight: 600; transition: transform 0.15s, background 0.15s, box-shadow 0.2s; }
+.btn:hover { background: var(--panel3); transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(0.98); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.primary:hover { background: color-mix(in oklab, var(--accent) 88%, white); }
+.btn.danger { color: var(--err); }
+.btn:disabled { opacity: 0.5; pointer-events: none; }
+.btn.sm { height: 30px; padding: 0 12px; font-size: 13px; }
+:root[data-game='star_rail'] .btn, :root[data-game='zenless'] .btn { border-radius: 0; clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); border-color: transparent; }
+:root[data-game='zenless'] .btn { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); text-transform: uppercase; letter-spacing: 0.04em; font-style: italic; font-weight: 800; }
+:root[data-game='star_rail'] .btn { letter-spacing: 0.04em; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--pill); font-size: 12.5px; white-space: nowrap; }
+:root[data-game='star_rail'] .chip, :root[data-game='zenless'] .chip { border-radius: 0; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); border: 0; }
+:root[data-game='zenless'] .chip { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)); }
+.chip.on, button.chip.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+button.chip:hover { background: var(--panel3); }
+button.chip.on:hover { background: var(--accent); }
+
+.field { height: 36px; padding: 0 12px; background: var(--panel2); border: 1px solid var(--line2); border-radius: calc(var(--r) * 0.7); }
+select.field { padding-right: 8px; }
+input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* ---------------------------------------------------------------- shell ---------------------- */
+.shell { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100%; position: relative; }
+.rail { background: var(--rail); border-right: 1px solid var(--line); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 3; overflow: hidden; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; font-size: 19px; font-weight: 700; }
+.brand svg { width: 26px; height: 26px; color: var(--accent); flex: none; }
+:root[data-game='star_rail'] .brand { font-weight: 500; letter-spacing: 0.22em; font-size: 15px; }
+:root[data-game='zenless'] .brand { font-weight: 800; font-style: italic; letter-spacing: 0.04em; }
+.rail .group { margin: 14px 10px 6px; }
+.nav { display: flex; align-items: center; gap: 11px; height: 42px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-weight: 600; text-align: left; position: relative; border-radius: calc(var(--r) * 0.8); transition: color 0.15s, background 0.2s, transform 0.2s; }
+.nav:hover { color: var(--text); background: var(--panel2); transform: translateX(2px); }
+.nav.active { color: var(--text); background: var(--panel2); }
+.nav.active::after { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; background: var(--accent); border-radius: 3px; }
+:root[data-game='zenless'] .nav { border-radius: 0; transform: skewX(var(--skew)); }
+:root[data-game='zenless'] .nav > * { transform: skewX(6deg); }
+:root[data-game='zenless'] .nav:hover { transform: skewX(var(--skew)) translateX(3px); }
+:root[data-game='zenless'] .nav.active { background: var(--accent); color: var(--accent-ink); }
+:root[data-game='zenless'] .nav.active::after { display: none; }
+:root[data-game='star_rail'] .nav { border-radius: 0; }
+:root[data-game='star_rail'] .nav.active { background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 18%, transparent), transparent); }
+.nav .badge { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px color-mix(in oklab, var(--gold) 25%, transparent); }
+.nav .abbr { width: 28px; height: 28px; display: grid; place-items: center; font: 700 10.5px var(--mono); background: var(--panel3); color: var(--text); border-radius: calc(var(--r) * 0.5); }
+.nav.active .abbr { background: var(--accent); color: var(--accent-ink); }
+.rail .spacer { flex: 1; }
+.rail .foot { padding: 10px; font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; }
+
+.main { display: flex; flex-direction: column; min-width: 0; position: relative; height: 100%; }
+.pagebar { display: flex; align-items: center; gap: 14px; padding: 16px 28px 12px; position: relative; z-index: 2; flex-wrap: wrap; }
+.pagebar h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+:root[data-game='star_rail'] .pagebar h1 { text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500; font-size: 20px; }
+:root[data-game='zenless'] .pagebar h1 { text-transform: uppercase; font-style: italic; font-weight: 800; letter-spacing: 0.01em; font-size: 26px; }
+.pagebar .grow { flex: 1; }
+.tabs { display: flex; gap: 4px; padding: 3px; background: var(--panel2); border-radius: var(--pill); border: 1px solid var(--line); }
+:root[data-game='star_rail'] .tabs, :root[data-game='zenless'] .tabs { border-radius: 0; }
+.tabs button { height: 30px; padding: 0 16px; border: 0; background: transparent; color: var(--muted); font-weight: 600; border-radius: var(--pill); transition: background 0.2s, color 0.2s; }
+:root[data-game='star_rail'] .tabs button, :root[data-game='zenless'] .tabs button { border-radius: 0; }
+:root[data-game='zenless'] .tabs button { font-style: italic; text-transform: uppercase; transform: skewX(var(--skew)); }
+.tabs button.on { background: var(--accent); color: var(--accent-ink); }
+.content { flex: 1; overflow: auto; padding: 8px 28px 28px; position: relative; z-index: 1; scrollbar-gutter: stable; }
+.statusbar { height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 28px; font-size: 12px; color: var(--faint); border-top: 1px solid var(--line); background: var(--rail); position: relative; z-index: 2; }
+.page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.wrap { flex-wrap: wrap; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+.pad { padding: 18px 20px; }
+h2 { margin: 0 0 10px; font-size: 16px; }
+:root[data-game='star_rail'] h2 { letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; font-size: 14px; }
+:root[data-game='zenless'] h2 { text-transform: uppercase; font-style: italic; font-weight: 800; }
+
+/* ---------------------------------------------------------------- backdrops ------------------ */
+.backdrop { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.backdrop svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* Genshin: a warm glow and a drift of sparkles that twinkle */
+.glow { position: absolute; width: 90vmax; height: 90vmax; right: -35vmax; top: -50vmax; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--gold) 14%, transparent), color-mix(in oklab, var(--accent) 6%, transparent) 45%, transparent); animation: breathe 9s ease-in-out infinite; }
+.sparkle { position: absolute; color: var(--gold); opacity: 0; animation: twinkle var(--d, 6s) ease-in-out var(--delay, 0s) infinite; }
+.sparkle.alt { color: var(--accent); }
+.sparkle svg { position: static; width: 100%; height: 100%; display: block; }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: translateY(0) scale(0.5) rotate(0deg); } 40% { opacity: var(--o, 0.35); transform: translateY(-10px) scale(1) rotate(25deg); } 70% { opacity: calc(var(--o, 0.35) * 0.4); transform: translateY(-22px) scale(0.8) rotate(45deg); } }
+@keyframes breathe { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.06); opacity: 1; } }
+/* Star Rail: orbit rings that turn, a field of stars, a meteor now and then */
+.orbit { position: absolute; border-radius: 50%; border: 1.2px solid color-mix(in oklab, var(--accent) 14%, transparent); right: -46vh; top: -8vh; aspect-ratio: 1; animation: spin var(--t, 160s) linear infinite; }
+.orbit::after { content: ''; position: absolute; left: 50%; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); opacity: 0.55; }
+.orbit.rev { animation-direction: reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.star { position: absolute; border-radius: 50%; background: var(--text); opacity: 0.12; animation: tw var(--d, 5s) ease-in-out var(--delay, 0s) infinite; }
+.star.b { background: var(--accent); opacity: 0.3; }
+@keyframes tw { 0%, 100% { opacity: 0.05; } 50% { opacity: 0.4; } }
+.meteor { position: absolute; width: 150px; height: 1.5px; background: linear-gradient(90deg, transparent, var(--accent)); opacity: 0; transform: rotate(-28deg); animation: meteor 14s linear var(--delay, 2s) infinite; }
+@keyframes meteor { 0% { opacity: 0; translate: 0 0; } 2% { opacity: 0.9; } 8% { opacity: 0; translate: -420px 230px; } 100% { opacity: 0; translate: -420px 230px; } }
+/* Zenless: a rolling CRT band, scanlines, marching slanted stripes, halftone */
+.scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, color-mix(in oklab, var(--text) 3%, transparent) 0 1px, transparent 1px 4px); }
+.roll { position: absolute; left: 0; right: 0; height: 140px; background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--accent) 7%, transparent), transparent); animation: roll 7s linear infinite; }
+@keyframes roll { from { transform: translateY(-160px); } to { transform: translateY(100vh); } }
+.stripes { position: absolute; right: 0; top: 0; width: 46vmin; height: 46vmin; clip-path: polygon(100% 0, 0 0, 100% 100%); background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--accent) 10%, transparent) 0 7px, transparent 7px 22px); background-size: 31.1px 31.1px; animation: march 1.4s linear infinite; }
+@keyframes march { to { background-position: 31.1px 0; } }
+.halftone { position: absolute; left: 0; bottom: 0; width: 50vmin; height: 50vmin; background: radial-gradient(circle, color-mix(in oklab, var(--accent) 22%, transparent) 1.6px, transparent 2px); background-size: 14px 14px; -webkit-mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); animation: drift 12s linear infinite; }
+@keyframes drift { to { background-position: 14px -14px; } }
+
+/* ---------------------------------------------------------------- page transitions ----------- */
+.page-enter { animation: var(--enter, none); }
+:root[data-game='genshin'] { --enter: gFade 0.55s cubic-bezier(0.2, 0.7, 0.2, 1); }
+:root[data-game='star_rail'] { --enter: hWarp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+:root[data-game='zenless'] { --enter: zSlam 0.5s cubic-bezier(0.2, 0.9, 0.2, 1); }
+@keyframes gFade { from { opacity: 0; transform: translateY(14px); filter: blur(6px); } }
+@keyframes hWarp { from { opacity: 0; clip-path: inset(0 100% 0 0); transform: translateX(-18px); } to { clip-path: inset(0 0 0 0); } }
+@keyframes zSlam { 0% { opacity: 0; transform: translateX(60px) skewX(-8deg); } 55% { opacity: 1; transform: translateX(-6px) skewX(2deg); } 100% { transform: none; } }
+:root[data-game='zenless'] .glitch { animation: glitch 0.7s steps(2, end) 1; }
+@keyframes glitch { 0% { text-shadow: 3px 0 #ff2d6f, -3px 0 #25e8ff; transform: translateX(-4px); } 20% { text-shadow: -3px 0 #ff2d6f, 3px 0 #25e8ff; transform: translateX(3px); clip-path: inset(0 0 55% 0); } 40% { text-shadow: 2px 0 #ff2d6f, -2px 0 #25e8ff; clip-path: inset(40% 0 0 0); } 60% { clip-path: none; transform: translateX(-2px); } 100% { text-shadow: none; transform: none; } }
+
+/* pieces pop in one after another, each game with its own bounce */
+.pop { animation: pop 0.55s cubic-bezier(0.2, 1.2, 0.3, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+@keyframes pop { from { opacity: 0; transform: translateY(18px) scale(0.96); } }
+:root[data-game='zenless'] .pop { animation-name: popZ; }
+@keyframes popZ { from { opacity: 0; transform: translateX(-40px) skewX(-10deg); } }
+:root[data-game='star_rail'] .pop { animation-name: popH; }
+@keyframes popH { from { opacity: 0; transform: translateY(-10px); clip-path: inset(0 0 100% 0); } }
+.lift { transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3), filter 0.25s; }
+.lift:hover { transform: translateY(-4px); }
+:root[data-game='genshin'] .lift:hover { transform: translateY(-5px) rotate(-0.4deg); }
+
+/* ---------------------------------------------------------------- stat strip ----------------- */
+.strip { display: grid; grid-template-columns: repeat(4, 1fr); }
+.strip .fig { padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.strip .fig .v { font: 700 30px var(--mono); letter-spacing: -0.02em; }
+.strip .fig .v.name { font: 700 20px var(--ui); }
+.strip.genshin { text-align: center; border-color: color-mix(in oklab, var(--gold) 45%, var(--line)); }
+.strip.genshin .fig + .fig::before { content: ''; position: absolute; left: -5px; top: 50%; width: 10px; height: 10px; background: var(--gold); transform: translateY(-50%) rotate(45deg) scale(0.7); animation: diamond 3.2s ease-in-out infinite; }
+@keyframes diamond { 0%, 100% { transform: translateY(-50%) rotate(45deg) scale(0.55); opacity: 0.6; } 50% { transform: translateY(-50%) rotate(225deg) scale(0.9); opacity: 1; } }
+.strip.star_rail .fig + .fig { border-left: 1px solid var(--line2); }
+.strip.star_rail .fig .n { position: absolute; top: 10px; right: 14px; font: 500 10px var(--mono); color: var(--faint); }
+.strip.star_rail::after { content: ''; position: absolute; top: 0; bottom: 0; width: 80px; background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 16%, transparent), transparent); animation: hud 6s ease-in-out infinite; z-index: 2; pointer-events: none; }
+@keyframes hud { 0% { left: -100px; } 35%, 100% { left: 100%; } }
+.strip.zenless { gap: 6px; }
+.strip.zenless .fig { transform: skewX(-8deg); background: var(--panel2); border-right: 3px solid var(--accent); }
+.strip.zenless .fig > * { transform: skewX(8deg); }
+.strip.zenless .fig:first-child { background: var(--accent); color: var(--accent-ink); }
+.strip.zenless .fig:first-child .label { color: var(--accent-ink); }
+
+/* ---------------------------------------------------------------- live banners ---------------- */
+.live-head { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+.pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); position: relative; }
+.pulse::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid var(--ok); animation: ping 1.8s ease-out infinite; }
+@keyframes ping { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.live { --c: var(--cols, 3); display: grid; gap: 16px; grid-template-columns: repeat(var(--c), minmax(0, 1fr)); }
+@media (max-width: 1280px) { .live { --c: var(--cols2, 2); } }
+.livecard { min-height: 190px; padding: 0; overflow: hidden; cursor: pointer; text-align: left; border: 0; background: none; font: inherit; color: inherit; }
+.livecard .art { position: absolute; inset: 0; z-index: 0; }
+.livecard .art img { position: absolute; right: -4%; top: -6%; height: 125%; width: auto; max-width: 60%; object-fit: contain; object-position: right top; filter: drop-shadow(0 8px 24px #0008); transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.livecard:hover .art img { transform: scale(1.05) translateX(-6px); }
+.livecard .art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--panel) 28%, transparent 75%); }
+.livecard .art .fallback { position: absolute; right: 8%; top: 50%; translate: 0 -50%; font: 800 110px var(--ui); color: color-mix(in oklab, var(--accent) 22%, transparent); }
+.livecard .body { position: relative; z-index: 1; padding: 20px 22px; display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 190px; }
+.livecard .nm { font-size: 22px; font-weight: 700; line-height: 1.15; max-width: 62%; }
+.livecard .pn { font: 700 40px var(--mono); line-height: 1; margin-top: auto; }
+.livecard .pn small { font: 500 14px var(--mono); color: var(--muted); }
+.livecard .left { font-size: 12px; color: var(--muted); }
+.livecard.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root[data-game='star_rail'] .livecard.sel, :root[data-game='zenless'] .livecard.sel { outline: 0; }
+.shine::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 40%, color-mix(in oklab, var(--gold) 30%, transparent) 50%, transparent 60%); transform: translateX(-120%); animation: shine 5s ease-in-out infinite; pointer-events: none; z-index: 3; }
+@keyframes shine { 0%, 60% { transform: translateX(-120%); } 90%, 100% { transform: translateX(120%); } }
+
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; font-size: 11.5px; font-weight: 600; background: var(--panel3); border-radius: var(--pill); gap: 5px; }
+.tag.gold { background: color-mix(in oklab, var(--gold) 18%, var(--panel)); color: var(--gold); }
+.tag.ok { background: color-mix(in oklab, var(--ok) 16%, var(--panel)); color: var(--ok); }
+:root[data-game='star_rail'] .tag, :root[data-game='zenless'] .tag { border-radius: 0; }
+
+/* ---------------------------------------------------------------- banner boards -------------- */
+.ring { position: relative; width: 108px; height: 108px; flex: none; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 9; stroke-linecap: round; }
+.ring .track { stroke: var(--panel3); }
+.ring .fill { stroke: var(--accent); stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: fillring 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s forwards; --to: calc(var(--len) * (1 - var(--p))); }
+.ring .fill.soft { stroke: var(--gold); filter: drop-shadow(0 0 5px color-mix(in oklab, var(--gold) 70%, transparent)); animation: fillring 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s forwards, glowpulse 2.2s ease-in-out 1.5s infinite; }
+@keyframes fillring { to { stroke-dashoffset: var(--to); } }
+@keyframes glowpulse { 50% { filter: drop-shadow(0 0 11px var(--gold)); } }
+.ring .mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring .mid b { font: 700 28px var(--mono); line-height: 1; }
+.ring .mid span { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.gcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.gcard { padding: 18px; display: flex; gap: 16px; align-items: center; cursor: pointer; text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3), border-color 0.2s, box-shadow 0.3s; }
+.gcard:hover { transform: translateY(-5px) rotate(-0.5deg); box-shadow: 0 14px 30px -14px color-mix(in oklab, var(--gold) 50%, transparent); }
+.gcard.sel { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 30px -8px color-mix(in oklab, var(--gold) 50%, transparent); }
+.gcard .t { font-weight: 700; font-size: 15px; }
+.gcard .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* Star Rail: stations on one line, a train that glides to the selected one */
+.route { position: relative; padding: 36px 10px 10px; }
+.route .line { position: absolute; left: 6%; right: 6%; top: 49px; height: 4px; background: repeating-linear-gradient(90deg, var(--line2) 0 10px, transparent 10px 18px); }
+.route .line::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 18px); opacity: 0.55; animation: flow 1.2s linear infinite; mask-image: linear-gradient(90deg, #000 var(--prog, 50%), transparent var(--prog, 50%)); -webkit-mask-image: linear-gradient(90deg, #000 var(--prog, 50%), transparent var(--prog, 50%)); }
+@keyframes flow { to { background-position: 18px 0; } }
+.train { position: absolute; top: 28px; left: var(--x, 6%); translate: -50% 0; transition: left 0.8s cubic-bezier(0.6, 0, 0.2, 1); z-index: 3; color: var(--accent); filter: drop-shadow(0 0 8px var(--accent)); }
+.train svg { width: 38px; height: 38px; display: block; animation: rattle 0.35s linear infinite; }
+@keyframes rattle { 50% { transform: translateY(-1.2px); } }
+.stations { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 14px; position: relative; padding-top: 22px; }
+.station { text-align: left; padding: 14px 16px 16px; cursor: pointer; font: inherit; color: inherit; border: 0; background: none; transition: transform 0.25s; }
+.station:hover { transform: translateY(-3px); }
+.station .dot { position: absolute; top: -29px; left: 50%; translate: -50% 0; width: 14px; height: 14px; background: var(--panel); border: 3px solid var(--line2); transform: rotate(45deg); transition: 0.3s; }
+.station.sel .dot { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 22%, transparent); animation: stationpulse 2s ease-in-out infinite; }
+@keyframes stationpulse { 50% { box-shadow: 0 0 0 11px color-mix(in oklab, var(--accent) 6%, transparent); } }
+.station .stn { font: 500 10.5px var(--mono); color: var(--faint); letter-spacing: 0.14em; }
+.station .t { font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; font-size: 13px; margin: 2px 0 8px; }
+.station .big { font: 600 34px var(--mono); line-height: 1; }
+.station .bar { height: 4px; background: var(--panel3); margin-top: 10px; position: relative; overflow: hidden; }
+.station .bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p) * 100%); background: var(--accent); transform-origin: left; animation: grow 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.station .bar i.soft { background: var(--gold); }
+@keyframes grow { from { transform: scaleX(0); } }
+
+/* Zenless: wide slanted channels with a huge number; the open one is inverted */
+.channels { display: flex; flex-direction: column; gap: 10px; }
+.channel { display: grid; grid-template-columns: 180px 1fr auto; align-items: center; gap: 20px; padding: 14px 26px; cursor: pointer; text-align: left; font: inherit; color: inherit; border: 0; background: var(--panel2); position: relative; overflow: hidden; transform: skewX(var(--skew)); transition: transform 0.25s, background 0.25s; }
+.channel > * { transform: skewX(6deg); position: relative; z-index: 1; }
+.channel::before { content: ''; position: absolute; inset: 0; background: var(--accent); clip-path: inset(0 100% 0 0); transition: clip-path 0.45s cubic-bezier(0.7, 0, 0.2, 1); }
+.channel:hover { transform: skewX(var(--skew)) translateX(6px); }
+.channel.sel::before { clip-path: inset(0 0 0 0); }
+.channel.sel { color: var(--accent-ink); }
+.channel.sel .muted, .channel.sel .label { color: color-mix(in oklab, var(--accent-ink) 70%, transparent); }
+.channel .huge { font: 800 64px var(--mono); line-height: 0.9; font-style: italic; letter-spacing: -0.04em; }
+.channel .bar { height: 10px; background: color-mix(in oklab, var(--text) 10%, transparent); position: relative; transform: skewX(6deg); }
+.channel .bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p) * 100%); background: var(--accent); animation: grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.channel.sel .bar i { background: var(--accent-ink); }
+.channel .bar i.soft { background: var(--gold); }
+.rec { display: inline-flex; align-items: center; gap: 6px; font: 700 11px var(--mono); letter-spacing: 0.1em; }
+.rec::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ff3b5c; animation: blink 1.1s steps(2, end) infinite; }
+@keyframes blink { 50% { opacity: 0.1; } }
+.flicker { animation: flicker 6s steps(1, end) infinite; }
+@keyframes flicker { 0%, 93%, 100% { opacity: 1; } 94% { opacity: 0.55; } 95% { opacity: 1; } 96.5% { opacity: 0.7; } }
+
+/* ---------------------------------------------------------------- detail ---------------------- */
+.detail { padding: 20px; display: grid; gap: 18px; }
+.detail .stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.detail .stats div b { display: block; font: 700 20px var(--mono); }
+.softbar { position: relative; height: 10px; background: var(--panel3); border-radius: var(--pill); overflow: visible; }
+:root[data-game='star_rail'] .softbar, :root[data-game='zenless'] .softbar { border-radius: 0; }
+.softbar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--accent); width: calc(var(--p) * 100%); animation: grow 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: left; }
+.softbar i.soft { background: linear-gradient(90deg, var(--accent), var(--gold)); }
+.softbar em { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--gold); left: calc(var(--at) * 100%); }
+.softbar em::after { content: attr(data-t); position: absolute; top: 16px; left: -20px; font: 500 10px var(--mono); color: var(--gold); white-space: nowrap; }
+.fives { display: flex; flex-wrap: wrap; gap: 10px; }
+.five { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; background: var(--panel2); border: 1px solid color-mix(in oklab, var(--gold) 40%, var(--line)); border-radius: var(--pill); position: relative; overflow: hidden; }
+:root[data-game='star_rail'] .five, :root[data-game='zenless'] .five { border-radius: 0; }
+.five .p { font: 700 13px var(--mono); }
+.five .res { font-size: 11px; font-weight: 700; }
+.five .res.win { color: var(--ok); } .five .res.loss { color: var(--err); } .five .res.guaranteed { color: var(--blue); }
+
+.icon { width: 30px; height: 30px; border-radius: calc(var(--r) * 0.5); background: var(--panel3); display: inline-grid; place-items: center; overflow: hidden; flex: none; font-size: 12px; font-weight: 700; color: var(--muted); }
+.icon img { width: 100%; height: 100%; object-fit: cover; }
+.icon.r5 { box-shadow: 0 0 0 2px var(--gold); } .icon.r4 { box-shadow: 0 0 0 2px var(--purple); }
+
+/* ---------------------------------------------------------------- history -------------------- */
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 8px 12px; position: sticky; top: 0; background: var(--panel); z-index: 2; }
+.table td { padding: 0 12px; height: var(--row-h); border-top: 1px solid var(--line); white-space: nowrap; }
+.table tr.r5 td:first-child { box-shadow: inset 3px 0 var(--gold); }
+.table tr.r4 td:first-child { box-shadow: inset 3px 0 var(--purple); }
+.table tr:hover td { background: var(--panel2); }
+.table .nm { display: flex; align-items: center; gap: 10px; }
+.table .num { text-align: right; }
+.scroll { max-height: calc(100vh - 330px); overflow: auto; }
+
+/* ---------------------------------------------------------------- misc ----------------------- */
+.refresh { padding: 14px 18px; display: flex; align-items: center; gap: 14px; position: relative; overflow: hidden; }
+.refresh .track { height: 4px; flex: 1; background: var(--panel3); position: relative; overflow: hidden; }
+.refresh .track i { position: absolute; inset: 0; width: 35%; background: var(--accent); animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { left: -35%; } to { left: 100%; } }
+.meteor-done { position: absolute; top: 50%; left: -80px; width: 120px; height: 2px; background: linear-gradient(90deg, transparent, var(--gold)); animation: shoot 1.2s ease-out 1 forwards; rotate: -10deg; }
+@keyframes shoot { to { left: 105%; opacity: 0; } }
+.empty { text-align: center; padding: 56px 24px; display: grid; gap: 12px; justify-items: center; }
+.empty h2 { font-size: 22px; }
+.empty .big { width: 96px; height: 96px; color: var(--accent); animation: floaty 4s ease-in-out infinite; }
+@keyframes floaty { 50% { transform: translateY(-8px) rotate(3deg); } }
+.toasts { position: fixed; right: 20px; bottom: 44px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+.toast { padding: 12px 16px; background: var(--panel3); border: 1px solid var(--line2); border-radius: calc(var(--r) * 0.7); box-shadow: 0 10px 30px #0006; animation: pop 0.4s both; max-width: 380px; }
+.toast.err { border-color: var(--err); } .toast.ok { border-color: var(--ok); }
+.list > * + * { border-top: 1px solid var(--line); }
+.item { display: flex; align-items: center; gap: 14px; padding: 14px 4px; }
+.item .grow { flex: 1; min-width: 0; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.swatch { display: flex; align-items: center; gap: 10px; padding: 10px 12px; text-align: left; background: var(--panel2); border: 1px solid var(--line); border-radius: calc(var(--r) * 0.7); font-weight: 600; transition: transform 0.2s; }
+.swatch:hover { transform: translateY(-2px); }
+.swatch.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.swatch i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line2); flex: none; }
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; }
+.switch + .switch { border-top: 1px solid var(--line); }
+.skeleton { background: linear-gradient(90deg, var(--panel2), var(--panel3), var(--panel2)); background-size: 200% 100%; animation: sk 1.4s linear infinite; border-radius: var(--r); min-height: 90px; }
+@keyframes sk { to { background-position: -200% 0; } }
+
+:root[data-motion='off'] *, :root[data-motion='off'] *::before, :root[data-motion='off'] *::after { animation: none !important; transition: none !important; }
+:root[data-motion='off'] .ring .fill { stroke-dashoffset: var(--to); }
+:root[data-motion='off'] .sparkle { opacity: 0.25; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-motion='on'] *, :root[data-motion='on'] *::before, :root[data-motion='on'] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .ring .fill { stroke-dashoffset: var(--to); }
+}
