@@ -1,5 +1,5 @@
 //! Tauri commands: each one forwards to `wishtory-api` and nothing more. Arguments arrive from
-//! JavaScript in camelCase (Tauri maps them to these snake_case names).
+//! JavaScript in camelCase (Tauri maps them to these `snake_case` names).
 
 use std::sync::Arc;
 use tauri::{State, ipc::Channel};
@@ -32,6 +32,10 @@ impl Shell {
 
 /// Why Wishtory could not open its data, if it could not. The window shows it instead of a blank page.
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri hands a command its State by value; it cannot be a reference"
+)]
 pub fn startup_error(shell: State<'_, Shell>) -> Option<ApiError> {
     shell.0.as_ref().err().map(|e| ApiError {
         code: e.code,
@@ -55,7 +59,10 @@ pub async fn get_game_locations(shell: State<'_, Shell>) -> Result<GameLocations
 }
 
 #[tauri::command]
-pub async fn set_game_locations(shell: State<'_, Shell>, locations: Vec<String>) -> Result<GameLocations, ApiError> {
+pub async fn set_game_locations(
+    shell: State<'_, Shell>,
+    locations: Vec<String>,
+) -> Result<GameLocations, ApiError> {
     shell.core()?.set_game_locations(locations).await
 }
 
@@ -65,7 +72,11 @@ pub async fn list_accounts(shell: State<'_, Shell>) -> Result<Vec<Account>, ApiE
 }
 
 #[tauri::command]
-pub async fn delete_account(shell: State<'_, Shell>, game: GameId, uid: String) -> Result<(), ApiError> {
+pub async fn delete_account(
+    shell: State<'_, Shell>,
+    game: GameId,
+    uid: String,
+) -> Result<(), ApiError> {
     shell.core()?.delete_account(game, uid).await
 }
 
@@ -75,12 +86,21 @@ pub async fn clear_all_history(shell: State<'_, Shell>) -> Result<i64, ApiError>
 }
 
 #[tauri::command]
-pub async fn get_history(shell: State<'_, Shell>, game: GameId, uid: String, banner: Option<String>) -> Result<Vec<HistoryPull>, ApiError> {
+pub async fn get_history(
+    shell: State<'_, Shell>,
+    game: GameId,
+    uid: String,
+    banner: Option<String>,
+) -> Result<Vec<HistoryPull>, ApiError> {
     shell.core()?.get_history(game, uid, banner).await
 }
 
 #[tauri::command]
-pub async fn get_pity(shell: State<'_, Shell>, game: GameId, uid: String) -> Result<Vec<BannerPity>, ApiError> {
+pub async fn get_pity(
+    shell: State<'_, Shell>,
+    game: GameId,
+    uid: String,
+) -> Result<Vec<BannerPity>, ApiError> {
     shell.core()?.get_pity(game, uid).await
 }
 
@@ -105,17 +125,32 @@ pub async fn check_catalog(shell: State<'_, Shell>, force: bool) -> Result<Catal
 }
 
 #[tauri::command]
-pub async fn get_catalog_review(shell: State<'_, Shell>) -> Result<Option<CatalogReview>, ApiError> {
+pub async fn get_catalog_review(
+    shell: State<'_, Shell>,
+) -> Result<Option<CatalogReview>, ApiError> {
     shell.core()?.get_catalog_review().await
 }
 
 #[tauri::command]
-pub async fn get_impact_page(shell: State<'_, Shell>, game: GameId, uid: String, offset: i64, limit: i64) -> Result<Vec<AffectedPull>, ApiError> {
-    shell.core()?.get_impact_page(game, uid, offset, limit).await
+pub async fn get_impact_page(
+    shell: State<'_, Shell>,
+    game: GameId,
+    uid: String,
+    offset: i64,
+    limit: i64,
+) -> Result<Vec<AffectedPull>, ApiError> {
+    shell
+        .core()?
+        .get_impact_page(game, uid, offset, limit)
+        .await
 }
 
 #[tauri::command]
-pub async fn apply_catalog(shell: State<'_, Shell>, version: i64, fingerprint: String) -> Result<ApplyResult, ApiError> {
+pub async fn apply_catalog(
+    shell: State<'_, Shell>,
+    version: i64,
+    fingerprint: String,
+) -> Result<ApplyResult, ApiError> {
     shell.core()?.apply_catalog(version, fingerprint).await
 }
 
@@ -125,27 +160,46 @@ pub async fn dismiss_catalog(shell: State<'_, Shell>) -> Result<(), ApiError> {
 }
 
 #[tauri::command]
-pub async fn get_catalog_history(shell: State<'_, Shell>) -> Result<Vec<CatalogHistoryEntry>, ApiError> {
+pub async fn get_catalog_history(
+    shell: State<'_, Shell>,
+) -> Result<Vec<CatalogHistoryEntry>, ApiError> {
     shell.core()?.get_catalog_history().await
 }
 
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri hands a command its State by value; it cannot be a reference"
+)]
 pub fn set_catalog_auto_apply(shell: State<'_, Shell>, enabled: bool) -> Result<bool, ApiError> {
     shell.core()?.set_catalog_auto_apply(enabled)
 }
 
 #[tauri::command]
-pub async fn cloud_sign_in(shell: State<'_, Shell>, passphrase: String) -> Result<CloudStatus, ApiError> {
+pub async fn cloud_sign_in(
+    shell: State<'_, Shell>,
+    passphrase: String,
+) -> Result<CloudStatus, ApiError> {
     shell.core()?.cloud_sign_in(passphrase).await
 }
 
 #[tauri::command]
-pub async fn cloud_sign_out(shell: State<'_, Shell>, delete_backups: bool) -> Result<CloudStatus, ApiError> {
+pub async fn cloud_sign_out(
+    shell: State<'_, Shell>,
+    delete_backups: bool,
+) -> Result<CloudStatus, ApiError> {
     shell.core()?.cloud_sign_out(delete_backups).await
 }
 
 #[tauri::command]
-pub fn cloud_set_auto_backup(shell: State<'_, Shell>, enabled: bool) -> Result<CloudStatus, ApiError> {
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri hands a command its State by value; it cannot be a reference"
+)]
+pub fn cloud_set_auto_backup(
+    shell: State<'_, Shell>,
+    enabled: bool,
+) -> Result<CloudStatus, ApiError> {
     shell.core()?.cloud_set_auto_backup(enabled)
 }
 
@@ -165,7 +219,11 @@ pub async fn cloud_list_backups(shell: State<'_, Shell>) -> Result<Vec<CloudBack
 }
 
 #[tauri::command]
-pub async fn cloud_restore(shell: State<'_, Shell>, id: String, passphrase: Option<String>) -> Result<ImportSummary, ApiError> {
+pub async fn cloud_restore(
+    shell: State<'_, Shell>,
+    id: String,
+    passphrase: Option<String>,
+) -> Result<ImportSummary, ApiError> {
     shell.core()?.cloud_restore(id, passphrase).await
 }
 
@@ -175,17 +233,31 @@ pub async fn import_file(shell: State<'_, Shell>, path: String) -> Result<Import
 }
 
 #[tauri::command]
-pub async fn export_file(shell: State<'_, Shell>, path: String, format: String, game: Option<GameId>, uid: Option<String>) -> Result<(), ApiError> {
+pub async fn export_file(
+    shell: State<'_, Shell>,
+    path: String,
+    format: String,
+    game: Option<GameId>,
+    uid: Option<String>,
+) -> Result<(), ApiError> {
     shell.core()?.export_file(path, format, game, uid).await
 }
 
 /// `cloud_status` cannot fail, so it has no `Result` of its own; an unopened core is reported as an error.
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri hands a command its State by value; it cannot be a reference"
+)]
 pub fn cloud_status(shell: State<'_, Shell>) -> Result<CloudStatus, ApiError> {
     Ok(shell.core()?.cloud_status())
 }
 
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri hands a command its State by value; it cannot be a reference"
+)]
 pub fn cloud_cancel_sign_in(shell: State<'_, Shell>) -> Result<(), ApiError> {
     shell.core()?.cloud_cancel_sign_in();
     Ok(())

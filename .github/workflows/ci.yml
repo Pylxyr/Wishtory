@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # The Rust core and the bridge: format and tests, on both systems the app ships for. Wine/Proton
+  # The Rust core, the API layer and the Tauri shell: format, lints and tests, on both systems the app ships for. Wine/Proton
   # discovery has its own unit tests, which run on both too.
   rust:
     strategy:
@@ -28,6 +28,12 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The Tauri shell links the system web view and GTK on Linux.
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev pkg-config
       - uses: ./.github/actions/toolchains
         with:
           flutter: "false"
@@ -41,74 +47,20 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace
 
-  # The Flutter app on Linux: analysis, tests, and a real release build with the Rust library inside
-  # the bundle (a bundle without it would stop at start-up).
-  app-linux:
+  # The Svelte interface: type and template checks, and a production build (which is what the Tauri
+  # shell packages).
+  ui:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: System libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev
-      - uses: ./.github/actions/toolchains
-      - run: cargo build --locked -p wishtory-bridge --release
-      - name: Dependencies
-        working-directory: app
-        run: flutter pub get --enforce-lockfile
-      - name: Analyze
-        working-directory: app
-        run: flutter analyze --no-fatal-infos
-      - name: Test
-        working-directory: app
-        run: flutter test
-      - name: Build
-        working-directory: app
-        run: flutter build linux --release
-      - name: The bundle carries the Rust library
-        run: test -f app/build/linux/x64/release/bundle/lib/libwishtory_bridge.so
-
-  # The Flutter app on Windows: a real release build with the Rust library next to the executable.
-  app-windows:
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/toolchains
-      - run: cargo build --locked -p wishtory-bridge --release
-      - name: Dependencies
-        working-directory: app
-        run: flutter pub get --enforce-lockfile
-      - name: Build
-        working-directory: app
-        run: flutter build windows --release
-      - name: The bundle carries the Rust library
-        shell: pwsh
-        run: |
-          $dll = "app/build/windows/x64/runner/Release/wishtory_bridge.dll"
-          if (-not (Test-Path $dll)) { throw "$dll is missing from the Windows bundle" }
-
-  # The committed Dart <-> Rust glue must be what the generator makes from the Rust API today.
-  bridge-in-sync:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/toolchains
-      - name: Install the code generator (the version the Rust crate uses)
-        run: |
-          version="$(sed -n 's/^flutter_rust_bridge *= *"=\(.*\)"/\1/p' crates/wishtory-bridge/Cargo.toml)"
-          cargo install flutter_rust_bridge_codegen --version "$version" --locked
-      - name: Dependencies
-        working-directory: app
-        run: flutter pub get --enforce-lockfile
-      - name: Generate
-        run: flutter_rust_bridge_codegen generate
-      - name: Nothing changed
-        run: |
-          git status --short
-          git diff --exit-code || { echo "::error::The generated bridge code is out of date. Run flutter_rust_bridge_codegen generate and commit the result."; exit 1; }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
 
   # The release automation is code too: the scripts have unit tests, the catalog tooling has its own, and
   # every workflow is linted (expression typos, undefined outputs, shell mistakes) before it can break a release.

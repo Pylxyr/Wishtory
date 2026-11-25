@@ -12,7 +12,7 @@ mod commands;
 use tauri::Manager;
 use wishtory_api::api::core_api::WishtoryCore;
 
-/// WebKitGTK's DMABUF renderer can leave the window blank on NVIDIA's proprietary driver (common on
+/// `WebKitGTK`'s DMABUF renderer can leave the window blank on NVIDIA's proprietary driver (common on
 /// Wayland). Turn it off there, unless the person already chose a value themselves.
 #[cfg(target_os = "linux")]
 fn tune_webkit() {

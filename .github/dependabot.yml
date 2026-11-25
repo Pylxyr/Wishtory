@@ -16,16 +16,10 @@ updates:
       interval: weekly
     commit-message:
       prefix: deps
-    ignore:
-      # The Rust crate and the Dart package must stay on exactly the same version as the code
-      # generator, so this one is moved by hand (see docs/redesign/BUILDING.md).
-      - dependency-name: flutter_rust_bridge
-  # The Dart packages of the Flutter app.
-  - package-ecosystem: pub
-    directory: /app
+  # The interface's npm packages (package.json at the root).
+  - package-ecosystem: npm
+    directory: /
     schedule:
       interval: weekly
     commit-message:
       prefix: deps
-    ignore:
-      - dependency-name: flutter_rust_bridge

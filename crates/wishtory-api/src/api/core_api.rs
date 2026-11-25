@@ -103,12 +103,7 @@ impl WishtoryCore {
 
     /// Read-only: finds the history link the game already cached, then downloads.
     /// `full` downloads everything the server still keeps instead of stopping at what is saved.
-    pub async fn refresh_from_game(
-        &self,
-        game: GameId,
-        full: bool,
-        events: Emit,
-    ) {
+    pub async fn refresh_from_game(&self, game: GameId, full: bool, events: Emit) {
         let progress = progress_sink(&events);
         let result = self
             .inner
@@ -118,13 +113,7 @@ impl WishtoryCore {
     }
 
     /// Same, with a link the person pasted.
-    pub async fn fetch_history(
-        &self,
-        game: GameId,
-        url: String,
-        full: bool,
-        events: Emit,
-    ) {
+    pub async fn fetch_history(&self, game: GameId, url: String, full: bool, events: Emit) {
         let progress = progress_sink(&events);
         let result = self
             .inner
@@ -325,10 +314,7 @@ fn progress_sink(events: &Emit) -> wishtory_core::Progress {
     })
 }
 
-fn finish(
-    events: &Emit,
-    result: Result<ops::FetchSummary, wishtory_core::error::AppError>,
-) {
+fn finish(events: &Emit, result: Result<ops::FetchSummary, wishtory_core::error::AppError>) {
     let event = match result.map_err(ApiError::from).and_then(|s| {
         FetchSummary::from_core(s).ok_or_else(|| ApiError {
             code: super::error::ErrorCode::Other,
