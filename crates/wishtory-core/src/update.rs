@@ -36,7 +36,7 @@ struct Release {
 /// `None`. Ordering follows semantic versioning: a release is newer than its own pre-releases.
 fn parse_version(tag: &str) -> Option<Version> {
     let tag = tag.trim();
-    Version::parse(tag.strip_prefix('v').unwrap_or(tag)).ok()
+    Version::parse(tag.trim_prefix('v')).ok()
 }
 
 /// The newest release this build should offer. A release build is only offered releases; a

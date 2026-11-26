@@ -8,7 +8,7 @@ members = ["crates/wishtory-core", "crates/wishtory-api", "src-tauri"]
 version = "0.6.0-rc2"
 # One edition and one minimum Rust for every crate (rust-toolchain.toml installs exactly this version).
 edition = "2024"
-rust-version = "1.99"
+rust-version = "1.100"
 license = "MIT"
 repository = "https://github.com/Pylxyr/Wishtory"
 # No crate is published to crates.io: the app is built from this repository.

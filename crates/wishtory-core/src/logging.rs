@@ -149,8 +149,7 @@ pub fn get_logs() -> Vec<LogEntry> {
     }
     buffer()
         .lock()
-        .map(|b| b.iter().cloned().collect())
-        .unwrap_or_default()
+        .map_or_default(|b| b.iter().cloned().collect())
 }
 
 pub fn clear_logs() {

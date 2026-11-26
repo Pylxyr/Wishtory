@@ -12,32 +12,32 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-miniz_oxide = "0.9"
-semver = "1"
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
-rusqlite = { version = "0.43", features = ["bundled"] }
+miniz_oxide = "0.9.1"
+semver = "1.0.28"
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json = "1.0.154"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
 # rustls with the `ring` provider (installed once by `net::install_tls`), so the whole app uses one
 # crypto library and no C build of aws-lc is needed.
-reqwest = { version = "0.13", default-features = false, features = ["json", "form", "query", "http2", "rustls-no-provider"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-tokio = { version = "1", features = ["time", "rt", "rt-multi-thread", "sync", "net", "io-util", "macros"] }
-dirs = "7"
-url = "2"
-regex = "1"
-thiserror = "2"
-chrono = "0.4"
-ring = "0.17"
-base64 = "0.23"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "query", "http2", "rustls-no-provider"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1.54.1", features = ["time", "rt", "rt-multi-thread", "sync", "net", "io-util", "macros"] }
+dirs = "7.0.0"
+url = "2.5.9"
+regex = "1.13.2"
+thiserror = "2.0.21"
+chrono = "0.4.45"
+ring = "0.17.14"
+base64 = "0.23.1"
 # Cloud backup: passphrase hashing, secret wiping, and the OS credential store (Windows Credential
 # Manager, Secret Service on Linux) that holds the Google refresh token and the backup passphrase.
-argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
-zeroize = "1"
-keyring = "4"
+argon2 = { version = "0.6.0", default-features = false, features = ["alloc"] }
+zeroize = "1.9.2"
+keyring = "4.2.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
 
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "time", "rt", "rt-multi-thread", "sync", "net", "io-util"] }
+tokio = { version = "1.54.1", features = ["macros", "time", "rt", "rt-multi-thread", "sync", "net", "io-util"] }

@@ -36,7 +36,7 @@ fn val_str(v: &Value) -> String {
     }
 }
 fn get(v: &Value, k: &str) -> String {
-    v.get(k).map(val_str).unwrap_or_default()
+    v.get(k).map_or_default(val_str)
 }
 
 /// Normalises exporter quirks ("2024-1-5 3:04:05", "2024-01-05T03:04:05Z", fractional seconds) to the

@@ -4,6 +4,7 @@ use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    mem::DropGuard,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock,
@@ -271,13 +272,6 @@ impl<F: Feed> FeedStore<F> {
             .current
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = doc;
-    }
-}
-
-struct ResetBool<'a>(&'a AtomicBool);
-impl Drop for ResetBool<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
     }
 }
 
@@ -1153,7 +1147,8 @@ impl ReleaseStore {
         if self.checking.swap(true, Ordering::AcqRel) {
             return Ok(CheckOutcome::Busy);
         }
-        let _checking = ResetBool(&self.checking);
+        // Clears the flag on every way out of this function, including `?` and a panic.
+        let _checking = DropGuard::new(&self.checking, |flag| flag.store(false, Ordering::Release));
         if !force && !self.check_due() {
             return Ok(CheckOutcome::NotDue);
         }

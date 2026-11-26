@@ -30,7 +30,7 @@ bin_link="$prefix/bin/wishtory"
 desktop_file="$prefix/share/applications/wishtory.desktop"
 # icon folder : file in assets/icons
 icons=("32x32:32x32.png" "128x128:128x128.png" "256x256:128x128@2x.png" "512x512:icon.png")
-minimum_rust="1.99"
+minimum_rust="1.100"
 
 keep=0
 uninstall=0

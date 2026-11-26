@@ -24,7 +24,7 @@ static LOCATIONS: RwLock<Vec<PathBuf>> = RwLock::new(Vec::new());
 /// The extra folders to search for game installs.
 #[cfg_attr(not(unix), allow(dead_code))] // only Linux discovery reads them
 pub fn game_locations() -> Vec<PathBuf> {
-    LOCATIONS.read().map(|l| l.clone()).unwrap_or_default()
+    LOCATIONS.read().map_or_default(|l| l.clone())
 }
 
 fn publish(locations: &[PathBuf]) {

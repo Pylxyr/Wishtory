@@ -289,8 +289,7 @@ fn reasons(
         let mut chars = text.chars();
         let text = chars
             .next()
-            .map(|c| c.to_uppercase().chain(chars).collect::<String>())
-            .unwrap_or_default();
+            .map_or_default(|c| c.to_uppercase().chain(chars).collect::<String>());
         out.push(Reason {
             text: format!("{text}."),
             change_ids: linked(changes, game_id, ChangeScope::Items, &[&pull.item_id]),
