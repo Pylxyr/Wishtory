@@ -85,6 +85,12 @@ try {
       must((await page.locator('h1').first().innerText()).toUpperCase().includes('SETTINGS'), 'Ctrl+, did nothing');
     });
 
+    await check('Settings shows when the catalog was checked in sensible units', async () => {
+      await page.getByRole('button', { name: /Settings/ }).click(); await sleep(500);
+      const text = await page.getByText(/Names, banners and pity rules update/).first().innerText();
+      must(/checked 1 h ago/.test(text), `expected "checked 1 h ago", got: ${text.slice(0, 70)}`);
+    });
+
     for (const [id, label] of GAMES.slice(1)) {
       await goGame(page, label);
       await check(`${label}: no infinite animation drives layout or paint`, async () => {

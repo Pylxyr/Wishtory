@@ -38,6 +38,7 @@ export interface ChangeEntry { id: string; scope: 'items' | 'banners' | 'rules';
 export interface WaitingRelease { version: number; generated_at: string; major: number; minor: number; info: number; dismissed: boolean; affected_pulls: number; affected_accounts: number }
 export interface CatalogStatus {
   version: number; components: { catalog: number; banners: number; rules: number }; generated_at: string;
+  /** Unix seconds (not milliseconds) of the last check; null when never checked. */
   last_check: number | null; auto_apply: boolean; waiting: WaitingRelease | null;
 }
 export interface ShownItem { name: string; rarity: number }

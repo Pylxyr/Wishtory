@@ -71,7 +71,7 @@
   <section class="panel pad pop" style="--i:2">
     <h2>Game catalog</h2>
     {#if st}
-      <p class="muted" style="margin-top:0">Version {st.version} · {st.last_check ? 'checked ' + ago(st.last_check) : 'never checked'}. Names, banners and pity rules update as signed data, separately from app releases.</p>
+      <p class="muted" style="margin-top:0">Version {st.version} · {st.last_check ? 'checked ' + ago(st.last_check * 1000) : 'never checked'}. Names, banners and pity rules update as signed data, separately from app releases.</p>
       {#if st.waiting}
         <div class="panel lit pad" style="margin-bottom:12px">
           <b>Version {st.waiting.version} is waiting for review</b>

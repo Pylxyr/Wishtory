@@ -99,7 +99,7 @@ export class MockChannel<M> { onmessage: (m: M) => void = () => {}; }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let cloud: T.CloudStatus = { available: true, signed_in: false, account: null, auto_backup: false, last_backup: null };
 const status: T.CatalogStatus = {
-  version: 5, components: { catalog: 5, banners: 5, rules: 1 }, generated_at: '2026-11-14T03:33:41Z', last_check: Date.now() - 3_600_000, auto_apply: true,
+  version: 5, components: { catalog: 5, banners: 5, rules: 1 }, generated_at: '2026-11-14T03:33:41Z', last_check: Math.floor(Date.now() / 1000) - 3600 /* Unix seconds, like the real backend */, auto_apply: true,
   waiting: { version: 6, generated_at: '2026-11-24T03:00:00Z', major: 0, minor: 2, info: 5, dismissed: false, affected_pulls: 3, affected_accounts: 1 }
 };
 
