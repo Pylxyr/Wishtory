@@ -5521,7 +5521,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory"
-version = "0.6.0-rc2"
+version = "0.7.0"
 dependencies = [
  "tauri",
  "tauri-build",
@@ -5531,7 +5531,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory-api"
-version = "0.6.0-rc2"
+version = "0.7.0"
 dependencies = [
  "serde",
  "wishtory-core",
@@ -5539,7 +5539,7 @@ dependencies = [
 
 [[package]]
 name = "wishtory-core"
-version = "0.6.0-rc2"
+version = "0.7.0"
 dependencies = [
  "argon2",
  "base64 0.23.1",

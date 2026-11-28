@@ -5,7 +5,7 @@ members = ["crates/wishtory-core", "crates/wishtory-api", "src-tauri"]
 [workspace.package]
 # The app version. Every crate inherits it, and scripts/bump_version.py keeps it in step with
 # package.json, src-tauri/tauri.conf.json and Cargo.lock.
-version = "0.6.0-rc2"
+version = "0.7.0"
 # One edition and one minimum Rust for every crate (rust-toolchain.toml installs exactly this version).
 edition = "2024"
 rust-version = "1.100"
