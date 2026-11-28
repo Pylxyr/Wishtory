@@ -4,7 +4,7 @@
   import type { AboutInfo, AppUpdate } from '../lib/types';
   let about = $state<AboutInfo | null>(null);
   let update = $state<AppUpdate | null>(null);
-  $effect(() => { api.getAbout().then((a) => (about = a)); });
+  $effect(() => { api.getAbout().then((a) => (about = a)).catch((e) => app.toast(asError(e).message, 'err')); });
   async function check() { try { update = await api.checkAppUpdate(); } catch (e) { app.toast(asError(e).message, 'err'); } }
 </script>
 
@@ -15,7 +15,7 @@
       <p class="muted" style="margin-top:0">{about.description}</p>
       <div class="row wrap">
         <button class="btn sm" onclick={check}>Check for updates</button>
-        <button class="btn sm" onclick={() => api.openExternal(about!.repository)}>Source code</button>
+        <button class="btn sm" onclick={() => api.openExternal(about!.repository).catch((e) => app.toast(asError(e).message, 'err'))}>Source code</button>
         {#if update}<span class={update.available ? 'gold' : 'muted'}>{update.available ? `Version ${update.latest} is available.` : 'You are up to date.'}</span>{/if}
       </div>
       {#each about.disclaimers as d (d)}<p class="muted" style="font-size:12.5px">{d}</p>{/each}

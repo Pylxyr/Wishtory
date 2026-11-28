@@ -20,7 +20,7 @@
       <h2>No {app.info.short} history yet</h2>
       <p class="muted" style="max-width:480px;margin:0">{app.info.howTo} Then switch back here and press Refresh. Wishtory only reads the file the game already wrote.</p>
       <div class="row">
-        <button class="btn primary" onclick={() => app.refreshGame()}><Glyph name="refresh" size={16} />Refresh</button>
+        <button class="btn primary" disabled={app.refreshing} onclick={() => app.refreshGame()}><Glyph name="refresh" size={16} />{app.refreshing ? 'Refreshing…' : 'Refresh'}</button>
         <button class="btn" onclick={() => app.go('import')}><Glyph name="import" size={16} />Import a file</button>
       </div>
     </div>

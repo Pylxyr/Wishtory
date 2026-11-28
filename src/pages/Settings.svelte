@@ -4,6 +4,8 @@
   import { PRESETS, palette, FOLLOW_GAME } from '../lib/themes';
   import { ago } from '../lib/gameinfo';
   import type { CatalogReview, LogEntry } from '../lib/types';
+  import CloudBackup from '../components/CloudBackup.svelte';
+  import GameLocations from '../components/GameLocations.svelte';
 
   let review = $state<CatalogReview | null>(null);
   let logs = $state<LogEntry[] | null>(null);
@@ -19,7 +21,7 @@
     } catch (e) { app.toast(asError(e).message, 'err'); }
     busy = false;
   }
-  async function openReview() { review = await api.getCatalogReview(); }
+  async function openReview() { try { review = await api.getCatalogReview(); } catch (e) { app.toast(asError(e).message, 'err'); } }
   async function apply() {
     if (!review) return;
     try {
@@ -30,9 +32,15 @@
       await app.loadPity();
     } catch (e) { app.toast(asError(e).message, 'err'); }
   }
-  async function later() { await api.dismissCatalog(); review = null; app.catalogStatus = await api.getCatalogStatus(); }
+  async function later() { try { await api.dismissCatalog(); review = null; app.catalogStatus = await api.getCatalogStatus(); } catch (e) { app.toast(asError(e).message, 'err'); } }
   async function auto(v: boolean) { try { await api.setCatalogAutoApply(v); app.catalogStatus = await api.getCatalogStatus(); } catch (e) { app.toast(asError(e).message, 'err'); } }
-  async function toggleLogs(on: boolean) { await api.setLoggingEnabled(on); logs = on ? await api.getLogs() : null; }
+  async function reloadLogs() { try { logs = await api.getLogs(); } catch (e) { app.toast(asError(e).message, 'err'); } }
+  async function wipeLogs() { try { await api.clearLogs(); logs = await api.getLogs(); } catch (e) { app.toast(asError(e).message, 'err'); } }
+  async function copyLogs() {
+    try { await navigator.clipboard.writeText((logs ?? []).map((l) => `${l.time} ${l.level} ${l.message}`).join('\n')); app.toast('Log copied.'); }
+    catch { app.toast('The clipboard is not available here.', 'err'); }
+  }
+  async function toggleLogs(on: boolean) { try { await api.setLoggingEnabled(on); logs = on ? await api.getLogs() : null; } catch (e) { app.toast(asError(e).message, 'err'); } }
 </script>
 
 <div class="page">
@@ -47,17 +55,17 @@
         <button class="swatch" class:on={app.prefs.themeId === p.id} onclick={() => app.setPrefs({ themeId: p.id })}><i style="background:{palette(p.id, app.dark, app.game).accent}"></i>{p.name}</button>
       {/each}
     </div>
-    <div class="switch"><div><b>Animations</b><div class="muted">Sparkles, orbits, scanlines and the rest of each game's motion. Also off when your system asks for reduced motion.</div></div>
-      <input type="checkbox" checked={app.prefs.motion} onchange={(e) => app.setPrefs({ motion: e.currentTarget.checked })} /></div>
-    <div class="switch"><div><b>Comfortable rows</b><div class="muted">Taller rows in lists.</div></div>
-      <input type="checkbox" checked={app.prefs.comfortable} onchange={(e) => app.setPrefs({ comfortable: e.currentTarget.checked })} /></div>
+    <label class="switch"><div><b>Animations</b><div class="muted">Sparkles, orbits, scanlines and the rest of each game's motion. Also off when your system asks for reduced motion.</div></div>
+      <input type="checkbox" checked={app.prefs.motion} onchange={(e) => app.setPrefs({ motion: e.currentTarget.checked })} /></label>
+    <label class="switch"><div><b>Comfortable rows</b><div class="muted">Taller rows in lists.</div></div>
+      <input type="checkbox" checked={app.prefs.comfortable} onchange={(e) => app.setPrefs({ comfortable: e.currentTarget.checked })} /></label>
   </section>
 
   <section class="panel pad pop" style="--i:1">
     <h2>Pull lists</h2>
     <div class="switch"><div><b>How a pull is shown</b></div>
       <div class="tabs">{#each [['icons_names', 'Icon and name'], ['names', 'Name'], ['icons', 'Icon']] as [id, t] (id)}<button class:on={app.prefs.pullView === id} onclick={() => app.setPrefs({ pullView: id as 'names' })}>{t}</button>{/each}</div></div>
-    <div class="switch"><div><b>Newest first</b></div><input type="checkbox" checked={app.prefs.newestFirst} onchange={(e) => app.setPrefs({ newestFirst: e.currentTarget.checked })} /></div>
+    <label class="switch"><div><b>Newest first</b></div><input type="checkbox" checked={app.prefs.newestFirst} onchange={(e) => app.setPrefs({ newestFirst: e.currentTarget.checked })} /></label>
   </section>
 
   <section class="panel pad pop" style="--i:2">
@@ -78,14 +86,20 @@
         </div>
       {/if}
       <div class="row"><button class="btn sm" disabled={busy} onclick={check}>Check now</button></div>
-      <div class="switch"><div><b>Apply updates that change no saved pull</b></div><input type="checkbox" checked={st.auto_apply} onchange={(e) => auto(e.currentTarget.checked)} /></div>
+      <label class="switch"><div><b>Apply updates that change no saved pull</b></div><input type="checkbox" checked={st.auto_apply} onchange={(e) => auto(e.currentTarget.checked)} /></label>
     {/if}
   </section>
 
-  <section class="panel pad pop" style="--i:3">
+  <GameLocations index={3} />
+  <CloudBackup index={4} />
+
+  <section class="panel pad pop" style="--i:5">
     <h2>Diagnostics</h2>
-    <div class="switch"><div><b>Keep a log</b><div class="muted">Kept in memory only; never contains links or keys.</div></div><input type="checkbox" checked={logs !== null} onchange={(e) => toggleLogs(e.currentTarget.checked)} /></div>
-    {#if logs}<pre class="num muted" style="max-height:180px;overflow:auto;margin:0;font-size:12px">{#each logs as l (l.seq)}{l.time} {l.level} {l.message}
-{/each}</pre>{/if}
+    <label class="switch"><div><b>Keep a log</b><div class="muted">Kept in memory only; never contains links or keys.</div></div><input type="checkbox" checked={logs !== null} onchange={(e) => toggleLogs(e.currentTarget.checked)} /></label>
+    {#if logs}
+      <div class="row" style="margin:8px 0"><button class="btn sm" onclick={reloadLogs}>Reload</button><button class="btn sm" onclick={copyLogs}>Copy</button><button class="btn sm" onclick={wipeLogs}>Clear</button></div>
+      <pre class="num muted" style="max-height:180px;overflow:auto;margin:0;font-size:12px">{#each logs as l (l.seq)}{l.time} {l.level} {l.message}
+{/each}</pre>
+    {/if}
   </section>
 </div>

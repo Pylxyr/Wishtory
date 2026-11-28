@@ -6,6 +6,9 @@ import banners from '../../catalog/banners.json';
 import type * as T from './types';
 import type { GameId } from './types';
 
+/** The real backend sends no banner key; the mock keeps one only to filter by banner. */
+type MockPull = T.HistoryPull & { banner_key: string };
+
 const KEY = { genshin: 'hk4e', star_rail: 'hkrpg', zenless: 'nap' } as const;
 const items = (catalog as unknown as T.GameCatalog).items;
 const GAME_OF = { hk4e: 'genshin', hkrpg: 'star_rail', nap: 'zenless' } as const;
@@ -34,9 +37,9 @@ const FILTERS: Record<GameId, T.BannerFilter[]> = {
 const names = (game: GameId, rarity: number, kind: 'character' | 'weapon') =>
   items.filter((i) => i.game === KEY[game] && i.rarity === rarity && (kind === 'character' ? i.kind === 'character' : i.kind !== 'character')).map((i) => i.name);
 
-const history: Record<string, T.HistoryPull[]> = {};
+const history: Record<string, MockPull[]> = {};
 function build(game: GameId, uid: string) {
-  const out: T.HistoryPull[] = [];
+  const out: MockPull[] = [];
   const keys = FILTERS[game].slice(0, game === 'zenless' ? 3 : 3).map((f) => f.key);
   let t = Date.UTC(2026, 10, 24, 19, 0, 0);
   let n = 0;
@@ -94,7 +97,7 @@ function pityFor(game: GameId, uid: string): T.BannerPity[] {
 
 export class MockChannel<M> { onmessage: (m: M) => void = () => {}; }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const cloud: T.CloudStatus = { available: true, signed_in: false, account: null, auto_backup: false, last_backup: null };
+let cloud: T.CloudStatus = { available: true, signed_in: false, account: null, auto_backup: false, last_backup: null };
 const status: T.CatalogStatus = {
   version: 5, components: { catalog: 5, banners: 5, rules: 1 }, generated_at: '2026-11-14T03:33:41Z', last_check: Date.now() - 3_600_000, auto_apply: true,
   waiting: { version: 6, generated_at: '2026-11-24T03:00:00Z', major: 0, minor: 2, info: 5, dismissed: false, affected_pulls: 3, affected_accounts: 1 }
@@ -103,13 +106,38 @@ const status: T.CatalogStatus = {
 export async function invoke<R>(cmd: string, args: Record<string, any> = {}): Promise<R> {
   await wait(30);
   const r = (v: unknown) => v as R;
+  // Tests can put edge-case answers in `window.__wishtoryMock` (by command) before the page loads, and
+  // count the calls the window makes in `window.__wishtoryCalls`.
+  const test = globalThis as { __wishtoryMock?: Record<string, (args: Record<string, any>, real: () => unknown) => unknown>; __wishtoryCalls?: { cmd: string; args: Record<string, any> }[] };
+  (test.__wishtoryCalls ??= []).push({ cmd, args });
+  const hook = test.__wishtoryMock?.[cmd];
+  if (hook) return r(await hook(args, () => invokeReal<R>(cmd, args)));
+  return invokeReal<R>(cmd, args);
+}
+
+// Small stateful stand-ins so the Settings and Accounts screens can be exercised end to end.
+let locations = ['/home/you/Games/genshin'];
+let cloudBackups: T.CloudBackup[] = [];
+
+async function invokeReal<R>(cmd: string, args: Record<string, any>): Promise<R> {
+  const r = (v: unknown) => v as R;
   switch (cmd) {
     case 'startup_error': return r(null);
     case 'discover_games': return r(accounts.map((a) => ({ game: a.game, found: true, log_path: '/mock', data_dir: '/mock' })));
-    case 'get_game_locations': return r({ supported: false, locations: [], detected: [] });
+    case 'get_game_locations': return r({ supported: true, locations, detected: [{ path: '/home/you/.local/share/lutris/prefixes/genshin', games: ['genshin'] }, { path: '/home/you/.steam/steamapps/compatdata/1', games: ['star_rail', 'zenless'] }] });
+    case 'set_game_locations': locations = args.locations; return r({ supported: true, locations, detected: [] });
+    case 'clear_all_history': { const n = accounts.reduce((t, a) => t + a.pull_count, 0); accounts.splice(0); for (const k of Object.keys(history)) delete history[k]; return r(n); }
+    case 'clear_logs': return r(undefined);
+    case 'set_logging_enabled': return r(undefined);
+    case 'cloud_sign_in': if ([...String(args.passphrase)].length < 10) throw { code: 'other', message: 'Choose a backup passphrase of at least 10 characters.' }; await wait(400); cloud = { ...cloud, signed_in: true, account: 'lumine@example.com' }; return r(cloud);
+    case 'cloud_cancel_sign_in': return r(undefined);
+    case 'cloud_sign_out': cloud = { ...cloud, signed_in: false, account: null }; if (args.deleteBackups) cloudBackups = []; return r(cloud);
+    case 'cloud_backup_now': { const b = { id: 'b' + (cloudBackups.length + 1), created: new Date().toISOString(), size: 48213 }; cloudBackups = [b, ...cloudBackups].slice(0, 5); cloud = { ...cloud, last_backup: b.created }; return r(b); }
+    case 'cloud_backup_if_due': return r(null);
+    case 'cloud_restore': return r({ format: 'UIGF v4.2', accounts: 3, added: 0, skipped: 660 });
     case 'game_meta': return r((Object.keys(FILTERS) as GameId[]).map((g) => ({ game: g, banners: FILTERS[g] })));
     case 'list_accounts': return r(accounts.map((a) => ({ ...a })));
-    case 'get_history': return r((history[`${args.game}|${args.uid}`] ?? []).filter((p) => !args.banner || p.banner_key === args.banner));
+    case 'get_history': return r((history[`${args.game}|${args.uid}`] ?? []).filter((p) => (!args.banner || p.banner_key === args.banner) && (!args.minRank || p.rank >= args.minRank)));
     case 'get_pity': return r(pityFor(args.game, args.uid));
     case 'get_catalog': return r(catalog);
     case 'get_banners': return r(bannerList);
@@ -126,8 +154,8 @@ export async function invoke<R>(cmd: string, args: Record<string, any> = {}): Pr
     case 'get_catalog_history': return r([]);
     case 'set_catalog_auto_apply': return r(args.enabled);
     case 'cloud_status': return r(cloud);
-    case 'cloud_set_auto_backup': return r({ ...cloud, auto_backup: args.enabled });
-    case 'cloud_list_backups': return r([]);
+    case 'cloud_set_auto_backup': cloud = { ...cloud, auto_backup: args.enabled }; return r(cloud);
+    case 'cloud_list_backups': return r(cloudBackups);
     case 'get_about': return r({
       name: 'Wishtory', version: '0.6.0-rc2', description: 'Track your wish history, pity and 50/50 results.', copyright: '© Wishtory contributors', license: 'MIT',
       disclaimers: ['Wishtory is an independent client and is not affiliated with HoYoverse.'], repository: 'https://github.com/Pylxyr/Wishtory', releases: '', issues: '',

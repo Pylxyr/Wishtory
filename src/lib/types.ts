@@ -11,7 +11,7 @@ export interface Account { game: GameId; uid: string; nickname: string; timezone
 
 export interface HistoryPull {
   id: string; gacha_type: string; gacha_id: string; item_id: string; name: string; item_type: string;
-  time: string; rank: number; pool: string; banner_key: string; banner_name: string | null; pity: number | null;
+  time: string; rank: number; pool: string; banner_name: string | null; pity: number | null;
 }
 export interface FiveStar { name: string; pity: number; time: string; off_banner: boolean | null; outcome: PullOutcome | null }
 export interface FourStar { name: string; pity: number; time: string; is_character: boolean }

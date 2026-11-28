@@ -14,6 +14,8 @@ body { font-family: var(--ui); font-size: 14px; background: var(--bg); color: va
 button, select, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Star Rail and Zenless clip their buttons and panels with clip-path, which would hide an outer ring. */
+:root[data-game='star_rail'] :focus-visible, :root[data-game='zenless'] :focus-visible { outline-offset: -3px; }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .faint { color: var(--faint); }
@@ -70,7 +72,7 @@ select.field { padding-right: 8px; }
 input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 /* ---------------------------------------------------------------- shell ---------------------- */
-.shell { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100%; position: relative; }
+.shell { display: grid; grid-template-columns: var(--rail-w) 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; position: relative; }
 .rail { background: var(--rail); border-right: 1px solid var(--line); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 3; overflow: hidden; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px; font-size: 19px; font-weight: 700; }
 .brand svg { width: 26px; height: 26px; color: var(--accent); flex: none; }
@@ -94,7 +96,7 @@ input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px;
 .rail .spacer { flex: 1; }
 .rail .foot { padding: 10px; font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; }
 
-.main { display: flex; flex-direction: column; min-width: 0; position: relative; height: 100%; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; height: 100%; }
 .pagebar { display: flex; align-items: center; gap: 14px; padding: 16px 28px 12px; position: relative; z-index: 2; flex-wrap: wrap; }
 .pagebar h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
 :root[data-game='star_rail'] .pagebar h1 { text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500; font-size: 20px; }
@@ -106,7 +108,7 @@ input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px;
 :root[data-game='star_rail'] .tabs button, :root[data-game='zenless'] .tabs button { border-radius: 0; }
 :root[data-game='zenless'] .tabs button { font-style: italic; text-transform: uppercase; transform: skewX(var(--skew)); }
 .tabs button.on { background: var(--accent); color: var(--accent-ink); }
-.content { flex: 1; overflow: auto; padding: 8px 28px 28px; position: relative; z-index: 1; scrollbar-gutter: stable; }
+.content { flex: 1; min-height: 0; overflow: auto; overflow-x: hidden; padding: 8px 28px 28px; position: relative; z-index: 1; scrollbar-gutter: stable; }
 .statusbar { height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 28px; font-size: 12px; color: var(--faint); border-top: 1px solid var(--line); background: var(--rail); position: relative; z-index: 2; }
 .page { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 .row { display: flex; align-items: center; gap: 12px; }
@@ -141,10 +143,12 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, color-mix(in oklab, var(--text) 3%, transparent) 0 1px, transparent 1px 4px); }
 .roll { position: absolute; left: 0; right: 0; height: 140px; background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--accent) 7%, transparent), transparent); animation: roll 7s linear infinite; }
 @keyframes roll { from { transform: translateY(-160px); } to { transform: translateY(100vh); } }
-.stripes { position: absolute; right: 0; top: 0; width: 46vmin; height: 46vmin; clip-path: polygon(100% 0, 0 0, 100% 100%); background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--accent) 10%, transparent) 0 7px, transparent 7px 22px); background-size: 31.1px 31.1px; animation: march 1.4s linear infinite; }
-@keyframes march { to { background-position: 31.1px 0; } }
-.halftone { position: absolute; left: 0; bottom: 0; width: 50vmin; height: 50vmin; background: radial-gradient(circle, color-mix(in oklab, var(--accent) 22%, transparent) 1.6px, transparent 2px); background-size: 14px 14px; -webkit-mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); animation: drift 12s linear infinite; }
-@keyframes drift { to { background-position: 14px -14px; } }
+.stripes { position: absolute; right: 0; top: 0; width: 46vmin; height: 46vmin; clip-path: polygon(100% 0, 0 0, 100% 100%); overflow: hidden; }
+.stripes::before { content: ''; position: absolute; inset: 0 0 0 -31.1px; background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--accent) 10%, transparent) 0 7px, transparent 7px 22px); background-size: 31.1px 31.1px; animation: march 1.4s linear infinite; }
+@keyframes march { to { transform: translateX(31.1px); } }
+.halftone { position: absolute; left: 0; bottom: 0; width: 50vmin; height: 50vmin; overflow: hidden; -webkit-mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); mask-image: radial-gradient(circle at 0 100%, #000, transparent 70%); }
+.halftone::before { content: ''; position: absolute; inset: 0 0 -14px -14px; background: radial-gradient(circle, color-mix(in oklab, var(--accent) 22%, transparent) 1.6px, transparent 2px); background-size: 14px 14px; animation: drift 12s linear infinite; }
+@keyframes drift { to { transform: translate(14px, -14px); } }
 
 /* ---------------------------------------------------------------- page transitions ----------- */
 .page-enter { animation: var(--enter, none); }
@@ -178,8 +182,8 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 @keyframes diamond { 0%, 100% { transform: translateY(-50%) rotate(45deg) scale(0.55); opacity: 0.6; } 50% { transform: translateY(-50%) rotate(225deg) scale(0.9); opacity: 1; } }
 .strip.star_rail .fig + .fig { border-left: 1px solid var(--line2); }
 .strip.star_rail .fig .n { position: absolute; top: 10px; right: 14px; font: 500 10px var(--mono); color: var(--faint); }
-.strip.star_rail::after { content: ''; position: absolute; top: 0; bottom: 0; width: 80px; background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 16%, transparent), transparent); animation: hud 6s ease-in-out infinite; z-index: 2; pointer-events: none; }
-@keyframes hud { 0% { left: -100px; } 35%, 100% { left: 100%; } }
+.strip.star_rail::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 80px; background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--accent) 16%, transparent), transparent); animation: hud 6s ease-in-out infinite; z-index: 2; pointer-events: none; }
+@keyframes hud { 0% { transform: translateX(-100px); } 35%, 100% { transform: translateX(calc(100vw - var(--rail-w) - 56px)); } }
 .strip.zenless { gap: 6px; }
 .strip.zenless .fig { transform: skewX(-8deg); background: var(--panel2); border-right: 3px solid var(--accent); }
 .strip.zenless .fig > * { transform: skewX(8deg); }
@@ -206,6 +210,9 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .livecard .left { font-size: 12px; color: var(--muted); }
 .livecard.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
 :root[data-game='star_rail'] .livecard.sel, :root[data-game='zenless'] .livecard.sel { outline: 0; }
+:root[data-game='star_rail'] .livecard.sel:focus-visible, :root[data-game='zenless'] .livecard.sel:focus-visible { outline: 2px solid var(--accent); }
+/* On an accent-filled control an accent ring would vanish, so it takes the ink colour instead. */
+:root[data-game='star_rail'] :is(.btn.primary, .chip.on, .tabs button.on, .nav.active):focus-visible, :root[data-game='zenless'] :is(.btn.primary, .chip.on, .tabs button.on, .nav.active):focus-visible { outline-color: var(--accent-ink); }
 .shine::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 40%, color-mix(in oklab, var(--gold) 30%, transparent) 50%, transparent 60%); transform: translateX(-120%); animation: shine 5s ease-in-out infinite; pointer-events: none; z-index: 3; }
 @keyframes shine { 0%, 60% { transform: translateX(-120%); } 90%, 100% { transform: translateX(120%); } }
 
@@ -236,8 +243,10 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 /* Star Rail: stations on one line, a train that glides to the selected one */
 .route { position: relative; padding: 36px 10px 10px; }
 .route .line { position: absolute; left: 6%; right: 6%; top: 49px; height: 4px; background: repeating-linear-gradient(90deg, var(--line2) 0 10px, transparent 10px 18px); }
-.route .line::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 18px); opacity: 0.55; animation: flow 1.2s linear infinite; mask-image: linear-gradient(90deg, #000 var(--prog, 50%), transparent var(--prog, 50%)); -webkit-mask-image: linear-gradient(90deg, #000 var(--prog, 50%), transparent var(--prog, 50%)); }
-@keyframes flow { to { background-position: 18px 0; } }
+/* The lit part is a fixed-width clipper; only its dashes move, by transform. */
+.route .line i { position: absolute; inset: 0 auto 0 0; width: var(--prog, 50%); overflow: hidden; }
+.route .line i::before { content: ''; position: absolute; top: 0; bottom: 0; left: -18px; width: calc(100% + 18px); background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 18px); opacity: 0.55; animation: flow 1.2s linear infinite; }
+@keyframes flow { to { transform: translateX(18px); } }
 .train { position: absolute; top: 28px; left: var(--x, 6%); translate: -50% 0; transition: left 0.8s cubic-bezier(0.6, 0, 0.2, 1); z-index: 3; color: var(--accent); filter: drop-shadow(0 0 8px var(--accent)); }
 .train svg { width: 38px; height: 38px; display: block; animation: rattle 0.35s linear infinite; }
 @keyframes rattle { 50% { transform: translateY(-1.2px); } }
@@ -245,8 +254,9 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .station { text-align: left; padding: 14px 16px 16px; cursor: pointer; font: inherit; color: inherit; border: 0; background: none; transition: transform 0.25s; }
 .station:hover { transform: translateY(-3px); }
 .station .dot { position: absolute; top: -29px; left: 50%; translate: -50% 0; width: 14px; height: 14px; background: var(--panel); border: 3px solid var(--line2); transform: rotate(45deg); transition: 0.3s; }
-.station.sel .dot { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 22%, transparent); animation: stationpulse 2s ease-in-out infinite; }
-@keyframes stationpulse { 50% { box-shadow: 0 0 0 11px color-mix(in oklab, var(--accent) 6%, transparent); } }
+.station.sel .dot { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 22%, transparent); }
+.station.sel .dot::after { content: ''; position: absolute; inset: -3px; border: 2px solid var(--accent); opacity: 0; animation: stationpulse 2s ease-out infinite; }
+@keyframes stationpulse { from { transform: scale(1); opacity: 0.55; } to { transform: scale(1.9); opacity: 0; } }
 .station .stn { font: 500 10.5px var(--mono); color: var(--faint); letter-spacing: 0.14em; }
 .station .t { font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; font-size: 13px; margin: 2px 0 8px; }
 .station .big { font: 600 34px var(--mono); line-height: 1; }
@@ -306,12 +316,31 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .table .nm { display: flex; align-items: center; gap: 10px; }
 .table .num { text-align: right; }
 .scroll { max-height: calc(100vh - 330px); overflow: auto; }
+/* History: the table takes the rest of the window instead of a guessed height */
+.page-enter { height: 100%; }
+.page.history { height: 100%; min-height: 480px; }
+.page.history .panel.grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.page.history .scroll { flex: 1; min-height: 0; max-height: none; }
+.thbtn { background: none; border: 0; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.thbtn:hover { color: var(--text); }
+.table td.clip { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.table tr.day td { height: 30px; background: var(--panel2); font: 600 11px var(--mono); letter-spacing: 0.08em; color: var(--muted); }
+.table tr.day:hover td { background: var(--panel2); }
+.pbar { display: inline-block; width: 54px; height: 4px; margin-left: 10px; background: var(--panel3); position: relative; vertical-align: middle; overflow: hidden; border-radius: 2px; }
+.pbar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.pbar i.soft { background: var(--gold); }
+.timeline { flex: none; }
+.timeline .tl { position: relative; height: 76px; }
+.timeline .track { position: absolute; left: 22px; right: 22px; top: 28px; height: 2px; background: var(--line2); }
+.timeline .dot { position: absolute; top: 20px; left: calc(22px + (100% - 44px) * var(--x)); width: 18px; height: 18px; margin-left: -9px; padding: 0; border-radius: 50%; border: 3px solid var(--panel); background: var(--gold); cursor: pointer; transition: transform 0.15s; }
+.timeline .dot:hover, .timeline .dot:focus-visible { transform: scale(1.4); z-index: 2; }
+.timeline .ends { position: absolute; left: 22px; right: 22px; bottom: 10px; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 
 /* ---------------------------------------------------------------- misc ----------------------- */
 .refresh { padding: 14px 18px; display: flex; align-items: center; gap: 14px; position: relative; overflow: hidden; }
 .refresh .track { height: 4px; flex: 1; background: var(--panel3); position: relative; overflow: hidden; }
-.refresh .track i { position: absolute; inset: 0; width: 35%; background: var(--accent); animation: indet 1.2s ease-in-out infinite; }
-@keyframes indet { from { left: -35%; } to { left: 100%; } }
+.refresh .track i { position: absolute; inset: 0; width: 35%; background: var(--accent); transform: translateX(-100%); animation: indet 1.2s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(286%); } }
 .meteor-done { position: absolute; top: 50%; left: -80px; width: 120px; height: 2px; background: linear-gradient(90deg, transparent, var(--gold)); animation: shoot 1.2s ease-out 1 forwards; rotate: -10deg; }
 @keyframes shoot { to { left: 105%; opacity: 0; } }
 .empty { text-align: center; padding: 56px 24px; display: grid; gap: 12px; justify-items: center; }
@@ -330,14 +359,29 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .swatch i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line2); flex: none; }
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; }
+label.switch { cursor: pointer; }
+.switch input[type='checkbox'] { width: 18px; height: 18px; flex: none; cursor: pointer; }
+.linkbtn { background: none; border: 0; padding: 4px 6px; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.more-head { justify-content: space-between; align-items: baseline; }
+.more-head h2 { margin: 0 0 10px; }
 .switch + .switch { border-top: 1px solid var(--line); }
 .skeleton { background: linear-gradient(90deg, var(--panel2), var(--panel3), var(--panel2)); background-size: 200% 100%; animation: sk 1.4s linear infinite; border-radius: var(--r); min-height: 90px; }
 @keyframes sk { to { background-position: -200% 0; } }
 
 :root[data-motion='off'] *, :root[data-motion='off'] *::before, :root[data-motion='off'] *::after { animation: none !important; transition: none !important; }
 :root[data-motion='off'] .ring .fill { stroke-dashoffset: var(--to); }
+:root[data-paused] *, :root[data-paused] *::before, :root[data-paused] *::after { animation-play-state: paused !important; }
 :root[data-motion='off'] .sparkle { opacity: 0.25; }
 @media (prefers-reduced-motion: reduce) {
   :root[data-motion='on'] *, :root[data-motion='on'] *::before, :root[data-motion='on'] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .ring .fill { stroke-dashoffset: var(--to); }
 }
+
+/* Refresh with an arrow for the less common ways to refresh */
+.linkwrap { position: relative; }
+.splitbtn { display: inline-flex; gap: 2px; }
+.btn.more { padding: 0 10px; }
+.linkbox { position: absolute; right: 0; top: calc(100% + 8px); width: 360px; padding: 16px; display: grid; gap: 10px; z-index: 30; }
+
+hr.rule { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.panel h3 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }

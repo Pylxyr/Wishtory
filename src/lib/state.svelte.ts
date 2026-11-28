@@ -116,6 +116,8 @@ class App {
     } finally {
       this.ready = true;
     }
+    // Once a day, if cloud backup is on. The core decides whether one is due; nothing happens when it is off.
+    if (!this.startupError) void api.cloudBackupIfDue().catch(() => {});
   }
 
   async reloadAccounts() {
@@ -126,7 +128,11 @@ class App {
   async loadPity() {
     const acc = this.account;
     const token = ++this.pityToken;
-    if (!acc) { this.pity = []; return; }
+    if (!acc) {
+      this.pity = [];
+      this.pityLoading = false;
+      return;
+    }
     this.pityLoading = true;
     try {
       const pity = await api.getPity(acc.game, acc.uid);
@@ -138,7 +144,10 @@ class App {
     }
   }
 
+  get refreshing() { return this.refresh?.phase === 'running'; }
+
   async refreshGame(full = false, url?: string) {
+    if (this.refreshing) return; // a second click must not start a second fetch
     const game = this.game;
     this.refresh = { game, phase: 'running', message: 'Looking for the history page you opened in the game…' };
     const onEvent = (e: T.RefreshEvent) => {
