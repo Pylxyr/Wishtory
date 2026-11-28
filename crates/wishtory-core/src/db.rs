@@ -39,7 +39,10 @@ fn pull_signature(p: &Pull) -> Option<PullSignature> {
     })
 }
 
+// WAL with `synchronous = NORMAL` cannot corrupt the file on a crash; at worst a power cut loses the
+// last few commits, which the next refresh downloads again. It makes every merge noticeably cheaper.
 const SCHEMA: &str = "PRAGMA journal_mode = WAL;
+     PRAGMA synchronous = NORMAL;
      PRAGMA busy_timeout = 5000;
      CREATE TABLE IF NOT EXISTS accounts (
         game TEXT NOT NULL, uid TEXT NOT NULL, nickname TEXT NOT NULL DEFAULT '',

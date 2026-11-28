@@ -132,28 +132,22 @@ const GROUPS: &[CreditGroup] = &[
         note: "Open-source software and fonts shipped inside Wishtory. The full list of libraries and their licences is in the source repository.",
         credits: &[
             credit(
-                "Flutter",
-                "Interface toolkit.",
-                "https://flutter.dev/",
-                "BSD-3-Clause",
+                "Tauri",
+                "Desktop shell: the window, its link to the Rust core, and the installer.",
+                "https://tauri.app/",
+                "Apache-2.0 OR MIT",
+            ),
+            credit(
+                "Svelte",
+                "Interface framework.",
+                "https://svelte.dev/",
+                "MIT",
             ),
             credit(
                 "Rust",
                 "Core: game-file discovery, history download, pity maths and storage.",
                 "https://www.rust-lang.org/",
                 "Apache-2.0 OR MIT",
-            ),
-            credit(
-                "flutter_rust_bridge",
-                "Connects the Flutter interface to the Rust core.",
-                "https://github.com/fzyzcjy/flutter_rust_bridge",
-                "MIT",
-            ),
-            credit(
-                "Riverpod",
-                "State management.",
-                "https://riverpod.dev/",
-                "MIT",
             ),
             credit(
                 "SQLite",

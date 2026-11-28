@@ -118,7 +118,7 @@ fn log_candidates(sources: &[Source], game: Game) -> Vec<(PathBuf, usize)> {
             }
         }
     }
-    found.sort_by_key(|(path, _)| std::cmp::Reverse(modified(path)));
+    found.sort_by_cached_key(|(path, _)| std::cmp::Reverse(modified(path)));
     found
 }
 

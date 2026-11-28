@@ -12,7 +12,7 @@
 //   folder of their own Google Drive. The Google sign-in and passphrase are kept in the operating
 //   system's credential store, never in a file.
 // -----------------------------------------------------------------------------
-//! UI-agnostic core of Wishtory. A front end (the Flutter app, through `wishtory-bridge`) opens a
+//! UI-agnostic core of Wishtory. A front end (the Tauri app, through `wishtory-api`) opens a
 //! [`Core`] once and calls its methods; nothing in this crate knows about windows or toolkits.
 
 #[macro_use]
@@ -221,8 +221,18 @@ impl Core {
         game: Game,
         uid: String,
         banner: Option<String>,
+        min_rank: Option<u8>,
     ) -> Result<Vec<ops::HistoryPull>, AppError> {
-        ops::get_history(&self.db, &self.catalog, &self.banners, game, uid, banner).await
+        ops::get_history(
+            &self.db,
+            &self.catalog,
+            &self.banners,
+            game,
+            uid,
+            banner,
+            min_rank,
+        )
+        .await
     }
     pub async fn get_pity(&self, game: Game, uid: String) -> Result<Vec<BannerPity>, AppError> {
         ops::get_pity(&self.db, &self.banners, &self.rules, game, uid).await

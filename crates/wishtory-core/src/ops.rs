@@ -22,6 +22,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
+    cell::LazyCell,
     collections::{HashMap, HashSet},
     io::Write,
     path::{Path, PathBuf},
@@ -712,7 +713,9 @@ fn banner_label(entry: &BannerEntry, names: &HashMap<(&str, &str), &str>) -> Str
     format!("{} · {}", entry.name, featured.join(" / "))
 }
 
-/// Newest first, optionally filtered by banner key ("character", "weapon", ...).
+/// Newest first, optionally filtered by banner key ("character", "weapon", ...) and by a minimum
+/// display rank (4 keeps the 4★ and 5★ pulls, 5 only the 5★ ones). Filtering here means the front
+/// end is not sent the hundreds of 3★ rows it will not show.
 pub async fn get_history(
     db: &Db,
     catalog: &CatalogStore,
@@ -720,10 +723,21 @@ pub async fn get_history(
     game: Game,
     uid: String,
     banner: Option<String>,
+    min_rank: Option<u8>,
 ) -> Result<Vec<HistoryPull>, AppError> {
     let (catalog, banner_list) = (catalog.current(), banners.current());
-    db.run(move |db| history(db, &catalog, &banner_list, game, &uid, banner.as_deref()))
-        .await
+    db.run(move |db| {
+        history(
+            db,
+            &catalog,
+            &banner_list,
+            game,
+            &uid,
+            banner.as_deref(),
+            min_rank,
+        )
+    })
+    .await
 }
 
 fn history(
@@ -733,6 +747,7 @@ fn history(
     game: Game,
     uid: &str,
     banner: Option<&str>,
+    min_rank: Option<u8>,
 ) -> Result<Vec<HistoryPull>, AppError> {
     if let Err(e) = assign_banners(db, banner_list, game, uid) {
         wlog!(
@@ -742,11 +757,14 @@ fn history(
         );
     }
     let assigned = db.pull_banners_for(game.as_str(), uid)?;
-    let names: HashMap<(&str, &str), &str> = catalog
-        .items
-        .iter()
-        .map(|i| ((i.game.as_str(), i.id.as_str()), i.name.as_str()))
-        .collect();
+    // Only needed to label banners, so it is built on first use rather than on every call.
+    let names = LazyCell::new(|| -> HashMap<(&str, &str), &str> {
+        catalog
+            .items
+            .iter()
+            .map(|i| ((i.game.as_str(), i.id.as_str()), i.name.as_str()))
+            .collect()
+    });
     let entries: HashMap<&str, &BannerEntry> = banner_list
         .banners
         .iter()
@@ -759,14 +777,24 @@ fn history(
     if let Some(b) = banner.filter(|b| !b.is_empty()) {
         rows.retain(|(p, _)| pity::banner_key(game, &p.gacha_type) == Some(b));
     }
+    if let Some(min) = min_rank {
+        rows.retain(|(p, _)| pity::display_rank(game, p.rank_type) >= min);
+    }
     rows.reverse();
+    // One label per banner, not one formatted string per pull.
+    let mut labels: HashMap<&str, String> = HashMap::new();
     Ok(rows
         .into_iter()
         .map(|(pull, pity)| {
             let banner_name = assigned
                 .get(&pull.id)
                 .and_then(|id| entries.get(id.as_str()))
-                .map(|entry| banner_label(entry, &names));
+                .map(|entry| {
+                    labels
+                        .entry(entry.id.as_str())
+                        .or_insert_with(|| banner_label(entry, &names))
+                        .clone()
+                });
             HistoryPull {
                 rank: pity::display_rank(game, pull.rank_type),
                 pool: pity::pool_label(game, &pull.gacha_type)
