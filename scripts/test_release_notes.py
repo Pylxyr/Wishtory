@@ -62,7 +62,7 @@ class TidyAiNotes(unittest.TestCase):
 
 class DetectLogic(unittest.TestCase):
     DIFF = (
-        "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n"
+        "+++ b/crates/wishtory-api/src/api/core_api.rs\n"
         "+    pub fn get_game_meta() -> Vec<GameMeta> {\n"
         "+pub async fn get_logs() -> Vec<LogEntry> {\n"
         "-    pub fn old_command() {\n"
@@ -77,11 +77,11 @@ class DetectLogic(unittest.TestCase):
         self.assertEqual(seen["code"]["added"], {"history_filters()"})
 
     def test_a_name_on_both_sides_counts_as_neither(self):
-        diff = "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n+    pub fn same() {\n-    pub fn same() {\n"
+        diff = "+++ b/crates/wishtory-api/src/api/core_api.rs\n+    pub fn same() {\n-    pub fn same() {\n"
         self.assertEqual(rn.detect_logic(diff)["commands"], {"added": set(), "removed": set()})
 
     def test_ordinary_lines_are_not_api_functions(self):
-        diff = "+++ b/crates/wishtory-bridge/src/api/core_api.rs\n+    let rules = RulesStore::open(&dir);\n+    fn private_helper() {\n"
+        diff = "+++ b/crates/wishtory-api/src/api/core_api.rs\n+    let rules = RulesStore::open(&dir);\n+    fn private_helper() {\n"
         self.assertEqual(rn.detect_logic(diff)["commands"]["added"], set())
 
     def test_functions_outside_the_api_file_are_public_items_not_api_functions(self):
@@ -90,21 +90,16 @@ class DetectLogic(unittest.TestCase):
         self.assertEqual(seen["commands"]["added"], set())
         self.assertEqual(seen["code"]["added"], {"open()"})
 
-    def test_generated_bridge_code_is_ignored(self):
-        diff = "+++ b/crates/wishtory-bridge/src/frb_generated.rs\n+pub fn wire__crate__api__thing() {\n"
-        seen = rn.detect_logic(diff)
-        self.assertEqual(seen["commands"]["added"], set())
-        self.assertEqual(seen["code"]["added"], set())
-
-    def test_areas_follow_the_flutter_and_rust_layout(self):
+    def test_areas_follow_the_tauri_svelte_and_rust_layout(self):
         for path, area in {
             "crates/wishtory-core/src/pity.rs": "Pity and 50/50 rules",
             "crates/wishtory-core/src/wine.rs": "Reading wish history",
-            "crates/wishtory-bridge/src/api/types.rs": "Bridge between the interface and the core",
-            "app/lib/bridge/generated/frb_generated.dart": "Generated bridge code",
-            "app/lib/features/history/history_page.dart": "User interface",
-            "app/test/planning_test.dart": "Tests",
-            "app/linux/CMakeLists.txt": "Windows and Linux app shells",
+            "crates/wishtory-api/src/api/types.rs": "API between the window and the core",
+            "src/pages/History.svelte": "User interface",
+            "src/app.css": "User interface",
+            "scripts/test_release_notes.py": "Tests",
+            "src-tauri/src/commands.rs": "Desktop app shell",
+            "src-tauri/icons/icon.png": "Icons and artwork",
             ".github/workflows/ci.yml": "Build and release",
         }.items():
             self.assertEqual(rn.area_of(path), area, path)

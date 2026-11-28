@@ -35,8 +35,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev pkg-config
       - uses: ./.github/actions/toolchains
-        with:
-          flutter: "false"
       - run: cargo fmt --all --check
       # The lint policy (deny correctness, suspicious, complexity, perf, style and pedantic, with a few
       # allows) lives in Cargo.toml's [workspace.lints]; rustc warnings are denied too. Runs on both
@@ -47,8 +45,8 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace
 
-  # The Svelte interface: type and template checks, and a production build (which is what the Tauri
-  # shell packages).
+  # The Svelte interface: type and template checks, a production build (which is what the Tauri shell
+  # packages) and a browser smoke test of the rendered window.
   ui:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -61,6 +59,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+      # Renders the window in a real browser on the mock backend (see e2e/smoke.mjs).
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
 
   # The release automation is code too: the scripts have unit tests, the catalog tooling has its own, and
   # every workflow is linted (expression typos, undefined outputs, shell mistakes) before it can break a release.
