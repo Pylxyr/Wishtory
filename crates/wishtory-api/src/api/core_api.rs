@@ -140,15 +140,17 @@ impl WishtoryCore {
     }
 
     /// Newest first. `banner` is one of the keys from [`game_meta`], or `None` for every banner.
+    /// `min_rank` of 4 leaves out the 3★ pulls and 5 keeps only the 5★ ones.
     pub async fn get_history(
         &self,
         game: GameId,
         uid: String,
         banner: Option<String>,
+        min_rank: Option<u8>,
     ) -> Result<Vec<HistoryPull>, ApiError> {
         Ok(self
             .inner
-            .get_history(game.into(), uid, banner)
+            .get_history(game.into(), uid, banner, min_rank)
             .await?
             .into_iter()
             .map(Into::into)

@@ -91,8 +91,9 @@ pub async fn get_history(
     game: GameId,
     uid: String,
     banner: Option<String>,
+    min_rank: Option<u8>,
 ) -> Result<Vec<HistoryPull>, ApiError> {
-    shell.core()?.get_history(game, uid, banner).await
+    shell.core()?.get_history(game, uid, banner, min_rank).await
 }
 
 #[tauri::command]
