@@ -49,7 +49,9 @@ export const api = {
   listAccounts: () => call<T.Account[]>('list_accounts'),
   deleteAccount: (game: GameId, uid: string) => call<void>('delete_account', { game, uid }),
   clearAllHistory: () => call<number>('clear_all_history'),
-  getHistory: (game: GameId, uid: string, banner: string | null) => call<T.HistoryPull[]>('get_history', { game, uid, banner }),
+  /** `minRank` 4 leaves out the 3★ pulls and 5 keeps only the 5★ ones, so they are never sent over. */
+  getHistory: (game: GameId, uid: string, banner: string | null, minRank: number | null = null) =>
+    call<T.HistoryPull[]>('get_history', { game, uid, banner, minRank }),
   getPity: (game: GameId, uid: string) => call<T.BannerPity[]>('get_pity', { game, uid }),
   getCatalog: () => call<T.GameCatalog>('get_catalog'),
   getBanners: () => call<T.BannerList>('get_banners'),

@@ -30,7 +30,7 @@
   </div>
 {:else if app.game === 'star_rail'}
   <div class="panel route pad" style="--prog:{prog}%">
-    <div class="line"></div>
+    <div class="line"><i></i></div>
     <div class="train" style="--x:{trainX}%"><Glyph name="train" size={38} /></div>
     <div class="stations" style="grid-template-columns:repeat({app.pity.length},1fr)">
       {#each app.pity as p, i (p.banner)}

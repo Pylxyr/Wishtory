@@ -14,6 +14,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
     "shots": "node e2e/shots.mjs",
+    "e2e": "node e2e/smoke.mjs",
     "catalog:update": "node scripts/update-catalog.mjs",
     "catalog:test": "node --test scripts/update-catalog.test.mjs scripts/prepare-catalog.test.mjs scripts/track-banners.test.mjs scripts/changelog.test.mjs scripts/sync-manifest.test.mjs scripts/update-materials.test.mjs",
     "banners:track": "node scripts/track-banners.mjs",

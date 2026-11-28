@@ -1,24 +1,15 @@
 // Looks at the UI the way a person would: starts Vite with the mock backend, opens each game's
 // Overview and History, a page change and the Settings page, and saves screenshots to e2e/out/.
 // Usage: npm run shots  (needs `npx playwright install chromium` once)
-import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { openBrowser, startApp } from './harness.mjs';
 
-const PORT = 1420;
-const out = new URL('./out/', import.meta.url).pathname;
+const out = fileURLToPath(new URL('./out/', import.meta.url));
 await mkdir(out, { recursive: true });
-const vite = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { env: { ...process.env, VITE_MOCK: '1' }, stdio: 'ignore' });
-for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://localhost:${PORT}`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 500)); }
-
-const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
-const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => m.type() === 'error' && !/enka|githubusercontent|ERR_/.test(m.text()) && errors.push(m.text()));
-await page.route(/enka\.network|githubusercontent/, (r) => r.abort());
-await page.goto(`http://localhost:${PORT}`);
-await page.emulateMedia({ colorScheme: 'dark' });
+const app = await startApp();
+const { browser, page, errors } = await openBrowser();
+await page.goto(app.url);
 await page.waitForSelector('.shell');
 
 const games = [['genshin', 'Genshin'], ['star_rail', 'Star Rail'], ['zenless', 'Zenless Zone Zero']];
@@ -48,4 +39,4 @@ await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}genshin-light.png` });
 console.log(errors.length ? 'Errors:\n' + errors.join('\n') : 'No page errors.');
 await browser.close();
-vite.kill();
+app.stop();

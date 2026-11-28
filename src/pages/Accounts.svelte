@@ -6,6 +6,17 @@
   import type { Account } from '../lib/types';
 
   let confirming = $state<string | null>(null);
+  let wiping = $state(false);
+  const total = $derived(app.accounts.reduce((n, a) => n + a.pull_count, 0));
+  async function wipe() {
+    try {
+      const n = await api.clearAllHistory();
+      await app.reloadAccounts();
+      await app.loadPity();
+      app.toast(`Deleted ${plural(n, 'pull')} from this PC.`, 'ok');
+    } catch (e) { app.toast(asError(e).message, 'err'); }
+    wiping = false;
+  }
   const k = (a: Account) => `${a.game}|${a.uid}`;
   async function remove(a: Account) {
     try { await api.deleteAccount(a.game, a.uid); await app.reloadAccounts(); app.toast('Account removed from this PC.', 'ok'); }
@@ -37,4 +48,16 @@
       </div>
     </section>
   {/each}
+
+  {#if app.accounts.length}
+    <section class="panel pad pop" style="--i:3">
+      <h2>Your data</h2>
+      <p class="muted" style="margin-top:0">Everything Wishtory knows lives on this PC. Nicknames are kept only in this app's settings, not in exports. Export first if you may want your history back.</p>
+      {#if wiping}
+        <div class="row"><span class="muted">Delete all {plural(total, 'pull')} on every account?</span><button class="btn sm danger" onclick={wipe}>Delete everything</button><button class="btn sm" onclick={() => (wiping = false)}>Keep</button></div>
+      {:else}
+        <button class="btn sm" onclick={() => (wiping = true)}>Delete all saved history…</button>
+      {/if}
+    </section>
+  {/if}
 </div>
