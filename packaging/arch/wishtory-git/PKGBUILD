@@ -4,30 +4,27 @@
 #   cd packaging/arch/wishtory-git && makepkg -si
 # To build another branch, change `#branch=` in `source`. Not on the AUR yet.
 #
-# Flutter is not in the official repositories. Install it first from the AUR (`flutter`, or the
-# Flutter you already use: then run `makepkg -si -d` to skip the dependency check). The version
-# this source is written for is in flutter-toolchain.txt. The first build downloads Flutter's
-# Dart packages and the Rust crates, so it needs the network.
+# The app is a Tauri program: Rust for the core, Svelte for the window, WebKitGTK to show it. The first
+# build downloads the Rust crates and the npm packages, so it needs the network.
 pkgname=wishtory-git
-pkgver=0.3.0.r0.g0000000
+pkgver=0.6.0.r0.g0000000
 pkgrel=1
 pkgdesc='Local wish history manager for Genshin Impact, Honkai: Star Rail and Zenless Zone Zero (git)'
 arch=('x86_64')
 url='https://github.com/Pylxyr/Wishtory'
 license=('MIT')
-depends=('gtk3' 'xdg-utils')
-makedepends=('git' 'rust' 'flutter' 'clang' 'cmake' 'ninja' 'pkgconf')
+depends=('webkit2gtk-4.1' 'gtk3' 'xdg-utils')
+makedepends=('git' 'rust' 'nodejs' 'npm' 'pkgconf')
 provides=('wishtory')
 conflicts=('wishtory')
-# Stripping libapp.so (Flutter's compiled Dart code) breaks the app.
-options=('!lto' '!strip')
+options=('!lto')
 source=("git+$url.git#branch=main")
 sha256sums=('SKIP')
 
 pkgver() {
   cd Wishtory
-  git describe --long --tags --abbrev=7 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
-    || printf '0.3.0.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  git describe --long --tags --abbrev=7 2>/dev/null | sed 's/^v//;s/-\(alpha\|beta\|rc\)/\1/;s/\([^-]*-g\)/r\1/;s/-/./g' \
+    || printf '0.6.0.r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
 }
 
 _src() { echo "$srcdir/Wishtory"; }
@@ -35,26 +32,22 @@ _src() { echo "$srcdir/Wishtory"; }
 prepare() {
   cd "$(_src)"
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+  npm ci --no-audit --no-fund
 }
 
 build() {
   cd "$(_src)"
-  # The Rust core first: the Flutter build copies the library into the bundle.
-  cargo build --locked -p wishtory-bridge --release
-  cd app
-  flutter pub get --enforce-lockfile
-  flutter build linux --release
+  # --no-bundle: this PKGBUILD installs the files itself, so no .deb or AppImage is made.
+  npm run tauri -- build --no-bundle
 }
 
 package() {
   cd "$(_src)"
-  install -d "$pkgdir/opt/wishtory" "$pkgdir/usr/bin"
-  cp -a app/build/linux/x64/release/bundle/. "$pkgdir/opt/wishtory/"
-  ln -s /opt/wishtory/wishtory "$pkgdir/usr/bin/wishtory"
+  install -Dm755 target/release/wishtory "$pkgdir/usr/bin/wishtory"
   install -Dm644 packaging/linux/wishtory.desktop "$pkgdir/usr/share/applications/wishtory.desktop"
-  install -Dm644 assets/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/wishtory.png"
-  install -Dm644 assets/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/wishtory.png"
-  install -Dm644 "assets/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/wishtory.png"
-  install -Dm644 assets/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/wishtory.png"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/wishtory.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/wishtory.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/wishtory.png"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/wishtory.png"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

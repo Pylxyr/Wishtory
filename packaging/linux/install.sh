@@ -9,7 +9,7 @@
 #   bash packaging/linux/install.sh --uninstall     remove the installed app
 #
 # What it may do, after you agree: install build packages with your package manager (sudo; pacman, apt
-# and dnf are supported), download Flutter (and Rust when your system has none, or an old one) into a
+# and dnf are supported), download Rust and Node.js (when your system has none, or an old one) into a
 # temporary folder, build, and install under ~/.local (or $PREFIX). Your saved history is not touched:
 # it lives in ~/.local/share/app.wishtory.desktop.
 set -euo pipefail
@@ -28,9 +28,12 @@ fi
 app_dir="$prefix/share/wishtory"
 bin_link="$prefix/bin/wishtory"
 desktop_file="$prefix/share/applications/wishtory.desktop"
-# icon folder : file in assets/icons
+# icon folder : file in src-tauri/icons
 icons=("32x32:32x32.png" "128x128:128x128.png" "256x256:128x128@2x.png" "512x512:icon.png")
 minimum_rust="1.100"
+# The front end is built with Vite, which needs a current Node.js. 26 is what CI builds with.
+minimum_node="22"
+node_major="26"
 
 keep=0
 uninstall=0
@@ -86,18 +89,18 @@ else
 fi
 
 case "$manager" in
-  pacman) packages=(base-devel git curl unzip xz zip clang cmake ninja gtk3 xdg-utils) ;;
-  apt) packages=(build-essential git curl unzip xz-utils zip clang cmake ninja-build pkg-config libgtk-3-dev xdg-utils) ;;
-  dnf) packages=(gcc gcc-c++ make git curl unzip xz zip clang cmake ninja-build pkgconf-pkg-config gtk3-devel xdg-utils) ;;
+  pacman) packages=(base-devel curl xz webkit2gtk-4.1 gtk3 xdg-utils) ;;
+  apt) packages=(build-essential curl xz-utils pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libssl-dev xdg-utils) ;;
+  dnf) packages=(gcc gcc-c++ make curl xz pkgconf-pkg-config webkit2gtk4.1-devel gtk3-devel libsoup3-devel librsvg2-devel openssl-devel xdg-utils) ;;
   *) packages=() ;;
 esac
 
 missing_tools=()
-for tool in cc git curl unzip xz zip clang cmake ninja pkg-config; do
+for tool in cc curl xz tar pkg-config; do
   have "$tool" || missing_tools+=("$tool")
 done
-if have pkg-config && ! pkg-config --exists gtk+-3.0; then
-  missing_tools+=("the GTK 3 development files")
+if have pkg-config && ! pkg-config --exists webkit2gtk-4.1; then
+  missing_tools+=("the WebKitGTK 4.1 development files")
 fi
 
 # Rust: a system one is used when it is new enough (or when rustup manages versions), otherwise it is
@@ -115,21 +118,30 @@ else
   rust_source=download
 fi
 
-flutter_source=system
-have flutter || flutter_source=download
+# Node.js: a system one is used when it is new enough, otherwise it is installed through pacman on Arch, or
+# downloaded (and checked against the checksum nodejs.org publishes) to a temporary folder.
+node_source=system
+if have node && have npm && version_at_least "$(node --version | sed 's/^v//')" "$minimum_node"; then
+  node_source=system
+elif [ "$manager" = pacman ]; then
+  node_source=pacman
+  packages+=(nodejs npm)
+else
+  node_source=download
+fi
 
 # ---- say what will happen, and ask once -------------------------------------------------------------------
 plan=()
-if [ "${#missing_tools[@]}" -gt 0 ] || [ "$rust_source" = pacman ]; then
+if [ "${#missing_tools[@]}" -gt 0 ] || [ "$rust_source" = pacman ] || [ "$node_source" = pacman ]; then
   if [ -z "$manager" ]; then
     echo "Wishtory needs these tools, and this script does not know your package manager: ${missing_tools[*]}" >&2
-    echo "Install them (and Rust ${minimum_rust}+), then run the script again. docs/linux.md lists package names." >&2
+    echo "Install them (and Rust ${minimum_rust}+ and Node.js ${minimum_node}+), then run the script again. docs/linux.md lists package names." >&2
     exit 1
   fi
   plan+=("install build packages with sudo and $manager: ${packages[*]}")
 fi
 [ "$rust_source" = download ] && plan+=("download Rust $minimum_rust into a temporary folder (about 300 MB)")
-[ "$flutter_source" = download ] && plan+=("download Flutter into a temporary folder (about 2 GB)")
+[ "$node_source" = download ] && plan+=("download Node.js $node_major into a temporary folder (about 30 MB)")
 plan+=("build Wishtory (several minutes)" "install it under $prefix" "delete everything it downloaded and built")
 
 echo "To build Wishtory this script will:"
@@ -159,15 +171,15 @@ fi
 cleanup() {
   if [ "$keep" -eq 0 ]; then
     echo "Cleaning up..."
-    rm -rf "$work" "$root/target" "$root/app/build" "$root/app/.dart_tool" "$root/app/linux/flutter/ephemeral"
+    rm -rf "$work" "$root/target" "$root/node_modules" "$root/dist"
   else
-    echo "Build files kept: $root/target, $root/app/build and $work"
+    echo "Build files kept: $root/target, $root/node_modules and $work"
   fi
 }
 trap cleanup EXIT
 
 # ---- set up the tools --------------------------------------------------------------------------------------
-if [ "${#missing_tools[@]}" -gt 0 ] || [ "$rust_source" = pacman ]; then
+if [ "${#missing_tools[@]}" -gt 0 ] || [ "$rust_source" = pacman ] || [ "$node_source" = pacman ]; then
   yes_flag=()
   [ "$assume_yes" -eq 1 ] && yes_flag=(--noconfirm)
   as_root=()
@@ -197,37 +209,43 @@ if [ "$rust_source" = download ]; then
   rustup default "$channel" >/dev/null
 fi
 
-if [ "$flutter_source" = download ]; then
-  export PUB_CACHE="$work/pub-cache"
-  if [ ! -x "$work/flutter/bin/flutter" ]; then
-    echo "Downloading Flutter..."
-    pin="$(grep -v '^#' "$root/flutter-toolchain.txt" | head -n 1 | tr -d '[:space:]')"
-    tag="${pin%.x}"
-    if [ "$tag" != "$pin" ]; then
-      # "3.50.x" means the newest 3.50 release.
-      tag="$(git ls-remote --tags --refs https://github.com/flutter/flutter.git "$tag.*" |
-        sed 's#.*refs/tags/##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+if [ "$node_source" = download ]; then
+  if [ ! -x "$work/node/bin/node" ]; then
+    echo "Downloading Node.js..."
+    base="https://nodejs.org/dist/latest-v${node_major}.x"
+    sums="$(curl --proto '=https' --tlsv1.2 -fsSL "$base/SHASUMS256.txt")"
+    line="$(printf '%s\n' "$sums" | grep -E ' node-v[0-9.]+-linux-x64\.tar\.xz$' | head -n 1 || true)"
+    if [ -z "$line" ]; then
+      echo "Could not find a Node.js $node_major download for this computer." >&2
+      exit 1
     fi
-    git clone --quiet --depth 1 --branch "${tag:-stable}" https://github.com/flutter/flutter.git "$work/flutter"
+    file="${line##* }"
+    want="${line%% *}"
+    curl --proto '=https' --tlsv1.2 -fsSL -o "$work/$file" "$base/$file"
+    got="$(sha256sum "$work/$file" | awk '{print $1}')"
+    if [ "$got" != "$want" ]; then
+      echo "The Node.js download does not match its published checksum; not using it." >&2
+      exit 1
+    fi
+    mkdir -p "$work/node"
+    tar -xJf "$work/$file" -C "$work/node" --strip-components=1
   fi
-  export PATH="$work/flutter/bin:$PATH"
-  flutter --suppress-analytics config --enable-linux-desktop >/dev/null
+  export PATH="$work/node/bin:$PATH"
 fi
 
 # ---- build ---------------------------------------------------------------------------------------------
 cd "$root"
-echo "Building the Rust core..."
-cargo build --locked -p wishtory-bridge --release
-echo "Building the app..."
-(cd app && flutter pub get --enforce-lockfile && flutter build linux --release)
+echo "Installing the front-end packages..."
+npm ci --no-audit --no-fund
+echo "Building the app (several minutes)..."
+# --no-bundle: this script installs the program itself, so no .deb or AppImage is made.
+npm run tauri -- build --no-bundle
 
-bundle="$root/app/build/linux/x64/release/bundle"
-for needed in "$bundle/wishtory" "$bundle/lib/libwishtory_bridge.so"; do
-  if [ ! -e "$needed" ]; then
-    echo "The build did not produce $needed." >&2
-    exit 1
-  fi
-done
+binary="$root/target/release/wishtory"
+if [ ! -x "$binary" ]; then
+  echo "The build did not produce $binary." >&2
+  exit 1
+fi
 
 # ---- install -------------------------------------------------------------------------------------------
 echo "Installing to $prefix ..."
@@ -235,7 +253,7 @@ echo "Installing to $prefix ..."
 mkdir -p "$prefix/bin" "$prefix/share/applications"
 rm -rf "$app_dir.new" "$app_dir.old"
 mkdir -p "$app_dir.new"
-cp -a "$bundle/." "$app_dir.new/"
+install -m755 "$binary" "$app_dir.new/wishtory"
 if [ -e "$app_dir" ]; then mv "$app_dir" "$app_dir.old"; fi
 mv "$app_dir.new" "$app_dir"
 rm -rf "$app_dir.old"
@@ -247,7 +265,7 @@ awk -v exec_line="Exec=\"$app_dir/wishtory\"" '/^Exec=/ { print exec_line; next 
   "$root/packaging/linux/wishtory.desktop" >"$desktop_file"
 chmod 644 "$desktop_file"
 for entry in "${icons[@]}"; do
-  install -Dm644 "$root/assets/icons/${entry#*:}" "$prefix/share/icons/hicolor/${entry%%:*}/apps/wishtory.png"
+  install -Dm644 "$root/src-tauri/icons/${entry#*:}" "$prefix/share/icons/hicolor/${entry%%:*}/apps/wishtory.png"
 done
 refresh_desktop_caches
 

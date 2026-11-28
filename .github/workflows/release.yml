@@ -121,44 +121,35 @@ jobs:
         if: ${{ !inputs.skip_checks }}
         run: cargo test --locked --workspace
 
-      - name: Build the Rust library
-        run: cargo build --locked -p wishtory-bridge --release
-
       - name: App dependencies
-        working-directory: app
-        run: flutter pub get --enforce-lockfile
+        run: npm ci
 
       - name: App checks
         if: ${{ !inputs.skip_checks }}
-        working-directory: app
-        run: |
-          flutter analyze --no-fatal-infos
-          flutter test
+        run: npm run check
 
-      - name: Build the app
-        working-directory: app
-        run: flutter build windows --release
+      # `tauri build` runs `npm run build` for the Svelte front end, compiles the Rust shell in release mode
+      # and bundles the per-user NSIS installer (see src-tauri/tauri.conf.json).
+      - name: Build the app and the installer
+        run: npm run tauri -- build
 
-      # Inno Setup builds the per-user installer from packaging/windows/wishtory.iss.
-      - name: Build the installer and the zip
+      - name: Collect the installer and the zip
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          $bundle = (Resolve-Path "app/build/windows/x64/runner/Release").Path
-          foreach ($needed in "wishtory.exe", "wishtory_bridge.dll") {
-            if (-not (Test-Path (Join-Path $bundle $needed))) { throw "$needed is missing from the Windows bundle" }
-          }
+          $exe = "target/release/wishtory.exe"
+          if (-not (Test-Path $exe)) { throw "wishtory.exe was not built" }
+          $setup = @(Get-ChildItem "target/release/bundle/nsis" -Filter "*-setup.exe")
+          if ($setup.Count -ne 1) { throw "Expected one NSIS installer, found $($setup.Count)" }
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          $out = (Resolve-Path release).Path
+          Copy-Item $setup[0].FullName release/
 
-          choco install innosetup --no-progress -y
-          if ($LASTEXITCODE -ne 0) { throw "Could not install Inno Setup ($LASTEXITCODE)" }
-          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
-          & $iscc "/DAppVersion=$($env:VERSION)" "/DSourceDir=$bundle" "/DOutputDir=$out" packaging/windows/wishtory.iss
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed ($LASTEXITCODE)" }
-
-          Compress-Archive -Path "$bundle\*" -DestinationPath "$out/Wishtory_$($env:VERSION)_windows_x64.zip"
+          # The same app without an installer: one program that needs the WebView2 runtime Windows 10 and 11 ship with.
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          Copy-Item $exe "stage/Wishtory.exe"
+          if (Test-Path LICENSE) { Copy-Item LICENSE stage/ }
+          Compress-Archive -Path "stage/*" -DestinationPath "release/Wishtory_$($env:VERSION)_windows_x64.zip"
 
       - name: Check the release files
         shell: pwsh

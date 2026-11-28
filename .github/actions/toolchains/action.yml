@@ -1,13 +1,7 @@
 name: Toolchains
 description: >
-  Installs the Rust toolchain chosen in rust-toolchain.toml and, unless told not to, the Flutter
-  version chosen in flutter-toolchain.txt. Run it after actions/checkout.
-
-inputs:
-  flutter:
-    description: "Install Flutter as well (true or false)"
-    required: false
-    default: "true"
+  Installs the Rust toolchain chosen in rust-toolchain.toml and sets up the build cache. Run it after
+  actions/checkout.
 
 runs:
   using: composite
@@ -22,22 +16,3 @@ runs:
         rustc --version
 
     - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-
-    - name: Flutter version
-      id: flutter-version
-      if: ${{ inputs.flutter == 'true' }}
-      shell: bash
-      run: |
-        version="$(grep -v '^#' flutter-toolchain.txt | head -n 1 | tr -d '[:space:]')"
-        if [ -z "$version" ]; then
-          echo "::error::flutter-toolchain.txt has no version line"
-          exit 1
-        fi
-        echo "version=$version" >> "$GITHUB_OUTPUT"
-
-    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-      if: ${{ inputs.flutter == 'true' }}
-      with:
-        channel: stable
-        flutter-version: ${{ steps.flutter-version.outputs.version }}
-        cache: true
