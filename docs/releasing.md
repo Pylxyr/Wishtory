@@ -6,7 +6,7 @@ Releases are built by GitHub Actions and contain the Windows setup installer (`W
 
 1. Open **Actions -> Cut release -> Run workflow** on `main`, pick patch, minor or major (or type an exact version such as `0.2.0` or `0.2.0-rc1`; a `-` makes it a pre-release) and run it.
 
-The workflow runs CI on `main` first; if anything fails, nothing is bumped or tagged. It then sets the new version in `package.json`, `app/pubspec.yaml` (the `+build` number stays), the `[workspace.package]` section of `Cargo.toml` (both Rust crates inherit it) and `Cargo.lock`, commits `Release X.Y.Z`, pushes the commit and the tag `vX.Y.Z` in one atomic push, and calls the **Release** workflow. That builds the Rust library and the Flutter app, then the installer and zip on `windows-latest`. Then a final job writes the checksums, attests the build, writes the release notes and publishes the GitHub Release. A final job fails the run if no published release exists for the tag. The Rust version is the one in `rust-toolchain.toml` and the Flutter version the one in `flutter-toolchain.txt` (the workflows read both from there), the Rust library and the Dart packages are built from their lock files (`--locked`, `--enforce-lockfile`), and the bundled catalog, banner list and rules are stamped with the versions currently published (see [Game catalog updates](game-catalog-updates.md)). The Windows installer is not code-signed, so SmartScreen may warn on first run.
+The workflow runs CI on `main` first; if anything fails, nothing is bumped or tagged. It then sets the new version in `package.json`, `src-tauri/tauri.conf.json`, the `[workspace.package]` section of `Cargo.toml` (the Rust crates inherit it) and `Cargo.lock`, commits `Release X.Y.Z`, pushes the commit and the tag `vX.Y.Z` in one atomic push, and calls the **Release** workflow. That builds the Svelte window and the Rust shell with `tauri build`, then collects the NSIS installer and a zip of the program on `windows-latest`. Then a final job writes the checksums, attests the build, writes the release notes and publishes the GitHub Release. A final job fails the run if no published release exists for the tag. The Rust version is the one in `rust-toolchain.toml` (the workflows read it from there), and the Rust crates and npm packages are built from their lock files (`--locked`, `npm ci`), and the bundled catalog, banner list and rules are stamped with the versions currently published (see [Game catalog updates](game-catalog-updates.md)). The Windows installer is not code-signed, so SmartScreen may warn on first run.
 
 ## Release notes
 
@@ -32,7 +32,7 @@ With no AI configured the notes still come out, from layers 2 and 3. The first s
 
 ## Dependencies
 
-Dependabot opens weekly PRs for GitHub Actions, the Rust crates and the Dart packages. `flutter_rust_bridge` is left out on purpose: the Rust crate, the Dart package and the code generator must all be the same version, so it is bumped by hand ([BUILDING.md](redesign/BUILDING.md#upgrading-flutter_rust_bridge)). CI runs on every PR like on any other change.
+Dependabot opens weekly PRs for GitHub Actions, the Rust crates and the npm packages. `@tauri-apps/*` and the `tauri` crates should move together (same minor version), so merge their PRs together. CI runs on every PR like on any other change.
 
 ## Catalog
 

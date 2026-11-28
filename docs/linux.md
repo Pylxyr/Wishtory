@@ -12,7 +12,7 @@ cd Wishtory
 bash packaging/linux/install.sh
 ```
 
-The script shows its plan and asks before doing anything. It installs only the build packages your system lacks (through `pacman`, `apt` or `dnf`, with a `sudo` prompt), downloads Flutter, and Rust if needed, into a temporary folder, builds the app, installs it under `~/.local`, and cleans up. Allow about 3 GB of free disk space and several minutes. Wishtory then appears in your application menu, and `wishtory` starts it from a terminal.
+The script shows its plan and asks before doing anything. It installs only the build packages your system lacks (through `pacman`, `apt` or `dnf`, with a `sudo` prompt), downloads Node.js and Rust if needed, into a temporary folder, builds the app, installs it under `~/.local`, and cleans up. Allow about 3 GB of free disk space and several minutes. Wishtory then appears in your application menu, and `wishtory` starts it from a terminal.
 
 | To | Run |
 | :--- | :--- |
@@ -25,6 +25,6 @@ Your saved history lives in `~/.local/share/app.wishtory.desktop` and survives u
 
 The games run in Wine or Proton, and Wishtory reads the same files inside the Wine prefix. It checks the usual places by itself (Wine, Lutris, Bottles, Steam, the anime-game launchers and their Flatpak versions). If a game is not found, launch it once, then add its prefix folder under **Settings, then Game locations**. Opening links needs `xdg-utils`.
 
-On a system without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `git`, `curl`, `unzip`, `xz`, `zip`, `clang`, `cmake`, `ninja`, `pkg-config`, the GTK 3 development files and Rust 1.100 or newer. Arch users who already have Flutter can also build a package from `packaging/arch/wishtory-git` with `makepkg -sic`. To include [cloud backup](cloud-backup.md) in your own build, see [cloud-backup.md](cloud-backup.md).
+On a system without `pacman`, `apt` or `dnf`, the script lists what is missing: a C toolchain, `curl`, `xz`, `pkg-config`, the WebKitGTK 4.1 and GTK 3 development files, Node.js 22 or newer and Rust 1.100 or newer. Arch users can also build a package from `packaging/arch/wishtory-git` with `makepkg -sic`. To include [cloud backup](cloud-backup.md) in your own build, see [cloud-backup.md](cloud-backup.md).
 
 [Back to the README](../README.md)

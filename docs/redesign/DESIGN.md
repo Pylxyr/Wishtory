@@ -1,5 +1,9 @@
 # Wishtory 0.3 — UI rewrite: decisions and design
 
+> **Historical.** This describes the Flutter rewrite, which the project has since left: the app is a Tauri 2 shell
+> around a Svelte 5 window again. Read it for the reasoning behind the screens, not for the current architecture
+> (see [BUILDING.md](BUILDING.md)).
+
 Status: design agreed before implementation. Anything marked **(open)** is a judgement call that
 is cheap to change.
 

@@ -12,7 +12,7 @@ Back up your history to **your own Google Drive**: sign in once in **Settings, t
 Cloud backup needs a build that includes a Google client ID. If your copy has none, Settings says so and nothing is sent. The rest of this page is for developers.
 
 Optional backup of the wish history to the person's own Google Drive. The code is in
-`crates/wishtory-core/src/cloud/`; the Settings panel is `app/lib/features/settings/cloud_backup.dart`.
+`crates/wishtory-core/src/cloud/`; the Settings panel is the *Cloud backup* section of `src/pages/Settings.svelte`.
 For what users are told, see the "For users" section above.
 
 ## How it works
@@ -38,7 +38,7 @@ For what users are told, see the "For users" section above.
 | Token theft from disk | Nothing secret is written to a file. The refresh token and the passphrase live in the OS credential store (`keyring`: Windows Credential Manager, or the Secret Service on Linux). If there is none, cloud backup refuses to run instead of falling back to a file. The short-lived access token is kept in memory only. |
 | Access beyond Wishtory's files | The `drive.appdata` scope cannot see any other Drive file. |
 | Forged sign-in callback | The listener checks the `Host` header, the path and a random `state` (single use, 256 bits), ignores anything else, and gives up after 5 minutes. PKCE protects the code exchange. |
-| Open redirect / phishing link | The sign-in URL is built in Rust and must be `https://accounts.google.com/...` before it is opened. It does not go through the Dart link allow-list. |
+| Open redirect / phishing link | The sign-in URL is built in Rust and must be `https://accounts.google.com/...` before it is opened. It does not go through the window's link allow-list. |
 | Leaking secrets in logs and errors | Nothing secret is logged. Google's error bodies are not shown; HTTP errors become fixed, friendly messages. |
 | Leaving a sign-in behind | Disconnect revokes the refresh token with Google and removes both secrets. If Google reports the token as revoked or expired, the local state is cleared too, so the page offers to sign in again. |
 | Unwanted uploads | Cloud backup does nothing until the person signs in, and the daily backup is a separate switch. A build without a client ID has the feature disabled. |
@@ -68,7 +68,7 @@ of the repository, and are compiled in at build time.
      backup, and the Settings page says so.
    - **Linux, from source:**
      `WISHTORY_GOOGLE_CLIENT_ID=... WISHTORY_GOOGLE_CLIENT_SECRET=... bash packaging/linux/install.sh`
-   - **Development:** export the same two variables before `cargo build` / `flutter run`. They are read with
+   - **Development:** export the same two variables before `cargo build` / `npm run tauri -- dev`. They are read with
      `option_env!`, so changing them rebuilds the core.
 
 On Linux the credential store must provide the Secret Service API (KDE Wallet and GNOME Keyring do). A minimal
